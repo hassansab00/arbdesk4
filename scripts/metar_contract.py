@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 
 AWC_URL = re.compile(r"https://aviationweather\.gov/api/data/metar\?[^\s<>\\]+", re.I)
 HEADER = re.compile(r"^(?:(METAR|SPECI)\s+)?(?:COR\s+)?([A-Z0-9]{4})\s+(?:COR\s+)?(\d{2})(\d{2})(\d{2})Z(?:\s|$)")
+STATION_PREFIX = re.compile(r"^(?:(?:METAR|SPECI)\s+)?(?:COR\s+)?([A-Z0-9]{4})(?:\s|$)")
 T_GROUP = re.compile(r"(?<!\S)T([01])(\d{3})\d{4}(?!\S)")
 BODY_TEMP = re.compile(r"(?<!\S)(M?\d{2})/(?:M?\d{2}|//)?(?!\S)")
 
@@ -38,14 +39,14 @@ def source_parameters(url: str) -> tuple[str, dt.datetime]:
     return q["ids"][0].upper(), at
 
 
-def temperature_c(report: str) -> Decimal | None:
+def temperature_c(report: str, routine_only: bool = True) -> Decimal | None:
     """SPECI is never qualifying; T+exactly eight digits wins over the body.
 
     This does not infer routine status from a report's minute, pressure or COR.
     The source's report text, including an absent METAR label, is decisive.
     """
     text = report.strip().rstrip("=").strip()
-    if text.startswith("SPECI"):
+    if routine_only and text.startswith("SPECI"):
         return None
     body, separator, remarks = text.partition(" RMK ")
     matches = list(T_GROUP.finditer(remarks)) if separator else []
@@ -67,7 +68,7 @@ def rounded_unit(celsius: Decimal, unit: str) -> int:
     return int((value + Decimal("0.5")).to_integral_value(rounding=ROUND_FLOOR))
 
 
-def raw_reports(raw: bytes, station: str, reference: dt.datetime):
+def raw_reports(raw: bytes, station: str, reference: dt.datetime, *, strict=True, skipped=None):
     """Parse AWC's current raw response, refusing conflicting duplicate times.
 
     METAR times omit month/year. The source query's dated UTC anchor selects
@@ -75,11 +76,17 @@ def raw_reports(raw: bytes, station: str, reference: dt.datetime):
     """
     text = raw.decode("utf-8-sig").strip()
     rows = {}
+    conflicted=set()
     for line in text.splitlines():
         line = line.strip().rstrip("=").strip()
         if not line:
             continue
         m = HEADER.match(line)
+        if m is None and not strict:
+            prefix=STATION_PREFIX.match(line)
+            if prefix and prefix[1]==station:
+                if skipped is not None: skipped.append('unreadable observation time')
+                continue
         if m is None or m[2] != station:
             raise ValueError("AWC response contains an unrecognized report or wrong station")
         day, hour, minute = map(int, m.group(3, 4, 5))
@@ -93,7 +100,13 @@ def raw_reports(raw: bytes, station: str, reference: dt.datetime):
         if abs((when - reference).total_seconds()) > 4 * 86400:
             raise ValueError("AWC report is outside the requested date window")
         if when in rows and rows[when]["raw"] != line:
+            if not strict:
+                rows.pop(when)
+                conflicted.add(when)
+                if skipped is not None: skipped.append('conflicting observation time')
+                continue
             raise ValueError("AWC shows conflicting reports for one observation time")
+        if when in conflicted: continue
         rows[when] = {"when": when, "routine": m[1] != "SPECI",
-                      "temp_c": temperature_c(line), "raw": line}
+                      "temp_c": temperature_c(line), "weather_temp_c":temperature_c(line,routine_only=False), "raw": line}
     return [rows[k] for k in sorted(rows)]

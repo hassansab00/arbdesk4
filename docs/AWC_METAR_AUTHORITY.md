@@ -15,6 +15,19 @@ is invented for a lowest-bracket venue payout. Existing WRH contracts, finalized
 weather evidence, frozen predictions and venue-based scoring keep their behavior.
 Focused contract and weather-recovery checks, the full Python suite and database
 contracts passed. Live read-only AWC collection was checked after station-local
-day-end. Hosted CI and deployed acceptance remain pending. Predictive all-report features and hard
-floors require a separate contract-aware input update; this collector change
-does not claim to have updated those paths or refitted model artifacts.
+day-end. The collector passed hosted CI and was merged. Deployment acceptance
+captured new-authority evidence; a request-budget boundary identified during
+that acceptance is addressed by explicitly deferring unfinished work.
+
+Prediction inputs now keep receipt-stamped AWC snapshots separately from IEM
+weather. Qualifying routine reports govern contract floors and the remaining-day
+maximum; all reports remain available as weather/trend features. Missing, stale,
+future or rule-mismatched authority snapshots cannot inherit an all-report floor.
+Frozen vectors retain the authority receipt and digest. Later corrections append
+new snapshots without changing earlier as-of inputs. Existing archive and mirror
+mechanisms retain this additional capture kind. Per-city calibration and model
+selection separate the new input-rule version from the original one and retain
+their sample, forward-validation and bounded-update gates. Model artifacts are
+not refitted by this compatibility update. Forward accuracy must be measured on
+subsequent venue-settled frozen calls; source compatibility alone is not evidence
+of improved accuracy.

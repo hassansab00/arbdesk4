@@ -499,6 +499,8 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     station_of = {c["city_key"]: c.get("icao") for c in cities}
     unit_of = {c["city_key"]: (c.get("unit") or "C") for c in cities}
     markets = pe._upcoming_markets()
+    import contract_inputs
+    authority_inputs = contract_inputs.capture(markets, cities, dry_run=dry_run)
     peak_of = {(r["city_key"], int(r["month"])): r["peak_hour_local"]
                for r in rest("derived_weather_peak",
                              {"select": "city_key,month,peak_hour_local"})
@@ -514,7 +516,8 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     due = [d for d in candidates if (d[0], d[1], d[2]) not in held]
     detail = {"engine_version": version, "due": len(due), "already_written": len(candidates) - len(due),
               "budget_s": round(budget_s, 1),
-              "notes": notes[:20], "observations": stations, "s10": s10}
+              "notes": notes[:20], "observations": stations, "s10": s10,
+              "contract_inputs": authority_inputs}
     market_of = {(m["city_key"], str(m["resolution_date"])): m for m in markets}
     days = sorted({(c, t) for c, t, _, _ in due})
 
@@ -526,6 +529,13 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
         f = pe.measured_floor(r)
         if f is not None and r.get("local_date"):
             floors[city] = (str(r["local_date"]), f)
+
+    authority_details = {}
+    floors = contract_inputs.floors(markets, cities, floors, rest_all,
+                                   rehearsal_at or dt.datetime.now(dt.timezone.utc),details=authority_details)
+    for city, q in authority_details.items():
+        running.setdefault(city,{}).update(running_max_basis='series' if q['n_qualifying']>1 and not q['malformed_reports'] else 'floor_only',
+                                           latest_reading_at=q['latest_reading_at'])
 
     # THE CURRENT PREDICTION BETWEEN PRICING RUNS (plan v2.3 P4.9): the
     # same-day city-days whose pick the station has passed since it was
@@ -544,7 +554,8 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
         print(f"tick {now:%Y-%m-%d %H:%MZ}: nothing due ({len(held)} already written); "
               f"stations {stations['rows']} rows")
         if not dry_run:
-            log_run("tick", "attention" if stations["error"] or current.get("error") else "ok", 0,
+            log_run("tick", "attention" if stations["error"] or current.get("error") or authority_inputs.get('errors')
+                    or authority_inputs.get('error') or authority_inputs.get('deferred') else "ok", 0,
                     dict(detail, seconds=round(time.monotonic() - t0, 1)))
         return detail
 
@@ -634,7 +645,7 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
             continue
         rows, _reg, reasons = res
         row, why = build_row(city, target, name, local, rows, reasons, books,
-                             running.get(city), version, station=station_of.get(city),
+                             running.get(city), version, station=market_of[(city,target)].get('contract_station') or station_of.get(city),
                              bands=bands_by_market.get(market_of[(city, target)]['market_id']),
                              unit=market_of[(city, target)].get('unit') or unit_of.get(city, 'C'))
         if row is None:
@@ -717,7 +728,9 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     if engine_lost:
         detail["coverage_incomplete"] = engine_lost
     status = ("ok" if not failed and not deferred and not stations["error"] and not engine_error
-              and not current_error and not variant_lost and not s10_unnamed and not engine_lost else "attention")
+              and not current_error and not variant_lost and not s10_unnamed and not engine_lost
+              and not authority_inputs.get('errors') and not authority_inputs.get('error')
+              and not authority_inputs.get('deferred') else "attention")
     print(f"tick {now:%Y-%m-%d %H:%MZ}: {len(due)} due, {len(out)} rows, "
           f"{len(reprice)} re-priced, {len(ladders)} current ladders, "
           f"{len(deferred)} deferred, {len(failed)} failed, {detail['seconds']} s")

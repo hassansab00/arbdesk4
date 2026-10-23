@@ -195,13 +195,14 @@ def diagnostic(rows,reviews):
                 interpretation='Observed associations on reviewed misses; not causal attribution to WXPredict.')
 
 
-def reports(rows,cities,reviews,states,now,model_version=None,selections=(),early_states=()):
+def reports(rows,cities,reviews,states,now,model_version=None,selections=(),early_states=(),model_versions=None):
     period_start=(now.date()-dt.timedelta(days=29)).isoformat()
     period_end=now.date().isoformat()
     rows=[r for r in rows if period_start<=r['target_date']<=period_end]
     result=[]
     for c in cities:
         city=c['city_key']
+        active_version=(model_versions or {}).get(city,model_version)
         local_target=now.astimezone(ZoneInfo(c['timezone'])).date().isoformat()
         for scope in SCOPES:
             group=[]
@@ -229,14 +230,15 @@ def reports(rows,cities,reviews,states,now,model_version=None,selections=(),earl
                     paired_audit=paired_diagnostic(chosen),
                     recent_dates=daily_scores(chosen),
                     early_comparison=early_forecast_audit.summarize(chosen),
-                    learning=[dict(s,active=cal.usable(s,local_target,model_version),
-                                   effective_params=s['params'] if cal.usable(s,local_target,model_version) else cal.IDENTITY)
-                              for s in states if s['city_key']==city and s['model_version']==model_version
+                    active_model_version=active_version,
+                    learning=[dict(s,active=cal.usable(s,local_target,active_version),
+                                   effective_params=s['params'] if cal.usable(s,local_target,active_version) else cal.IDENTITY)
+                              for s in states if s['city_key']==city and s['model_version']==active_version
                               and horizon in (*selector.SUPPORTED, 'overall')],
                     early_learning=[s for s in early_states if s['city_key']==city]
                         if scope=='served' and horizon in ('day_ahead','d1_eve') else [])
-                state=next((s for s in selections if s['city_key']==city and s['checkpoint']==horizon and s['model_version']==model_version),None)
-                report['model_selection']=dict(state,effective=selector.choose(state,city,horizon,model_version,local_target,now)) if state else None
+                state=next((s for s in selections if s['city_key']==city and s['checkpoint']==horizon and s['model_version']==active_version),None)
+                report['model_selection']=dict(state,effective=selector.choose(state,city,horizon,active_version,local_target,now)) if state else None
                 result.append(dict(city_key=city,checkpoint=horizon,scope=scope,as_of=now.isoformat(),report=report))
     return result
 
@@ -263,19 +265,37 @@ def run(score_only=False, now=None):
     sys.path.insert(0,str(ROOT/'tools'))
     from wxpredict.wxrd_live import variant_version
     version=variant_version(meta,'wxrd3')
+    import contract_inputs
+    regime_prefix=contract_inputs.version(version,contract_inputs.CONTRACT)
+    active_versions={c['city_key']:version for c in cities}
+    for checkpoint in sorted(p,key=lambda r:(str(r.get('target_date','')),str(r.get('decided_at','')))):
+        raw=(checkpoint.get('predictive_context') or {}).get('raw_model_version') or checkpoint.get('priced_from')
+        if raw==version or str(raw).startswith(regime_prefix+':'):
+            active_versions[checkpoint['city_key']]=raw
+    version_cities={}
+    for city,input_version in active_versions.items():
+        version_cities.setdefault(input_version,[]).append(city)
+    versions=tuple(sorted(version_cities))
     detail={'score_only':score_only,'active_cities':len(cities)}
     if not score_only:
         learning=rest_all('v_city_predictor_pairs',[('select','*'),('target_date','gte.'+(now.date()-dt.timedelta(days=180)).isoformat())],order='city_key.asc,target_date.asc,checkpoint.asc',page_size=1000)
-        fitted=cal.fit(learning,[c['city_key'] for c in cities],version,now.date(),states)
-        selections=selector.fit(learning,[c['city_key'] for c in cities],version,now,selections)
+        fitted=[]
+        selected=[]
+        for input_version in versions:
+            fitted.extend(cal.fit(learning,version_cities[input_version],input_version,now.date(),states))
+            selected.extend(selector.fit(learning,version_cities[input_version],input_version,now,selections))
+        selections=selected
         path=ROOT/'data/eval/wxpredict/city_calibration'/f'{now.date()}.json'
         path.parent.mkdir(parents=True,exist_ok=True)
         path.write_text(json.dumps(dict(as_of=now.isoformat(),policy=cal.POLICY,states=fitted,model_selection=selections),sort_keys=True,indent=2)+'\n')
         upsert_replace('derived_wx_city_calibration',[dict(model_version=s['model_version'],city_key=s['city_key'],phase=s['phase'],as_of=s['as_of'],version=s['version'],state=s) for s in fitted], 'model_version,city_key,phase')
-        states=[s for s in states if s['model_version']!=version]+fitted
-        detail.update(calibration_cells=len(fitted),decisions=dict(Counter(s['decision'] for s in fitted)),eligible_learning_calls=len(cal.eligible_rows(learning,now.date(),version)))
+        states=[s for s in states if s['model_version'] not in versions]+fitted
+        detail.update(calibration_cells=len(fitted),decisions=dict(Counter(s['decision'] for s in fitted)),
+                      eligible_learning_calls=sum(len(cal.eligible_rows(learning,now.date(),v)) for v in versions),
+                      input_versions=list(versions))
         detail.update(selection_cells=len(selections),selection_decisions=dict(Counter(s['decision'] for s in selections)))
-    data=reports(collect(p,outcomes,da,cities,peaks,now),cities,reviews,states,now,version,selections,early_states)
+    data=reports(collect(p,outcomes,da,cities,peaks,now),cities,reviews,states,now,version,selections,early_states,
+                 model_versions=active_versions)
     n=upsert_replace('derived_city_prediction_validation',data,'city_key,checkpoint,scope')
     log_run(JOB,'ok',n,detail)
     print(json.dumps(dict(rows=n,**detail)),flush=True)

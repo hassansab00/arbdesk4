@@ -143,3 +143,12 @@ def test_wrong_source_date_refuses_before_any_request(monkeypatch):
     monkeypatch.setattr(outcomes, "_get", lambda *a, **k: pytest.fail("must not fetch mismatched source"))
     with pytest.raises(outcomes.OutcomeError, match="target local day"):
         outcomes.collect_awc(object(), spec(), DAY, "Europe/Amsterdam", NOW)
+
+
+def test_an_unreadable_time_is_safe_only_when_it_cannot_change_the_proved_maximum(monkeypatch):
+    valid=b'METAR KLGA 231551Z 20/10 RMK T02000100'
+    result,_=collect(monkeypatch,valid+b'\nMETAR KLGA 23120Z 15/10')
+    assert result.detail['qualifying_max_c']=='20'
+    assert result.detail['nondecisive_unreadable_reports']==1
+    with pytest.raises(outcomes.OutcomeError,match='could change'):
+        collect(monkeypatch,valid+b'\nMETAR KLGA 23120Z 30/10')

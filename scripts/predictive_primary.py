@@ -101,14 +101,17 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
         with open(meta_path) as fh:
             meta = json.load(fh)
         version = wl.variant_version(meta, "wxrd3")
+        import contract_inputs
+        versions = sorted({version,*[contract_inputs.version(version,m.get('observation_contract'),m.get('contract_station'))
+                                    for m in selected]})
         from wx_city_calibration import phase, transform, usable
         try:
             cells = ops.rest_all("derived_wx_city_calibration", [
-                ("select", "city_key,phase,state"), ("model_version", "eq."+version),
+                ("select", "city_key,phase,state"), ("model_version", "in.("+','.join(versions)+")"),
                 ("computed_at", "lte."+now.isoformat())], order="city_key.asc,phase.asc", page_size=1000)
         except Exception:
             cells = []  # A missing/unavailable fit keeps the raw distribution.
-        calibration = {(c["city_key"],c["phase"]): c["state"] for c in cells}
+        calibration = {(c["city_key"],c["phase"],c["state"].get('model_version',version)): c["state"] for c in cells}
         import city_model_selection as selector
         try:
             choices = ops.rest_all('derived_city_prediction_validation',[
@@ -168,10 +171,14 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
                 skipped["invalid primary distribution"] += 1
                 continue
             vector = {k: None if k in decision_inputs.LABELS else row.get(k) for k in lr.features.COLUMNS}
+            if row.get('observation_contract'):
+                vector.update(observation_contract=row['observation_contract'],
+                              rules_sha256=e.get('rules_sha256'),authority_input=row.get('authority_input'))
+            effective_version=contract_inputs.version(version,e.get('observation_contract'),e.get('contract_station'))
             raw = json.dumps(vector, sort_keys=True, separators=(",", ":"), allow_nan=False)
             sha = hashlib.sha256(raw.encode()).hexdigest()
             key = "|".join((POLICY, str(e["event_id"]), str(int(now.timestamp()))))
-            payload = {"policy": POLICY, "version": version, "as_of": now.isoformat(),
+            payload = {"policy": POLICY, "version": effective_version, "as_of": now.isoformat(),
                        "history_commit": commit, "history_committed_at": committed_at,
                        "model_fit_through": str(meta["fit_last"])[:10],
                        "band_ids": list(e["band_ids"]), "row": vector, "row_sha256": sha}
@@ -181,22 +188,26 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
             ops.rpc("live_capture_put", {"p_kind": decision_inputs.KIND,
                 "p_captured_at": dt.datetime.now(dt.timezone.utc).isoformat(), "p_rows": packed})
         for e, row, p, sha, input_key in accepted:
+            effective_version=contract_inputs.version(version,e.get('observation_contract'),e.get('contract_station'))
             # Market identity includes the ladder; a twin market cannot borrow
             # another listing's probabilities just because its city/day match.
             key = (e["city"], e["date"], frozenset(map(str, e["band_ids"])))
             raw_probs = dict(zip(map(str, e["band_ids"]), map(float, p)))
             context = {k: row.get(k) for k in lr.features.COLUMNS if k not in decision_inputs.LABELS}
             context.update(band_ids=list(map(str,e["band_ids"])), model_fit_through=str(meta["fit_last"])[:10])
-            state = calibration.get((e["city"], phase(context)))
+            if row.get('observation_contract'):
+                context.update(observation_contract=row['observation_contract'],rules_sha256=e.get('rules_sha256'),
+                               authority_input=row.get('authority_input'))
+            state = calibration.get((e["city"], phase(context),effective_version))
             served = raw_probs
-            if state and usable(state, e["date"], version):
+            if state and usable(state, e["date"], effective_version):
                 try:
                     served = transform(raw_probs, context["band_ids"], state["params"])
                 except (KeyError, TypeError, ValueError):
                     state = None
             else:
                 state = None
-            _predictions[key] = {"version": version, "as_of": now.isoformat(),
+            _predictions[key] = {"version": effective_version, "as_of": now.isoformat(),
                 "probs": served, "raw_probs": raw_probs, "input_key": input_key,
                 "calibration": state, "predictive_context": context,
                 "floor_c": float(row["rmax_c"]), "unit": e["unit"],

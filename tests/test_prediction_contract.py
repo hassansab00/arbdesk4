@@ -112,4 +112,4 @@ def test_the_checkpoint_keeps_the_two_fields_the_contract_needs():
     tick = (ROOT / "scripts" / "tick.py").read_text()
     assert '"priced_from": _priced_from(reasons),' in tick
     assert '"raw_forecast_c": head.get("forecast_max_c"),' in tick
-    assert 'station=station_of.get(city)' in tick, "the station as it stood at the decision"
+    assert "station=market_of[(city,target)].get('contract_station') or station_of.get(city)" in tick, "the contract station as it stood at the decision, with the legacy fallback"

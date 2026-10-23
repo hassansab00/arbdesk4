@@ -1,53 +1,14 @@
-"""Which cities are we working on? Asked of the WHOLE repo, not one directory.
-
-This question has been answered wrongly four times, each time in a place the
-previous check did not look:
-
-  pass 1  the cities-table readers and the feature-cache readers
-  pass 2  the SQL views built from markets and bands, and stored_fits(), which
-          let --predict-only resurrect a retired city from a fit kept forever
-  pass 3  four n8n collectors and the Live page, which renders from
-          live_weather rather than from cities
-  pass 4  this one - the enumeration itself only globbed web/app/**/page.tsx,
-          so four components and four Analytics panels were never looked at
-
-The lesson is not "check harder". It is that a check which SAMPLES cannot
-prove a negative. This file enumerates every area of the repo that can decide
-which cities the desk works on, and fails when a file joins the cities table
-without being classified. Adding a surface now means classifying it.
-
-THREE CLASSES, because "filter everywhere" is wrong:
-
-  FILTERS   it offers cities to act on, or collects for them. Must exclude
-            retired cities.
-  RECORD    it is history, archive or diagnosis. Must NOT exclude them - a
-            retired city that vanishes from the record looks like one that
-            never existed, and those need different actions. The repo's rule
-            is that nothing is ever deleted; hiding history is deleting it
-            from the only place anyone would look.
-  LOOKUP    it reads cities to build a map keyed by city_key, consumed for
-            rows that came from somewhere else. Filtering would not remove a
-            city from anything - it would make that city's value missing and
-            silently default.
-
-Measured on the live database 2026-09-20: 22 relations the desk reads still
-contain retired cities, and that is correct for all but the four the Analytics
-page rendered as lists. The fix is at the consumer, not in the views.
-"""
+"""Classify city readers and enforce active-roster versus historical access."""
 
 import glob
 import re
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# WEB - every .tsx and .ts, not just pages
-# ---------------------------------------------------------------------------
 WEB_LOOKUP_ONLY = {
-    # city_key -> unit, read for rows sourced elsewhere.
+    
     "web/components/RightRail.tsx",
 }
-
 
 def web_files():
     for path in sorted(glob.glob("web/**/*.tsx", recursive=True)
@@ -55,7 +16,6 @@ def web_files():
         if "/.next/" in path or "/node_modules/" in path:
             continue
         yield path
-
 
 def test_every_web_read_of_the_cities_table_is_filtered_or_named():
     offenders = []
@@ -78,11 +38,8 @@ def test_every_web_read_of_the_cities_table_is_filtered_or_named():
         "these read the cities table without filtering on status, and are not "
         "named as lookup-only: " + ", ".join(offenders))
 
-
 def test_a_panel_that_renders_one_row_per_city_is_scoped_to_the_roster():
-    """The Analytics page built its city picker from whatever came back, so
-    four skill panels listed retired cities. The views stay unfiltered - they
-    are the record - and the PAGE asks for the roster."""
+
     src = open("web/components/ModelAnalytics.tsx").read()
     for view in ("v_model_forecast_skill", "v_condition_skill",
                  "v_persistence_skill", "v_city_climb_profile"):
@@ -92,16 +49,11 @@ def test_a_panel_that_renders_one_row_per_city_is_scoped_to_the_roster():
             f"{view} is rendered as a per-city list without being scoped to "
             f"the active roster")
 
-
-# ---------------------------------------------------------------------------
-# PYTHON - one definition of active, and everything goes through it
-# ---------------------------------------------------------------------------
 PY_ALLOWED = {
-    "scripts/common.py",                    # the definitions themselves
-    "scripts/verify_resolution_source.py",  # a manual diagnostic: it SHOULD
-                                            # be able to name a retired city
+    "scripts/common.py",                    
+    "scripts/verify_resolution_source.py",  
+                                            
 }
-
 
 def test_no_script_reads_the_cities_table_around_common():
     offenders = []
@@ -115,17 +67,12 @@ def test_no_script_reads_the_cities_table_around_common():
         "these bypass common.get_cities() / common.active_city_keys(): "
         + ", ".join(offenders))
 
-
 def test_there_is_exactly_one_definition_of_active():
     src = open("scripts/common.py").read()
     assert src.count('"status": "eq.active"') == 2, (
         "get_cities() and active_city_keys() are the two places that define "
         "active; a third or a missing one means the definition has moved")
 
-
-# ---------------------------------------------------------------------------
-# N8N - the collection layer
-# ---------------------------------------------------------------------------
 def test_every_n8n_collector_asks_for_active_cities_only():
     offenders = []
     for path in sorted(glob.glob("n8n/*.template.json")):
@@ -139,94 +86,59 @@ def test_every_n8n_collector_asks_for_active_cities_only():
         "these build a city list with no status filter, so they keep "
         "collecting for retired cities: " + ", ".join(offenders))
 
-
-# ---------------------------------------------------------------------------
-# SQL - the classification, and the proof that it is complete
-# ---------------------------------------------------------------------------
-# Every .sql file that SELECTs FROM or JOINs the cities table. Classified, with
-# the reason, so that adding one forces a decision rather than a default.
 SQL_FILTERS = {
-    "sql/ad4_page_status.sql": "Refresh climate only for active cities after a local day rollover",
-    "supabase/migrations/20261018172215_page_evidence_health_sample.sql": "Same active-city rollover guard as ad4_page_status",
-    "sql/ad4_13_reconcile.sql":                 "v_opportunities - and through it v_band_ladder, v_trade_plan, v_city_day_plan",
-    "sql/ad4_22_opportunity_context.sql":       "v_opportunity_context - the movement panel behind each card",
-    "sql/ad4_68_prediction_ladder_outcomes.sql":"v_prediction_ladder - the Predictive page",
-    # Plan v2.3 P4.8 re-issues ad4_68's two views with the priced centre and
-    # time appended, and ad4_58's v_city_prediction_confidence (which joins
-    # cities only for the name and the unit). The relation the page reads is
-    # the ladder, which admits only the active roster: FILTERS, like ad4_68.
+    "sql/ad4_page_status.sql": "Active-city operational input",
+    "supabase/migrations/20261018172215_page_evidence_health_sample.sql": "Active-city operational input",
+    "sql/ad4_13_reconcile.sql":                 "Active-city operational input",
+    "sql/ad4_22_opportunity_context.sql":       "Active-city operational input",
+    "sql/ad4_68_prediction_ladder_outcomes.sql":"Active-city operational input",
+
     "supabase/migrations/20260927170000_the_card_shows_what_was_priced.sql":
-        "v_prediction_ladder_bands / _live / the stored copy - the Predictive page",
-    # The funnel's bucket planes (WXPredict build 2.A, 7 Oct): every edge of
-    # the ladder's own markets, so the ladder's roster rule - the active
-    # cities only - exactly as v_prediction_ladder_bands. FILTERS, like it.
+        "Active-city operational input",
+
     "sql/ad4_89_page_cache.sql":
-        "mv_city_ladder_edges - the Predictive funnel's bucket planes, the ladder's cities",
+        "Active-city operational input",
     "supabase/migrations/20261007150000_the_page_cache_keeps_the_days_it_shows.sql":
-        "mv_city_ladder_edges, as in sql/ad4_89 - the Predictive funnel's bucket planes",
+        "Active-city operational input",
     "supabase/migrations/20260923180000_a_priceable_market_is_one_whose_local_day_has_not_ended.sql":
-        "v_priceable_markets - the markets both engines price; a retired city is not priced",
-    "sql/ad4_87_market_settlement_gaps.sql":    "v_market_settlement_gaps - ended days to act on; a "
-                                                "retired city is not collected on purpose",
-    "sql/ad4_30_open_meteo.sql":                "the forecast collector's city list",
-    "sql/ad4_32_run_scope.sql":                 "v_run_scope - which cities a job runs over",
-    "sql/ad4_33_control.sql":                   "the control surface's city list",
-    "sql/ad4_71_observation_health.sql":        "is the DESK's data healthy - operational, not the record",
-    "sql/ad4_75_probability_reliability.sql":   "the measured haircut, applied to live prices",
-    "sql/ad4_live_weather_timing.sql":          "refresh_live_weather_timing - only worth computing for a live city",
-    # The 4 Oct floor fix re-issues ad4_71's two views and the timing function
-    # verbatim (the settlement feed's maximum first). Same roster rule as the
-    # files it carries: FILTERS.
+        "Active-city operational input",
+    "sql/ad4_87_market_settlement_gaps.sql":    "Active-city operational input",
+    "sql/ad4_30_open_meteo.sql":                "Active-city operational input",
+    "sql/ad4_32_run_scope.sql":                 "Active-city operational input",
+    "sql/ad4_33_control.sql":                   "Active-city operational input",
+    "sql/ad4_71_observation_health.sql":        "Active-city operational input",
+    "sql/ad4_75_probability_reliability.sql":   "Active-city operational input",
+    "sql/ad4_live_weather_timing.sql":          "Active-city operational input",
+
     "supabase/migrations/20261004120000_the_floor_is_what_the_venue_reads.sql":
-        "v_city_observation_health, v_city_running_max and refresh_live_weather_timing, as in "
-        "sql/ad4_71 and ad4_live_weather_timing - the floor the engine prices from",
+        "Active-city operational input",
     "supabase/migrations/20261004150000_the_basis_is_the_feeds.sql":
-        "v_city_observation_health and refresh_live_weather_timing again, as in sql/ad4_71 and "
-        "ad4_live_weather_timing - the basis counted over the feed the maximum came from",
+        "Active-city operational input",
     "supabase/migrations/20261009090100_the_feed_age_reads_the_cache.sql":
-        "v_city_observation_health again, as in sql/ad4_71 - the feed age read from the "
-        "station-day cache for a city the readings no longer hold",
+        "Active-city operational input",
     "supabase/migrations/20261016081209_station_report_fallback.sql":
-        "v_city_observation_health and refresh_live_weather_timing again, as in sql/ad4_71 "
-        "and ad4_live_weather_timing - real routine reports for the active roster; "
-        "the status predicates accept another station delivery without changing the roster",
-    # The model inputs' freshness beside the main forecast's (audit P3, 5 Oct):
-    # operational, like v_city_observation_health - is the desk's input fresh
-    # for a city it prices - not the record.
+        "Active-city operational input",
+    "supabase/migrations/20261023171236_awc_contract_observation_receipts.sql":
+        "Active-city operational input",
+
     "supabase/migrations/20261005110000_the_model_inputs_have_their_own_freshness.sql":
-        "v_city_forecast_inputs - the main forecast's and the model inputs' age per live city",
-    # Each active city's daily status (WXPredict build F.2, 6 Oct): a question
-    # about the cities the desk trades today and tomorrow, so FILTERS.
+        "Active-city operational input",
+
     "supabase/migrations/20261006180000_each_city_has_a_daily_status.sql":
-        "v_city_status - each active city's status for its local today and tomorrow",
-    # v_city_trajectory_now prices the rest of TODAY for cities the desk is
-    # trading, and filters to active on its own. The evidence view beside it
-    # joins cities only for the timezone that turns a timestamp into a local
-    # hour, so it is not asking a question about the roster at all. FILTERS is
-    # the right call for the file, because the relation an engine reads is the
-    # one that decides.
-    "sql/ad4_86_trajectory.sql":                "v_city_trajectory_now - what the engine prices the rest of today from",
-    # v_trade_plan joins cities for observation_trust, the gate that decides
-    # whether s5 and s7 may fire in a city at all. FILTERS, and it already is:
-    # every row comes from v_opportunities, which admits only the active
-    # roster, and the join is a LEFT join off that - it can attach a trust
-    # score to a row, never add a retired city's row.
-    "sql/ad4_34_trade_plan.sql":                "v_trade_plan - the board, and the s5/s7 trust gate",
+        "Active-city operational input",
+
+    "sql/ad4_86_trajectory.sql":                "Active-city operational input",
+
+    "sql/ad4_34_trade_plan.sql":                "Active-city operational input",
 }
 SQL_RECORD = {
-    "supabase/migrations/20261018171559_monitoring_city_clocks_and_daily_maximum.sql",  # City clocks for existing monitoring records, not a trading roster.
-    "supabase/migrations/20261017170738_frozen_city_learning.sql",  # Historical clock and label lookup; not roster selection.
-    "supabase/migrations/20261018084700_city_predictor_selection.sql",  # Frozen paired evidence keeps retired history; cities supplies its clock.
-    "sql/ad4_city_calibration_forward.sql",  # Historical calls, including retired cities.
+    "supabase/migrations/20261018171559_monitoring_city_clocks_and_daily_maximum.sql",  
+    "supabase/migrations/20261017170738_frozen_city_learning.sql",  
+    "supabase/migrations/20261018084700_city_predictor_selection.sql",  
+    "sql/ad4_city_calibration_forward.sql",  
 
-    # ad4_88 (plan v2.1 P3.8): cities.timezone only, to put the evening-before
-    # cutoff on each city's clock. A settled day in a city retired since is
-    # still evidence of which recipe predicts the winning bucket.
     "sql/ad4_88_hit_tournament.sql",
-    # ad4_80 (plan v2 P1.6 phase 3, step 3.1): v_edge_marks_live -
-    # cities.timezone only, to put each band's eve and pre-day cutoffs on its
-    # city's clock. Every band's marks, a retired city's too: the edges prune
-    # must not take a price the settled record reads.
+
     "sql/ad4_80_prune_edge_history.sql",
     "sql/ad4_16_nws.sql", "sql/ad4_17_city_stats.sql", "sql/ad4_19_stats_cache.sql",
     "sql/ad4_21_weather_features.sql", "sql/ad4_23_reasoning.sql",
@@ -238,188 +150,91 @@ SQL_RECORD = {
     "sql/ad4_56_correlation_speed_and_peak_key.sql",
     "sql/ad4_58_city_prediction_confidence.sql", "sql/ad4_72_model_promotion.sql",
     "sql/ad4_diagnose.sql", "sql/ad4_phase2.sql", "sql/ad4_phase2_ranking.sql",
-    # v_station_day_max and v_settlement_agreement. RECORD, and the call is
-    # not obvious, so: observation_trust is plainly something to act on - it
-    # is the weight a running-max strategy should carry in that city - which
-    # argues FILTERS. It is still the record. The question it answers is "how
-    # often did our thermometer name the band the venue settled on", asked of
-    # days that are already settled, and a city retired last week has a
-    # history worth reading precisely BECAUSE somebody may want it back. The
-    # roster filter belongs at the consumer, the way v_trade_plan applies it,
-    # not in a table of what happened.
+
     "sql/ad4_82_settlement_agreement.sql",
-    # v_city_hit_history and v_city_hit_summary. RECORD, and for the same
-    # reason: "on the days that settled, did the band we called turn out to be
-    # the band that paid" is a question about the past, asked of frozen
-    # evidence. It joins cities only to print a display_name and a unit. A
-    # retired city's hit record is the most useful thing there is to read
-    # BEFORE deciding whether to bring it back, so filtering it out here would
-    # destroy the one answer somebody would come looking for.
+
     "sql/ad4_85_city_hit_history.sql",
-    # v_prunable_band_probabilities (P1.6 phase 2, step 6). RECORD:
-    # cities.timezone only, to put each priced band's local day start and eve
-    # on its city's clock. It decides which old prices the archive may take,
-    # and a retired city's settled prices are read like any other's - so its
-    # readers' rows must be kept, not filtered out.
+
     "sql/ad4_96_prune_band_probabilities.sql",
-    # refresh_city_day_hours and freeze_hit_forecasts (P1.6 phase 2, step 6).
-    # RECORD, and deliberately every city: prune_observations cuts every
-    # city's readings - retired ones held 7,279 on 29 Sep - and refuses a day
-    # the hours cache does not hold, so an active-only walk would block it.
+
     "sql/ad4_97_evidence_cache.sql",
-    # Fresh Supabase (8 Oct): v_city_climb_profile_live, v_city_climate and
-    # refresh_weather_peak_city read the caches before the readings' first
-    # whole day - cities.timezone to put each reading on its local day, as in
-    # ad4_17, ad4_28 and ad4_56, and v_city_climate a row for every city as
-    # ad4_17's did. The record of what each city's weather did.
+
     "sql/ad4_weather_readers_read_the_caches.sql",
 }
 
-# MIGRATIONS COUNT TOO. The first version of this file globbed sql/*.sql and
-# nothing else, so seven migrations that build from the cities table were never
-# looked at - and four of them define relations that exist ONLY there
-# (v_city_day_readiness, v_operational_health, v_city_metadata_health,
-# v_city_metadata_verification), with no sql/*.sql file superseding them.
-#
-# Measured on the live database 2026-09-20 there was no leak: readiness, the
-# sigma inputs and the model-skill view hold zero retired cities, and the one
-# that does - v_city_metadata_verification, 5 of 54 - is a diagnostic asking
-# whether each city's resolution source matches what the desk believes, which
-# is a question you ask ABOUT a retired city. So this closes a blind spot
-# rather than a bug. It is here because a blind spot is how the last four got
-# in.
 MIGRATION_RECORD = {
     "supabase/migrations/20261016174633_city_calibration_forward_record.sql":
-        "Historical first calls; city timezone only decides whether their local day ended, including retired cities",
+        "Historical or diagnostic city lookup",
 
     "supabase/migrations/20261009090000_the_weather_tables_keep_three_days.sql":
-        "prune_observations, as in sql/ad4_29 - its guards put each reading on its city's "
-        "local day; every city the prune reaches, retired ones too",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20261008200000_the_long_weather_readers_read_the_caches.sql":
-        "refresh_city_day_hours as in sql/ad4_97, and v_city_climb_profile_live, "
-        "v_city_climate and refresh_weather_peak_city as in "
-        "sql/ad4_weather_readers_read_the_caches.sql - cities.timezone to put readings "
-        "on their local day; every city the prune reaches, retired ones too, and "
-        "v_city_climate a row per city as before",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql":
-        "v_outcome_pipeline - cities.timezone to put each market's day end on its city's "
-        "clock, and the unit; every market of the window, a retired city's too, because "
-        "the lag it measures is the record's",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260930004500_the_hit_record_shows_the_priced_centre.sql":
-        "v_city_hit_history_live as in sql/ad4_85 (the priced centre appended) - "
-        "cities.timezone to put each call's cutoff on its city's clock and the "
-        "display name; every settled city-day, a retired city's too, because it "
-        "is the record",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260929230000_the_marks_the_prune_took_come_back.sql":
-        "restore_edge_marks as in sql/ad4_97 - cities.timezone to put each band's "
-        "eve and pre-day cutoffs on its city's clock; every archived band's marks, a "
-        "retired city's too, because they are the record",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260929220000_the_edges_keep_the_prices_the_record_reads.sql":
-        "v_edge_marks_live as in sql/ad4_80, v_city_hit_history_live as in "
-        "sql/ad4_85 - cities.timezone to put each band's eve and pre-day cutoffs "
-        "on its city's clock; every band's marks and every settled city-day, a "
-        "retired city's too, because they are the record",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260929210000_the_weather_tables_keep_thirty_days.sql":
-        "prune_observations, as in sql/ad4_29 - its guards put each reading on its "
-        "city's local day; pruning must walk every city or a retired one's rows "
-        "would never be aged out",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260929190000_the_backtest_counts_what_it_counted.sql":
-        "refresh_city_day_hours as in sql/ad4_97, and a one-off fill of each cached "
-        "station day's first reading - cities.timezone to put readings on their local "
-        "day; the record of every city the prune reaches, retired ones too",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260929180000_the_station_days_and_forecast_leads_outlast_the_keep.sql":
-        "v_station_day_max, refresh_city_day_hours and prune_observations, as in "
-        "sql/ad4_82, ad4_97 and ad4_29 - cities.timezone to put readings on their "
-        "local day; each station's day is the record of what it read, kept for every "
-        "city a prune reaches, and the settlement agreement reads a retired city's too",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260929160000_the_evidence_outlasts_the_weather_tables.sql":
-        "v_trajectory_evidence, refresh_city_day_hours and prune_observations, as in "
-        "sql/ad4_86, ad4_97 and ad4_29 - cities.timezone to put readings on their "
-        "local day; the hours are the record, walked for every city a prune reaches",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260929140000_the_prices_readers_use_stay.sql":
-        "v_prunable_band_probabilities - cities.timezone only, to find each priced band's "
-        "local day start and eve; it keeps the prices a retired city's readers select as "
-        "it keeps any other's (sql/ad4_96)",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260926100000_calibration_learns_frozen_calls.sql":
-        "v_calibration_evidence - cities.timezone only, to find when each settled "
-        "band's local day began; the record of what was forecast before it, and a "
-        "retired city's settled days were forecast like any other",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260924110000_fixed_risk_rails.sql":
-        "queue_plan's close-buffer rail reads cities.timezone for ONE market's city, "
-        "to put the market's close on its local clock; it enumerates nothing, and a "
-        "retired city's market closes when its day ends like any other",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260928090000_the_cluster_rail.sql":
-        "queue_plan again (P5.9 part 3, the cluster-day rail): the same close-buffer "
-        "read of cities.timezone for ONE market's city; the cluster sums read markets "
-        "and positions, not cities, and enumerate nothing",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260923170000_trust_shrunk_toward_the_pool.sql":
-        "refresh_observation_trust() - the RECORD of how often each city's thermometer "
-        "names the venue's band, like the migration it replaces; the gate that reads it "
-        "is ad4_34, filtered",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260923160000_when_was_the_forecast_issued.sql":
-        "v_forecast_issued - cities.timezone only, to put each forecast's issue time on "
-        "the city's calendar; a retired city's forecasts were issued when they were",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260923140000_a_market_whose_day_ended_is_closed.sql":
-        "market_day_ended() - closing a market whose local day has ended is the "
-        "record being made true, and a retired city's ended market is ended too",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260922230000_a_rule_is_only_as_good_as_the_thermometer_under_it.sql":
-        "cities.observation_trust and refresh_observation_trust() - the RECORD "
-        "of how often a city's thermometer named the band the venue settled on. "
-        "Deliberately unfiltered: a retired city's measured trust is history "
-        "worth keeping, and putting it back is the same one word as the roster. "
-        "The GATE that reads it is in ad4_34, and that one is filtered.",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260912213000_phase1_data_foundation.sql":
-        "v_archive_daily and the data-quality flags - the record",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260912234500_phase1c_operational_readiness.sql":
-        "v_city_day_readiness / v_operational_health - derived from markets, so "
-        "already carries no retired city; diagnosis either way",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260923010000_readiness_reads_one_row_per_band.sql":
-        "v_city_day_readiness / v_city_day_execution_readiness, re-issued with "
-        "the latest book, probability and edge read per band instead of over "
-        "their whole history. Same rows and the same classification as phase1c "
-        "and phase1d: derived from markets, so no retired city; diagnosis",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260913091000_phase1d_databank_city_rollup.sql":
-        "v_archive_by_city - the archive rollup",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql":
-        "v_city_metadata_health / _verification - does each city's resolution "
-        "source match what we believe? asked ABOUT a retired city too",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260913102000_phase2a_artifact_provenance.sql":
-        "provenance and the sigma inputs - the record",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260914100000_observation_prune_local_day_guard.sql":
-        "prune_observations - pruning must walk every city or a retired one's "
-        "rows would never be aged out",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260914110000_archive_prune_count_contract.sql":
-        "prune_forecasts / prune_observations - same",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260929010000_a_cut_day_keeps_its_cached_values.sql":
-        "refresh_feature_cache, as in sql/ad4_28 and ad4_29 - the day-feature "
-        "record, which must cover every city a prune reaches",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20261004190000_one_prediction_contract.sql":
-        "v_prediction_contract (P2.2) - cities.icao only, the station of each call, by a LEFT "
-        "join off the calls already recorded; every recorded call, a retired city's too, "
-        "because it is the record",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20261004200000_the_page_reads_the_contract.sql":
-        "v_prediction_lineup (P2.2 part 2) - cities.timezone only, to tell whether a blinded "
-        "call's city-day is over on its own clock, by a LEFT join off the calls already recorded; "
-        "every recorded call, a retired city's too, because it is the record",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20261005090000_the_same_day_corrected_candidate.sql":
-        "v_prediction_contract again (sd_corr:v1) - cities.icao only, the station of each call, by "
-        "a LEFT join off the calls already recorded; every recorded call, a retired city's too, "
-        "because it is the record",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20261004160000_one_morning_reading.sql":
-        "v_city_day_features again, as in sql/ad4_21 - cities.timezone only, to put each reading "
-        "on its city's local day; the day-feature record, which must cover every city a prune reaches",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20261004130000_the_label_is_what_the_venue_reads.sql":
-        "v_city_day_features, as in sql/ad4_21 - cities.timezone only, to put each reading on "
-        "its city's local day; the day-feature record, which must cover every city a prune "
-        "reaches",
+        "Historical or diagnostic city lookup",
     "supabase/migrations/20260929100000_the_climb_profile_reads_thirty_days.sql":
-        "v_city_climb_profile_live, as in sql/ad4_26 and ad4_28 - cities.timezone "
-        "only, to put each reading on its city's local day; the climb profile is "
-        "the record of how each city's days climbed, and only its window changed",
+        "Historical or diagnostic city lookup",
 }
 
 JOINS_CITIES = re.compile(r"(?:join|from)\s+(?:public\.)?cities(?:\s|$|,|\))", re.I)
-
 
 def sql_files_touching_cities():
     out = []
@@ -431,12 +246,8 @@ def sql_files_touching_cities():
             out.append(path)
     return out
 
-
 def test_every_sql_file_that_builds_from_cities_is_classified():
-    """THE POINT OF THE WHOLE FILE. A new view over cities cannot be added
-    without deciding whether it offers something to act on or records what
-    happened - and that now includes a migration, which is where four
-    relations live that no sql/*.sql file supersedes."""
+
     classified = set(SQL_FILTERS) | SQL_RECORD | set(MIGRATION_RECORD)
     unclassified = [p for p in sql_files_touching_cities() if p not in classified]
     assert unclassified == [], (
@@ -444,25 +255,20 @@ def test_every_sql_file_that_builds_from_cities_is_classified():
         "FILTERS nor RECORD - decide which, and say why: "
         + ", ".join(unclassified))
 
-
 @pytest.mark.parametrize("path,why", sorted(SQL_FILTERS.items()))
 def test_a_filtering_sql_file_actually_filters(path, why):
     src = open(path).read()
     assert re.search(r"status.{0,20}=.{0,4}'active'", src), (
         f"{path} is classified as filtering ({why}) but does not test status")
 
-
 def test_the_classification_has_not_gone_stale():
-    """A file listed but no longer touching cities means the list is drifting
-    away from the code it describes."""
+
     touching = set(sql_files_touching_cities())
     stale = sorted((set(SQL_FILTERS) | SQL_RECORD | set(MIGRATION_RECORD)) - touching)
     assert stale == [], (
         "these are classified but no longer build from cities: " + ", ".join(stale))
 
-
 def test_the_record_is_never_filtered():
-    """Stated as a rule so a later 'filter it everywhere' sweep has to argue
-    with something. History, archive and diagnosis keep every city."""
+
     for path in sorted(SQL_RECORD):
         assert path not in SQL_FILTERS, f"{path} cannot be both"

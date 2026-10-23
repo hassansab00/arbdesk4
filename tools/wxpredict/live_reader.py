@@ -1,64 +1,8 @@
-"""WXPredict WP3b: every decision's features from the live record, as known then.
+"""Build forecast rows from receipt-stamped live inputs and committed history.
 
-ONE IMPLEMENTATION. The live record (public.live_capture, written in the hourly
-tick by scripts/live_capture.py; copied to data/mirror/live_capture each night
-and archived to data/archive/live_capture after the mirrored UTC-day boundary) keeps every input the
-tick had, with the time it arrived. This reads it into the shapes
-tools/wxpredict/features.py takes and builds each row with
-features.decision_row, the function the training table is built with
-(build_table.py). So a live row and the table's row for the same instant can
-differ only where their sources differ, and the parity test (plan phase 2.3)
-names each such difference.
-
-FROM THE RECORD (the live sources):
-  reports  every station report the tick's IEM read returned, made into the
-           training's report row by fetch_obs.remarks (the METAR's T group and
-           6-hour extremes) under the station's ICAO
-  hourly   best_match `_previous_day1` hourly values ('hourly')
-  daily    the event's own day at leads 1 and 2: best_match's daily row and the
-           seven models' maxima, reduced from the recorded hourly values
-           ('hourly', 'hourly2', 'models1', 'models2') by the nightly record's
-           own functions (honest_record.daily_best_match, daily_models), the
-           functions the training's daily files are made with
-  market   every bucket's book at each tick, priced as the price record prices
-           it (live_price)
-FROM THE REPOSITORY (history the live system reads, not live input): the
-station's whole past days (station_daily: climatology, yesterday, the forecast's
-past error), the daily forecasts of the days before the event's own (the past
-error), the cities and their zones, read by build_table's own loaders.
-
-TWO WAYS OF KNOWING, each a filter on the record:
-  rule     the whole record, whenever each value arrived; the training's own
-           rules (REPORT_LAG_S, PUBLISH_H, the market at or before t) decide
-           what a row may know. The row the builder would make from the live
-           sources: parity compares it with the table's row.
-  arrival  only what had reached the tick by t (captured_at <= t), then the
-           same rules: what the live system actually had at the decision. Its
-           difference from `rule` is the cost of the hourly :36 tick against
-           the rule's instants (a report the rule knows 20 min after its
-           reading reaches the tick at the next :36).
-
-THE MARKET PRICE (step 2.1, extended 12 Oct): the book's midpoint, an empty bid
-counted as 0 and an empty ask as 1. On the archived 2-hourly snapshots matched to
-the price record's hourly point at hours p did not move (what_is_p.py's control,
-its "one-sided" lines, 12 Oct), a book with no bid gives ask/2 within 0.005 of p
-on 99.95% of 148,144 pairs, and a book with no ask gives (bid + 1)/2 within
-0.005 on 99.90% of 3,067; either side alone is further off (93.67% and 98.04%).
-Step 2.1 chose the midpoint for two-sided books (6 Oct: 54,415 pairs, 98.6%
-within 0.01).
-
-KNOWN SOURCE DIFFERENCES, not hidden here (the parity test counts them):
-  - the tick asks IEM with trace=empty, the training's fetch with trace=T, so a
-    trace of precipitation is 0.0 in the table and missing live;
-  - Lucknow's hours sit at :30 UTC in the training's hourly file (built with
-    timezone=auto) and at :00 in the record (asked in GMT);
-  - a day's daily row is kept only with MIN_HOURS hourly temperatures
-    (honest_record): the record holds lead-1 hours 17 h ahead, so at a local
-    hour before 02:00 of D fewer than 20 of D's hours are there and the row
-    falls back to lead 2, where the table, built after the day, has lead 1.
-
-    python tools/wxpredict/live_reader.py --from 2026-10-13 --to 2026-10-15 \\
-        [--mode rule|arrival|both] [--out rows.csv.gz] [--record FILE ...]
+Arrival mode only uses inputs captured by the decision time. Rule mode supports
+feature parity checks under the model's publication allowances. Contract-authority
+receipts separately constrain the qualifying maximum.
 """
 import argparse
 import bisect
@@ -78,11 +22,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
 from wxpredict import common, features  # noqa: E402
 from wxpredict.fetch_obs import FIELDS as REPORT_FIELDS, remarks  # noqa: E402
 import honest_record  # noqa: E402
+import contract_inputs  # noqa: E402
+import metar_contract  # noqa: E402
 
 MODES = ("rule", "arrival")
 # every kind the record keeps; 'focus_book' (WP5, the focus cities' books each
 # minute) is read by the same-day pilot, not by these rows
-KINDS = ("report", "hourly", "hourly2", "models1", "models2", "books", "focus_book", "wx_features", "hourly0", "models0")
+KINDS = ("report", "hourly", "hourly2", "models1", "models2", "books", "focus_book", "wx_features", "hourly0", "models0", "awc_metar")
 HOURLY_KIND = {1: "hourly", 2: "hourly2"}
 MODELS_KIND = {1: "models1", 2: "models2"}
 # what the record's report payload holds, in order (scripts/live_capture.py
@@ -146,6 +92,11 @@ class Record:
             if i >= 0:
                 out[key] = vals[i][1]
         return out
+
+    def authority(self, key, t):
+        vals = self.kinds[contract_inputs.KIND].get(key, [])
+        index = bisect.bisect_right([at for at, _ in vals], t)-1
+        return vals[index] if index >= 0 else None
 
     def books(self):
         """[(captured_at, payload)] of every tick's books, oldest first."""
@@ -355,8 +306,11 @@ def live_events(markets, bands, cities, first, last):
             continue
         out.append({"event_id": m["market_id"], "source": "venue", "city": m["city_key"],
                     "date": m["resolution_date"], "unit": m.get("unit") or c.get("unit") or "C",
-                    "station": c["icao"].upper(), "bands": [(lo, hi) for lo, hi, _, _ in lad], "winner": None,
-                    "band_ids": [b["band_id"] for b in bs]})
+                    "station": (m.get('contract_station') or c["icao"]).upper(), "bands": [(lo, hi) for lo, hi, _, _ in lad], "winner": None,
+                    "band_ids": [b["band_id"] for b in bs],
+                    "observation_contract":m.get('observation_contract','legacy'),
+                    "rules_sha256":m.get('rules_sha256'),"rules_text":m.get('rules_text'),
+                    "contract_station":m.get('contract_station')})
     out.sort(key=lambda e: (e["date"], e["city"], e["event_id"]))
     return out
 
@@ -397,6 +351,7 @@ class View:
     """The live sources as one way of knowing sees them at t (rule: t None)."""
 
     def __init__(self, record, icao_of, tz_names, t=None):
+        self.record = record
         self.reports = station_reports(record, icao_of, t)
         self.hourly = hourly_series(record, t)
         self.bm, self.md = daily_rows(record, tz_names, t)
@@ -439,8 +394,43 @@ def _row(e, off, local, t, mode, v, books, ticks, cities, sdays, history_bm, his
     ctx = features.event_context(e, rep, st_days, tz)
     bm = OwnDay(v.bm, history_bm, e["city"], e["date"])
     md = OwnDay(v.md, history_md, e["city"], e["date"])
+    qualifying = None
+    if e.get('observation_contract','legacy') != 'legacy':
+        qualifying = {}
+        receipt = v.record.authority(e['city']+'|'+e['date'], t)
+        if receipt and e.get('observation_contract') == contract_inputs.CONTRACT:
+            received, payload = receipt
+            market = dict(city_key=e['city'],resolution_date=e['date'],unit=e['unit'],rules_sha256=e.get('rules_sha256'),
+                          contract_station=e.get('contract_station'))
+            qualifying = contract_inputs.qualifying(payload,dt.datetime.fromtimestamp(received,dt.timezone.utc).isoformat(),
+                market,cities[e['city']],dt.datetime.fromtimestamp(t,dt.timezone.utc))
+            if qualifying:
+                raw=gzip.decompress(__import__('base64').b64decode(payload['raw_gzip']))
+                observations=metar_contract.raw_reports(raw,e['station'],dt.datetime.fromtimestamp(received,dt.timezone.utc),strict=False)
+                weather=[]
+                for observation in observations:
+                    temp=observation['weather_temp_c']
+                    if temp is None: continue
+                    r={name:'' for name in REPORT_FIELDS}
+                    r.update(valid=observation['when'].isoformat(),tmpf=str(temp*9/5+32),t10_c=str(temp),
+                             td10_c='',max6_c='',min6_c='')
+                    weather.append(r)
+                authority_reports=features.Reports(weather)
+                # Retain richer same-station IEM fields at shared instants;
+                # use AWC temperature reports where IEM is absent or late.
+                merged=features.Reports([])
+                readings=dict(zip(authority_reports.t,authority_reports.rec))
+                readings.update(zip(rep.t,rep.rec))
+                merged.t=sorted(readings)
+                merged.rec=[readings[at] for at in merged.t]
+                minutes=collections.Counter((at//60)%60 for at in merged.t)
+                merged.routine_minute=minutes.most_common(1)[0][0] if minutes else 0
+                rep=merged
     row = features.decision_row(e, ctx, off, local, rep, st_days, bm, md, v.hourly,
-                                ladder_series(books, e["band_ids"]), tz)
+                                ladder_series(books, e["band_ids"]), tz,qualifying=qualifying)
+    if qualifying is not None:
+        row['observation_contract'] = e.get('observation_contract')
+        row['authority_input'] = qualifying
     row["live_mode"] = mode
     sp = spreads_at(books, e["band_ids"], t)
     row["mkt_spreads"] = ";".join("" if s is None else features.fmt(s, 4) for s in sp)

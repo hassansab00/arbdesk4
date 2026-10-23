@@ -1,4 +1,5 @@
 import datetime as dt
+import pytest
 import predictive_validation as v
 
 NOW=dt.datetime(2026,10,17,12,tzinfo=dt.timezone.utc)
@@ -63,7 +64,8 @@ def test_learning_activity_only_names_current_serving_model():
         assert row['report']['learning'][0]['active']
 
 
-def test_repeat_runs_replace_derived_answers_and_preserve_original_calls(tmp_path,monkeypatch):
+@pytest.mark.parametrize('contract_station',[None,'KDEN'])
+def test_repeat_runs_replace_derived_answers_and_preserve_original_calls(tmp_path,monkeypatch,contract_station):
     """Exercise the real HTTP write helpers, including duplicate handling."""
     import copy
     import json
@@ -75,6 +77,10 @@ def test_repeat_runs_replace_derived_answers_and_preserve_original_calls(tmp_pat
     metadata.write_text(json.dumps(dict(version='wxrd-v3',model_sha256='a'*64,fit_last='2026-10-11')))
     monkeypatch.setattr(v,'ROOT',tmp_path)
     original=call()
+    input_version='wxrd3:v3:'+('a'*12)
+    if contract_station:
+        input_version+=':awc-routine-v1:'+contract_station
+        original['predictive_context']={'raw_model_version':input_version}
     preserved=copy.deepcopy(original)
     facts=[]
     saved={}
@@ -117,6 +123,8 @@ def test_repeat_runs_replace_derived_answers_and_preserve_original_calls(tmp_pat
     assert len(saved['derived_city_prediction_validation'])==24
     states=list(saved['derived_wx_city_calibration'].values())
     assert len(states)==3 and all(s['as_of']=='2026-10-18' for s in states)
+    assert all(s['model_version']==input_version for s in states)
+    assert second['report']['active_model_version']==input_version
     selection_fit=second['report']['model_selection']['fit_at']
     v.run(score_only=True,now=NOW+dt.timedelta(days=2))
     assert saved['derived_city_prediction_validation'][key]['as_of'].startswith('2026-10-19')
