@@ -2356,6 +2356,22 @@
       "rows_archived": 44777,
       "table": "derived_model_forecast"
     },
+    "model_skill": {
+      "assets": [
+        {
+          "archived_at": "2026-10-23T16:25:38+00:00",
+          "archived_through": "2026-10-16T16:25:29.885078+00:00",
+          "asset": "model_skill-2026-09-07-to-2026-10-16-a1f6b09a9ac94f6eb22f9ecc5cca11fe3d3ef07c9415278465450f73a3b82c10.csv.gz",
+          "from": "2026-09-07",
+          "gzip_bytes": 388791,
+          "rows": 25051,
+          "to": "2026-10-16"
+        }
+      ],
+      "release_tag": "model-skill-archive",
+      "rows_archived": 25051,
+      "table": "derived_forecast_skill_model"
+    },
     "observations": {
       "assets": [
         {
@@ -3839,5 +3855,5 @@
     }
   },
   "rebuilt_from": "release assets, row counts parsed from the files themselves",
-  "updated_at": "2026-10-23T02:43:55+00:00"
+  "updated_at": "2026-10-23T16:25:38+00:00"
 }
