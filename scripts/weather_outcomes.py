@@ -22,7 +22,7 @@ import uuid
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from collections import Counter
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlencode
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -31,9 +31,10 @@ from typing import Any
 import requests
 
 from common import log_run, rest_all, upsert
+import metar_contract
 
 
-PARSER_VERSION = "weather-outcomes-v3"
+PARSER_VERSION = "weather-outcomes-v4"
 
 # How far back "recent" reaches. City-days inside this window are offered a
 # slot BEFORE the backlog, so yesterday is always attempted no matter how big
@@ -86,6 +87,24 @@ def parse_rule_spec(rules_text: str | None, market_unit: str | None = None) -> R
     lower = re.sub(r"\s+", " ", rules.lower().replace("\\n", " "))
     if not rules:
         raise OutcomeError("unsupported_source", "Market has no saved resolution rules")
+
+    awc = metar_contract.source_url(rules)
+    if awc:
+        # These rules mention Celsius in their parsing instructions even for
+        # Fahrenheit markets. Read the explicit RANGE unit, not the first unit.
+        range_unit = re.search(r"each market in this event states its range in whole degrees (celsius|fahrenheit)", lower)
+        required = ("a report whose line begins with speci", "exactly eight digits",
+                    "first metar observation", "station's local time")
+        if not range_unit or not all(part in lower for part in required):
+            raise OutcomeError("unsupported_source", "AWC rules do not match the supported routine-temperature contract")
+        try:
+            station, _ = metar_contract.source_parameters(awc)
+        except ValueError as exc:
+            raise OutcomeError("parse_error", str(exc)) from exc
+        return RuleSpec("aviation_weather_metar", "Aviation Weather Center routine METAR",
+                        station, awc, "F" if range_unit[1] == "fahrenheit" else "C", True,
+                        wu_fallback="aviation weather center has published no routine observation reporting a temperature" in lower
+                        and "weather underground daily observations table will be used as the resolution source" in lower)
 
     if "degrees celsius" in lower or "deg. c" in lower:
         unit = "C"
@@ -509,6 +528,76 @@ def wu_fallback_cutoff(for_date: dt.date) -> dt.datetime:
                                ZoneInfo("America/New_York"))
 
 
+def collect_awc(session, spec, for_date, timezone, now):
+    """Read the named raw source AFTER its next-local-day publication check.
+
+    A successful empty source is different from a network/parser failure.
+    Missing measurements never become a fabricated lowest-bracket temperature;
+    the independent venue verifier can record that contract payout instead.
+    """
+    try:
+        station, anchor = metar_contract.source_parameters(spec.source_url)
+        zone = ZoneInfo(timezone)
+        local_end = dt.datetime.combine(for_date + dt.timedelta(days=1), dt.time(), zone)
+        if station != spec.station_id or anchor != local_end.astimezone(dt.timezone.utc):
+            raise ValueError("AWC source station/date does not match the target local day")
+        if now < local_end:
+            raise OutcomeError("not_final", "The station's local day has not ended")
+        cutoff = wu_fallback_cutoff(for_date)
+        check_at = min(now, cutoff).astimezone(dt.timezone.utc)
+        hours = max(1, math.ceil((check_at - anchor).total_seconds() / 3600) + 1)
+        check_url = "https://aviationweather.gov/api/data/metar?" + urlencode({
+            "ids": station, "format": "raw", "date": check_at.isoformat().replace("+00:00", "Z"),
+            "hours": hours})
+        # Check publication first, then read the contract's target-date surface.
+        check = _get(session, check_url)
+        following_raw = check.content
+        next_rows = metar_contract.raw_reports(following_raw, station, check_at)
+        following = [r["when"] for r in next_rows
+                     if r["routine"] and r["when"].astimezone(zone).date() == for_date + dt.timedelta(days=1)]
+        if not following and now < cutoff:
+            raise OutcomeError("not_final", "AWC has not published a routine observation for the following local date")
+        response = _get(session, spec.source_url)
+        rows = metar_contract.raw_reports(response.content, station, anchor)
+        if len(rows) >= 400:
+            raise ValueError("AWC response reached its documented result limit")
+        selected = [r for r in rows if r["routine"] and r["temp_c"] is not None
+                    and r["when"].astimezone(zone).date() == for_date]
+        if not selected:
+            if now < cutoff:
+                raise OutcomeError("not_final", "AWC has no qualifying temperature; awaiting the contract fallback deadline")
+            if not spec.wu_fallback:
+                raise OutcomeError("source_unavailable", "AWC published no qualifying temperature and no supported fallback is named")
+            wu_url = f"https://www.wunderground.com/history/daily/{station}/date/{for_date.isoformat()}"
+            wu = _get(session, wu_url, headers={"Cookie": "wu_units=" + ("m" if spec.unit == "C" else "e")})
+            outcome = parse_wu_daily(wu.content, spec, for_date, timezone, now)
+            return Outcome(outcome.observed_max_c, outcome.observed_at, outcome.payload_sha256,
+                           outcome.raw_payload, {**outcome.detail,
+                           "fallback_reason": "awc_published_no_qualifying_temperature_by_deadline",
+                           "primary_source_response_sha256": _sha(response.content),
+                           "primary_publication_check_sha256": _sha(following_raw)})
+        maximum = max(r["temp_c"] for r in selected)
+        max_time = min(r["when"] for r in selected if r["temp_c"] == maximum)
+        display = metar_contract.rounded_unit(maximum, spec.unit)
+        max_c = Decimal(display) if spec.unit == "C" else (Decimal(display) - 32) * 5 / 9
+        canonical = {"schema": "awc-routine-metar-v1", "station_id": station,
+                     "for_date": for_date.isoformat(), "timezone": timezone,
+                     "source_url": spec.source_url, "target_response": response.content.decode("utf-8-sig"),
+                     "publication_check_url": check_url, "publication_check_response": following_raw.decode("utf-8-sig"),
+                     "first_following_routine": min(following).isoformat() if following else None,
+                     "read_at": now.isoformat(), "deadline": cutoff.isoformat()}
+        packed = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()
+        return Outcome(max_c.quantize(Decimal("0.000001")), max_time.isoformat(), _sha(packed),
+                       _packed_raw(packed, "application/json; profile=awc-routine-metar-v1"),
+                       {"source_authority": spec.source_authority, "source_url": spec.source_url,
+                        "source_timezone": timezone, "qualifying_max_c": str(maximum),
+                        "eligible_readings": len(selected), "display_max": display, "display_unit": spec.unit,
+                        "first_following_routine": canonical["first_following_routine"],
+                        "finality": "following_routine" if following else "contract_deadline"})
+    except (ValueError, UnicodeDecodeError, ZoneInfoNotFoundError) as exc:
+        raise OutcomeError("parse_error", str(exc)) from exc
+
+
 class _WUDailyPage(HTMLParser):
     """Read only the airport daily table and its timestamped chart twin.
 
@@ -665,6 +754,8 @@ def parse_wu_daily(raw: bytes, spec: RuleSpec, for_date: dt.date,
 
 
 def collect_with_fallback(session, spec, for_date, timezone, now):
+    if spec.adapter == "aviation_weather_metar":
+        return collect_awc(session, spec, for_date, timezone, now)
     try:
         return collect_one(session, spec, for_date)
     except OutcomeError as exc:
