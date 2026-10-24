@@ -54,3 +54,38 @@ def test_late_labels_model_overlap_and_late_freezes_never_train():
     assert not c.eligible_rows([bad],dt.date(2026,10,17),'wxrd3:v3:x')
     states=c.fit([],['jeddah','madrid'],'wxrd3:v3:x','2026-10-17')
     assert len(states)==6 and all(s['params']==c.IDENTITY and s['decision']=='held' for s in states)
+
+
+def station_rows():
+    rows=data()
+    for r in rows:
+        r['model_version']='wxrd3:v3:x:awc-routine-v1:K'+str(r['city_key']).zfill(3)
+    return rows
+
+
+def test_station_fits_share_only_the_compatible_training_pool_and_can_move():
+    rows=station_rows();version=rows[0]['model_version']
+    state=c.fit(rows,['0'],version,'2026-10-17')[0]
+    assert state['decision']=='applied'
+    assert state['train_dates']==20 and state['validation_dates']==13
+    assert state['train_rows']==20 and state['validation_rows']==13
+    assert state['pool_rows']==200 and state['pool_dates']==20
+    assert state['pool_model_version']=='wxrd3:v3:x:awc-routine-v1'
+    assert state['model_version']==version and state['validation']['passed']
+    again=c.fit(rows,['0'],version,'2026-10-17',[state])[0]
+    assert again['params']==state['params'] and again['decision']=='revalidated'
+
+
+@pytest.mark.parametrize('change',['weights','source','local_station','late_pool_labels'])
+def test_incompatible_pool_rows_or_another_local_station_cannot_approve_a_fit(change):
+    rows=station_rows();version=rows[0]['model_version']
+    for r in rows:
+        if r['city_key']!='0':
+            if change=='weights':r['model_version']=r['model_version'].replace('v3:x','v3:y')
+            if change=='source':r['model_version']=r['model_version'].replace('awc-routine-v1','awc-routine-v2')
+            if change=='late_pool_labels':r['label_received_at']='2026-10-18T00:00:00Z'
+        elif change=='local_station':r['model_version']=r['model_version'].replace('K000','KNEW')
+    state=c.fit(rows,['0'],version,'2026-10-17')[0]
+    assert state['decision']=='held' and state['params']==c.IDENTITY
+    if change=='local_station':assert state['train_dates']==0 and state['validation_dates']==0
+    else:assert state['pool_rows']==20

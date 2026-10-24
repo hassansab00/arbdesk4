@@ -130,8 +130,11 @@ def test_the_real_fit_and_arrival_inference_pipeline_runs_without_promoting_ties
     training = pd.DataFrame([row("2026-10-10", "c" + str(i)) for i in range(40)])[features.COLUMNS]
     table = tmp_path / "wxpredict_table.csv.gz"; training.to_csv(table, index=False, compression="gzip")
     monkeypatch.setattr(build_table, "build", lambda **k: {"sha256": "synthetic-table", "sources": []})
-    eval_rows = [row(r["date"], r["city"], r["checkpoint"]) for r in scores()]
-    monkeypatch.setattr(arrival_dataset, "build", lambda *a: (eval_rows, {"first_calls": len(eval_rows)}))
+    eval_rows = [row(r["date"], r["city"], r["checkpoint"]) for r in scores() if r['checkpoint'] in cycle.REMAINING_CHECKPOINTS]
+    def build_evaluation(*args,**kwargs):
+        assert kwargs=={'checkpoints':cycle.REMAINING_CHECKPOINTS}
+        return eval_rows, {'first_calls':len(eval_rows)}
+    monkeypatch.setattr(arrival_dataset, "build", build_evaluation)
     monkeypatch.setattr(cycle, "MIN_TRAIN_ROWS", 20)
     monkeypatch.setattr(cycle, "ROUNDS", 2)
     real_fit = remaining.fit
@@ -143,7 +146,7 @@ def test_the_real_fit_and_arrival_inference_pipeline_runs_without_promoting_ties
     p = cycle.plan(dt.date(2026, 10, 29), {"fit_last": "2026-10-11"})
     result, meta, weight = cycle.fit_and_evaluate(p, "unused", {"fit_last": "2026-10-11", "model_sha256": "baseline"}, str(tmp_path))
     assert result["decision"] == "reject" and "no positive date-clustered log-loss gain" in result["reasons"]
-    assert result["maximum_bucket_change"] == 0 and result["all"]["n"] == 1400
+    assert result["maximum_bucket_change"] == 0 and result["all"]["n"] == len(eval_rows)
     assert meta["fit_last"] < p["evaluation_first"]
     assert model_artifacts.validate_blob(pathlib.Path(weight).read_bytes(), meta["model_sha256"])
 
@@ -154,7 +157,10 @@ def test_failed_artifact_publication_cannot_change_the_registry(tmp_path, monkey
     monkeypatch.setattr(cycle, "incumbent", lambda: ("unused", {"fit_last": "2026-10-11"}))
     ready = cycle.plan(dt.date(2026, 10, 29), {"fit_last": "2026-10-11"})
     monkeypatch.setattr(cycle, "plan", lambda *a: ready)
-    monkeypatch.setattr(arrival_dataset, "preflight", lambda *a: {"ready": True})
+    def preflight(*args,**kwargs):
+        assert kwargs=={'checkpoints':cycle.REMAINING_CHECKPOINTS}
+        return {'ready':True}
+    monkeypatch.setattr(arrival_dataset, "preflight", preflight)
     monkeypatch.setattr(cycle, "fit_and_evaluate", lambda *a: ({**ready, "decision": "accept shadow"},
         {"version": "synthetic", "model_sha256": "a"*64}, "unused"))
     def refused(*a):
@@ -165,3 +171,28 @@ def test_failed_artifact_publication_cannot_change_the_registry(tmp_path, monkey
         cycle.main([])
     assert registry.registry(tmp_path) == before and registry.selected(tmp_path) is None
     assert not (tmp_path / "data/eval/wxpredict/cycles").exists()
+
+
+def test_remaining_candidate_scope_can_pass_without_unsupported_morning_rows():
+    rows=[r for r in scores() if r['checkpoint'] in cycle.REMAINING_CHECKPOINTS]
+    result=cycle.assess(rows,len(rows),'2026-10-14','2026-10-27',
+        checkpoints=cycle.REMAINING_CHECKPOINTS,improvement_checkpoints=cycle.PREPEAK_CHECKPOINTS)
+    assert result['decision']=='accept shadow' and not result['sparse_checkpoint_dates']
+    assert 'morning' not in result['checkpoints']
+    assert result['objective']['n'] < result['all']['n']
+    assert cycle.plan(dt.date(2026,10,29),{'fit_last':'2026-10-11'})['policy']['evaluation_checkpoints']==list(cycle.REMAINING_CHECKPOINTS)
+    thin=[r for r in rows if not(r['checkpoint']=='noon' and r['date']=='2026-10-14')]
+    assert 'insufficient dates/cities per checkpoint' in cycle.assess(thin,len(rows),'2026-10-14','2026-10-27',
+        checkpoints=cycle.REMAINING_CHECKPOINTS,improvement_checkpoints=cycle.PREPEAK_CHECKPOINTS)['reasons']
+
+
+def test_postpeak_gain_alone_cannot_pass_the_primary_forecast_objective():
+    rows=[dict(r) for r in scores() if r['checkpoint'] in cycle.REMAINING_CHECKPOINTS]
+    for r in rows:
+        if r['checkpoint']!='postpeak_1h': r.update(candidate_nll=r['incumbent_nll'],candidate_hit=r['incumbent_hit'])
+    result=cycle.assess(rows,len(rows),'2026-10-14','2026-10-27',
+        checkpoints=cycle.REMAINING_CHECKPOINTS,improvement_checkpoints=cycle.PREPEAK_CHECKPOINTS)
+    assert result['decision']=='reject' and 'no positive date-clustered log-loss gain' in result['reasons']
+    assert result['objective']['candidate_nll']==result['objective']['incumbent_nll']
+    with pytest.raises(ValueError,match='scope'):
+        cycle.assess(rows,len(rows),'2026-10-14','2026-10-27',checkpoints=())

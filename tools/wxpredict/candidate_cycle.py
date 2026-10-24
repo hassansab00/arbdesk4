@@ -26,6 +26,8 @@ MIN_COVERAGE = 0.80
 MAX_BUCKET_CHANGE = 0.10
 SEED, ROUNDS = 20261011, 250
 CHECKPOINTS = ("morning", "noon", "prepeak_2h", "prepeak_1h", "postpeak_1h")
+REMAINING_CHECKPOINTS = ("noon", "prepeak_2h", "prepeak_1h", "postpeak_1h")
+PREPEAK_CHECKPOINTS = ("noon", "prepeak_2h", "prepeak_1h")
 JOB = "P7.9_candidate_cycle"
 
 
@@ -39,19 +41,25 @@ def plan(today, incumbent, paused=False):
     return {"night": today.isoformat(), "fit_last": fit_last.isoformat(), "evaluation_first": first.isoformat(),
             "evaluation_last": last.isoformat(), "incumbent_fit_last": incumbent["fit_last"],
             "decision": "wait" if why else "ready", "reason": why, "changes_serving": False,
-            "policy": {"holdout_dates": HOLDOUT_DATES, "minimum_cities_per_date": MIN_CITIES_PER_DATE,
+            "policy": {"evaluation_checkpoints":list(REMAINING_CHECKPOINTS),
+                       "improvement_checkpoints":list(PREPEAK_CHECKPOINTS),
+                       "holdout_dates": HOLDOUT_DATES, "minimum_cities_per_date": MIN_CITIES_PER_DATE,
                        "minimum_training_rows": MIN_TRAIN_ROWS, "minimum_coverage": MIN_COVERAGE,
                        "maximum_validation_bucket_change": MAX_BUCKET_CHANGE, "seed": SEED, "rounds": ROUNDS}}
 
 
-def assess(rows, expected, first, last):
+def assess(rows, expected, first, last, checkpoints=CHECKPOINTS, improvement_checkpoints=None):
+    objective = tuple(checkpoints) if improvement_checkpoints is None else tuple(improvement_checkpoints)
+    if (not checkpoints or len(set(checkpoints)) != len(checkpoints) or not set(checkpoints) <= set(CHECKPOINTS)
+            or not objective or len(set(objective)) != len(objective) or not set(objective) <= set(checkpoints)):
+        raise ValueError('invalid evaluation checkpoint scope')
     dates = [(dt.date.fromisoformat(first) + dt.timedelta(days=i)).isoformat() for i in range(HOLDOUT_DATES)]
     if dates[-1] != last:
         raise ValueError("evaluation is not the fixed fourteen-date window")
     seen = set()
     for r in rows:
         key = r["city"], r["date"], r["checkpoint"]
-        if key in seen or r["date"] not in dates or r["checkpoint"] not in CHECKPOINTS:
+        if key in seen or r["date"] not in dates or r["checkpoint"] not in checkpoints:
             raise ValueError("duplicate or out-of-window evaluation row")
         seen.add(key)
         if any(not math.isfinite(r[k]) or r[k] < 0 for k in ("candidate_nll", "incumbent_nll", "market_nll", "jump")):
@@ -60,12 +68,13 @@ def assess(rows, expected, first, last):
         n = len(rs)
         return {"n": n, **{k + "_hits": sum(r[k + "_hit"] for r in rs) for k in ("candidate", "incumbent", "market")},
                 **{k + "_nll": sum(r[k + "_nll"] for r in rs) / n if n else None for k in ("candidate", "incumbent", "market")}}
-    groups = {cp: aggregate([r for r in rows if r["checkpoint"] == cp]) for cp in CHECKPOINTS}
-    sparse = [cp + ":" + d for cp in CHECKPOINTS for d in dates
+    groups = {cp: aggregate([r for r in rows if r["checkpoint"] == cp]) for cp in checkpoints}
+    sparse = [cp + ":" + d for cp in checkpoints for d in dates
               if len({r["city"] for r in rows if r["checkpoint"] == cp and r["date"] == d}) < MIN_CITIES_PER_DATE]
     regressed = [cp for cp, g in groups.items() if g["n"] and
                  (g["candidate_hits"] < g["incumbent_hits"] or g["candidate_nll"] > g["incumbent_nll"])]
-    by_date = {d: [r for r in rows if r["date"] == d] for d in dates}
+    objective_rows = [r for r in rows if r['checkpoint'] in objective]
+    by_date = {d: [r for r in objective_rows if r["date"] == d] for d in dates}
     interval = None
     if rows and all(by_date.values()):
         sums = {d: (sum(r["incumbent_nll"] - r["candidate_nll"] for r in rs), len(rs)) for d, rs in by_date.items()}
@@ -85,6 +94,7 @@ def assess(rows, expected, first, last):
     if jump > MAX_BUCKET_CHANGE: reasons.append("prediction change exceeds its bound")
     if interval is None or interval[0] <= 0: reasons.append("no positive date-clustered log-loss gain")
     return {"decision": "reject" if reasons else "accept shadow", "reasons": reasons, "all": aggregate(rows),
+            "objective":aggregate(objective_rows),"improvement_checkpoints":list(objective),
             "checkpoints": groups, "regressed_checkpoints": regressed, "sparse_checkpoint_dates": sparse,
             "coverage": coverage, "expected_first_calls": expected, "maximum_bucket_change": jump,
             "nll_gain_ci90_by_date": interval}
@@ -115,7 +125,8 @@ def fit_and_evaluate(p, model_path, meta, work):
     training_rows = len(train)
     del train, x
     through = dt.datetime.fromisoformat(p["night"]).replace(tzinfo=common.UTC).timestamp()
-    rows, coverage = arrival_dataset.build(p["evaluation_first"], p["evaluation_last"], table, through)
+    rows, coverage = arrival_dataset.build(p["evaluation_first"], p["evaluation_last"], table, through,
+                                         checkpoints=REMAINING_CHECKPOINTS)
     if not rows:
         return {**p, "decision": "reject", "reasons": ["no complete recorded first-call evaluation rows"], "coverage": coverage}, None, None
     # The live predictor uses this exact write/read conversion before calling
@@ -138,7 +149,8 @@ def fit_and_evaluate(p, model_path, meta, work):
                        "candidate_hit": bool(candidate[i].argmax() == win[i]), "incumbent_hit": bool(old[i].argmax() == win[i]),
                        "market_hit": bool(q[i].argmax() == win[i]), "candidate_nll": float(cn[i]),
                        "incumbent_nll": float(bn[i]), "market_nll": float(mn[i]), "jump": float(np.max(np.abs(candidate[i] - old[i])))})
-    result = {**p, **assess(scores, coverage["first_calls"], p["evaluation_first"], p["evaluation_last"]),
+    result = {**p, **assess(scores, coverage["first_calls"], p["evaluation_first"], p["evaluation_last"],
+                         checkpoints=REMAINING_CHECKPOINTS,improvement_checkpoints=PREPEAK_CHECKPOINTS),
               "input_coverage": coverage, "training_rows": training_rows,
               "table_content_sha256": built["sha256"], "table_sources": built["sources"],
               "incumbent_model_sha256": meta["model_sha256"], "recipe": "remaining-v2; fixed parameters; one seed; recorded first-call validation"}
@@ -182,7 +194,8 @@ def main(argv=None):
     if ready:
         from wxpredict import arrival_dataset
         through = dt.datetime.fromisoformat(p["night"]).replace(tzinfo=common.UTC).timestamp()
-        availability = arrival_dataset.preflight(p["evaluation_first"], p["evaluation_last"], through, MIN_CITIES_PER_DATE)
+        availability = arrival_dataset.preflight(p["evaluation_first"], p["evaluation_last"], through, MIN_CITIES_PER_DATE,
+                                                checkpoints=REMAINING_CHECKPOINTS)
         p["recorded_input_availability"] = availability
         if not availability["ready"]:
             p.update(decision="wait", reason="insufficient on-time recorded first-call inputs")

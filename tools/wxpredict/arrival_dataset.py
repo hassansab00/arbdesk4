@@ -43,21 +43,21 @@ def mirrored_rows(table, first, through, root=None):
     return rows
 
 
-def first_calls(rows, first, last):
+def first_calls(rows, first, last, checkpoints=CHECKPOINTS):
     selected = {}
     seen_ids = set()
     for r in sorted(rows, key=lambda r: (lr.unix(r["decided_at"]), r["checkpoint_id"])):
         if r["checkpoint_id"] in seen_ids:
             continue
         seen_ids.add(r["checkpoint_id"])
-        if first <= r["target_date"] <= last and r["checkpoint"] in CHECKPOINTS:
+        if first <= r["target_date"] <= last and r["checkpoint"] in checkpoints:
             selected.setdefault((r["city_key"], r["target_date"], r["checkpoint"]), r)
     return list(selected.values())
 
 
-def recorded(first, last, through):
+def recorded(first, last, through, checkpoints=CHECKPOINTS):
     start = capture_history.unix(first + "T00:00:00Z") - 2 * 86400
-    calls = first_calls(mirrored_rows("prediction_checkpoints", start, through), first, last)
+    calls = first_calls(mirrored_rows("prediction_checkpoints", start, through), first, last, checkpoints)
     captured = capture_history.read(start, through, kinds=(inputs.KIND,))
     vectors = {}
     for kind, key, at, payload in sorted(captured, key=lambda r: capture_history.unix(r[2])):
@@ -67,9 +67,9 @@ def recorded(first, last, through):
     return calls, vectors
 
 
-def preflight(first, last, through, minimum_cities=20):
+def preflight(first, last, through, minimum_cities=20, checkpoints=CHECKPOINTS):
     """No ML dependencies or historical table build until real vectors exist."""
-    calls, vectors = recorded(first, last, through)
+    calls, vectors = recorded(first, last, through, checkpoints)
     counts = collections.defaultdict(set)
     for call in calls:
         payload = vectors.get(str(call["checkpoint_id"]))
@@ -77,9 +77,10 @@ def preflight(first, last, through, minimum_cities=20):
             counts[(call["target_date"], call["checkpoint"])].add(call["city_key"])
     dates = [(dt.date.fromisoformat(first) + dt.timedelta(days=i)).isoformat()
              for i in range((dt.date.fromisoformat(last) - dt.date.fromisoformat(first)).days + 1)]
-    sparse = [day + ":" + cp for day in dates for cp in CHECKPOINTS if len(counts[(day, cp)]) < minimum_cities]
+    sparse = [day + ":" + cp for day in dates for cp in checkpoints if len(counts[(day, cp)]) < minimum_cities]
     return {"ready": not sparse, "first_calls": len(calls), "recorded_first_calls": sum(map(len, counts.values())),
-            "sparse_checkpoint_dates": sparse, "feature_policy": inputs.POLICY}
+            "sparse_checkpoint_dates": sparse, "feature_policy": inputs.POLICY,
+            "checkpoints":list(checkpoints)}
 
 
 def attach(call, payload, event, label, include_current=False):
@@ -122,7 +123,7 @@ def attach(call, payload, event, label, include_current=False):
     return out
 
 
-def build(first, last, table, through, include_current=False):
+def build(first, last, table, through, include_current=False, checkpoints=CHECKPOINTS):
     from wxpredict import build_table as bt, parity
     labels = {}
     with gzip.open(table, "rt") as fh:
@@ -142,7 +143,7 @@ def build(first, last, table, through, include_current=False):
         if event["bands"] != e["bands"] or event["station"] != e["station"] or event["unit"] != e["unit"]:
             raise ValueError("live and labeled venue ladders differ")
         matched.append({**event, "band_ids": e["band_ids"]})
-    calls, vectors = recorded(first, last, through)
+    calls, vectors = recorded(first, last, through, checkpoints)
     rows, excluded = [], collections.Counter()
     for call in calls:
         payload = vectors.get(str(call["checkpoint_id"]))
