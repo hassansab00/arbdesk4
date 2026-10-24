@@ -1,0 +1,13 @@
+{
+ "changes_serving": false,
+ "history": [
+  {
+   "decision": "wait",
+   "night": "2026-10-24",
+   "report": "data/eval/wxpredict/current_forecast/2026-10-24.json",
+   "report_sha256": "7c2603a819697507f0e455201e5b5d0a36efbfc205bd6582afaa12263aef07e6"
+  }
+ ],
+ "paused": false,
+ "schema": 1
+}
