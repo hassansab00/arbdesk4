@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-10-24T16:04:12.655357+00:00",
+  "as_of": "2026-10-24T17:04:37.606865+00:00",
   "model_selection": [
     {
       "anchor": "baseline",
@@ -8,7 +8,7 @@
       "checkpoint": "day_ahead",
       "city_key": "ankara",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -38,7 +38,7 @@
       "checkpoint": "d1_eve",
       "city_key": "ankara",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -68,7 +68,7 @@
       "checkpoint": "morning",
       "city_key": "ankara",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -98,7 +98,7 @@
       "checkpoint": "noon",
       "city_key": "ankara",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -128,7 +128,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "ankara",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -158,7 +158,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "ankara",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -188,7 +188,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "ankara",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -218,7 +218,7 @@
       "checkpoint": "day_ahead",
       "city_key": "cape_town",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -248,7 +248,7 @@
       "checkpoint": "d1_eve",
       "city_key": "cape_town",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -278,7 +278,7 @@
       "checkpoint": "morning",
       "city_key": "cape_town",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -308,7 +308,7 @@
       "checkpoint": "noon",
       "city_key": "cape_town",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -338,7 +338,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "cape_town",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -368,7 +368,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "cape_town",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -398,7 +398,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "cape_town",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -428,7 +428,7 @@
       "checkpoint": "day_ahead",
       "city_key": "munich",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -458,7 +458,7 @@
       "checkpoint": "d1_eve",
       "city_key": "munich",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -488,7 +488,7 @@
       "checkpoint": "morning",
       "city_key": "munich",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -518,7 +518,7 @@
       "checkpoint": "noon",
       "city_key": "munich",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -548,7 +548,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "munich",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -578,7 +578,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "munich",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -608,7 +608,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "munich",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -638,7 +638,7 @@
       "checkpoint": "day_ahead",
       "city_key": "singapore",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -668,7 +668,7 @@
       "checkpoint": "d1_eve",
       "city_key": "singapore",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -698,7 +698,7 @@
       "checkpoint": "morning",
       "city_key": "singapore",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -728,7 +728,7 @@
       "checkpoint": "noon",
       "city_key": "singapore",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -758,7 +758,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "singapore",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -788,7 +788,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "singapore",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -818,7 +818,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "singapore",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -848,7 +848,7 @@
       "checkpoint": "day_ahead",
       "city_key": "tokyo",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -878,7 +878,7 @@
       "checkpoint": "d1_eve",
       "city_key": "tokyo",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -908,7 +908,7 @@
       "checkpoint": "morning",
       "city_key": "tokyo",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -938,7 +938,7 @@
       "checkpoint": "noon",
       "city_key": "tokyo",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -968,7 +968,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "tokyo",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -998,7 +998,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "tokyo",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1028,7 +1028,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "tokyo",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1058,7 +1058,7 @@
       "checkpoint": "day_ahead",
       "city_key": "denver",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1088,7 +1088,7 @@
       "checkpoint": "d1_eve",
       "city_key": "denver",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1118,7 +1118,7 @@
       "checkpoint": "morning",
       "city_key": "denver",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1148,7 +1148,7 @@
       "checkpoint": "noon",
       "city_key": "denver",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1178,7 +1178,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "denver",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1208,7 +1208,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "denver",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1238,7 +1238,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "denver",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1268,7 +1268,7 @@
       "checkpoint": "day_ahead",
       "city_key": "wuhan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1298,7 +1298,7 @@
       "checkpoint": "d1_eve",
       "city_key": "wuhan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1328,7 +1328,7 @@
       "checkpoint": "morning",
       "city_key": "wuhan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1358,7 +1358,7 @@
       "checkpoint": "noon",
       "city_key": "wuhan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1388,7 +1388,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "wuhan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1418,7 +1418,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "wuhan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1448,7 +1448,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "wuhan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1478,7 +1478,7 @@
       "checkpoint": "day_ahead",
       "city_key": "helsinki",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1508,7 +1508,7 @@
       "checkpoint": "d1_eve",
       "city_key": "helsinki",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1538,7 +1538,7 @@
       "checkpoint": "morning",
       "city_key": "helsinki",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1568,7 +1568,7 @@
       "checkpoint": "noon",
       "city_key": "helsinki",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1598,7 +1598,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "helsinki",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1628,7 +1628,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "helsinki",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1658,7 +1658,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "helsinki",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1688,7 +1688,7 @@
       "checkpoint": "day_ahead",
       "city_key": "jeddah",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1718,7 +1718,7 @@
       "checkpoint": "d1_eve",
       "city_key": "jeddah",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1748,7 +1748,7 @@
       "checkpoint": "morning",
       "city_key": "jeddah",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1778,7 +1778,7 @@
       "checkpoint": "noon",
       "city_key": "jeddah",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1808,7 +1808,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "jeddah",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1838,7 +1838,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "jeddah",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1868,7 +1868,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "jeddah",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1898,7 +1898,7 @@
       "checkpoint": "day_ahead",
       "city_key": "austin",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1928,7 +1928,7 @@
       "checkpoint": "d1_eve",
       "city_key": "austin",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1958,7 +1958,7 @@
       "checkpoint": "morning",
       "city_key": "austin",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -1988,7 +1988,7 @@
       "checkpoint": "noon",
       "city_key": "austin",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2018,7 +2018,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "austin",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2048,7 +2048,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "austin",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2078,7 +2078,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "austin",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2108,7 +2108,7 @@
       "checkpoint": "day_ahead",
       "city_key": "kuala_lumpur",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2138,7 +2138,7 @@
       "checkpoint": "d1_eve",
       "city_key": "kuala_lumpur",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2168,7 +2168,7 @@
       "checkpoint": "morning",
       "city_key": "kuala_lumpur",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2198,7 +2198,7 @@
       "checkpoint": "noon",
       "city_key": "kuala_lumpur",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2228,7 +2228,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "kuala_lumpur",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2258,7 +2258,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "kuala_lumpur",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2288,7 +2288,217 @@
       "checkpoint": "postpeak_1h",
       "city_key": "kuala_lumpur",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "policy": "city-horizon-selector-v1",
+      "priors": {
+        "bootstrap_samples": 2000,
+        "bootstrap_seed": 20261018,
+        "confidence": 0.95,
+        "max_age_days": 3,
+        "max_nightly_switches": 1,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "selected": "wxrd3",
+      "train_dates": 0,
+      "train_through": null,
+      "validated_through": null,
+      "validation_dates": 4,
+      "validation_from": "2026-10-18",
+      "version": "city-horizon-selector-v1:prior"
+    },
+    {
+      "anchor": "baseline",
+      "as_of": "2026-10-24",
+      "baseline_policy": "corrected-weather-baseline-v1",
+      "checkpoint": "day_ahead",
+      "city_key": "chengdu",
+      "decision": "held",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "policy": "city-horizon-selector-v1",
+      "priors": {
+        "bootstrap_samples": 2000,
+        "bootstrap_seed": 20261018,
+        "confidence": 0.95,
+        "max_age_days": 3,
+        "max_nightly_switches": 1,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "raw v3 is not authorized for this horizon; baseline retained",
+      "selected": "baseline",
+      "train_dates": 0,
+      "train_through": null,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_from": null,
+      "version": "city-horizon-selector-v1:prior"
+    },
+    {
+      "anchor": "baseline",
+      "as_of": "2026-10-24",
+      "baseline_policy": "corrected-weather-baseline-v1",
+      "checkpoint": "d1_eve",
+      "city_key": "chengdu",
+      "decision": "held",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "policy": "city-horizon-selector-v1",
+      "priors": {
+        "bootstrap_samples": 2000,
+        "bootstrap_seed": 20261018,
+        "confidence": 0.95,
+        "max_age_days": 3,
+        "max_nightly_switches": 1,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "raw v3 is not authorized for this horizon; baseline retained",
+      "selected": "baseline",
+      "train_dates": 0,
+      "train_through": null,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_from": null,
+      "version": "city-horizon-selector-v1:prior"
+    },
+    {
+      "anchor": "baseline",
+      "as_of": "2026-10-24",
+      "baseline_policy": "corrected-weather-baseline-v1",
+      "checkpoint": "morning",
+      "city_key": "chengdu",
+      "decision": "held",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "policy": "city-horizon-selector-v1",
+      "priors": {
+        "bootstrap_samples": 2000,
+        "bootstrap_seed": 20261018,
+        "confidence": 0.95,
+        "max_age_days": 3,
+        "max_nightly_switches": 1,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "raw v3 is not authorized for this horizon; baseline retained",
+      "selected": "baseline",
+      "train_dates": 0,
+      "train_through": null,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_from": null,
+      "version": "city-horizon-selector-v1:prior"
+    },
+    {
+      "anchor": "wxrd3",
+      "as_of": "2026-10-24",
+      "baseline_policy": "corrected-weather-baseline-v1",
+      "checkpoint": "noon",
+      "city_key": "chengdu",
+      "decision": "held",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "policy": "city-horizon-selector-v1",
+      "priors": {
+        "bootstrap_samples": 2000,
+        "bootstrap_seed": 20261018,
+        "confidence": 0.95,
+        "max_age_days": 3,
+        "max_nightly_switches": 1,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "selected": "wxrd3",
+      "train_dates": 0,
+      "train_through": null,
+      "validated_through": null,
+      "validation_dates": 5,
+      "validation_from": "2026-10-18",
+      "version": "city-horizon-selector-v1:prior"
+    },
+    {
+      "anchor": "wxrd3",
+      "as_of": "2026-10-24",
+      "baseline_policy": "corrected-weather-baseline-v1",
+      "checkpoint": "prepeak_2h",
+      "city_key": "chengdu",
+      "decision": "held",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "policy": "city-horizon-selector-v1",
+      "priors": {
+        "bootstrap_samples": 2000,
+        "bootstrap_seed": 20261018,
+        "confidence": 0.95,
+        "max_age_days": 3,
+        "max_nightly_switches": 1,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "selected": "wxrd3",
+      "train_dates": 0,
+      "train_through": null,
+      "validated_through": null,
+      "validation_dates": 4,
+      "validation_from": "2026-10-18",
+      "version": "city-horizon-selector-v1:prior"
+    },
+    {
+      "anchor": "wxrd3",
+      "as_of": "2026-10-24",
+      "baseline_policy": "corrected-weather-baseline-v1",
+      "checkpoint": "prepeak_1h",
+      "city_key": "chengdu",
+      "decision": "held",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "policy": "city-horizon-selector-v1",
+      "priors": {
+        "bootstrap_samples": 2000,
+        "bootstrap_seed": 20261018,
+        "confidence": 0.95,
+        "max_age_days": 3,
+        "max_nightly_switches": 1,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "selected": "wxrd3",
+      "train_dates": 0,
+      "train_through": null,
+      "validated_through": null,
+      "validation_dates": 4,
+      "validation_from": "2026-10-18",
+      "version": "city-horizon-selector-v1:prior"
+    },
+    {
+      "anchor": "wxrd3",
+      "as_of": "2026-10-24",
+      "baseline_policy": "corrected-weather-baseline-v1",
+      "checkpoint": "postpeak_1h",
+      "city_key": "chengdu",
+      "decision": "held",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2318,7 +2528,7 @@
       "checkpoint": "day_ahead",
       "city_key": "los_angeles",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2348,7 +2558,7 @@
       "checkpoint": "d1_eve",
       "city_key": "los_angeles",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2378,7 +2588,7 @@
       "checkpoint": "morning",
       "city_key": "los_angeles",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2408,7 +2618,7 @@
       "checkpoint": "noon",
       "city_key": "los_angeles",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2438,7 +2648,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "los_angeles",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2468,7 +2678,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "los_angeles",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2498,7 +2708,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "los_angeles",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2526,219 +2736,9 @@
       "as_of": "2026-10-24",
       "baseline_policy": "corrected-weather-baseline-v1",
       "checkpoint": "day_ahead",
-      "city_key": "chengdu",
-      "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "policy": "city-horizon-selector-v1",
-      "priors": {
-        "bootstrap_samples": 2000,
-        "bootstrap_seed": 20261018,
-        "confidence": 0.95,
-        "max_age_days": 3,
-        "max_nightly_switches": 1,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "raw v3 is not authorized for this horizon; baseline retained",
-      "selected": "baseline",
-      "train_dates": 0,
-      "train_through": null,
-      "validated_through": null,
-      "validation_dates": 0,
-      "validation_from": null,
-      "version": "city-horizon-selector-v1:prior"
-    },
-    {
-      "anchor": "baseline",
-      "as_of": "2026-10-24",
-      "baseline_policy": "corrected-weather-baseline-v1",
-      "checkpoint": "d1_eve",
-      "city_key": "chengdu",
-      "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "policy": "city-horizon-selector-v1",
-      "priors": {
-        "bootstrap_samples": 2000,
-        "bootstrap_seed": 20261018,
-        "confidence": 0.95,
-        "max_age_days": 3,
-        "max_nightly_switches": 1,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "raw v3 is not authorized for this horizon; baseline retained",
-      "selected": "baseline",
-      "train_dates": 0,
-      "train_through": null,
-      "validated_through": null,
-      "validation_dates": 0,
-      "validation_from": null,
-      "version": "city-horizon-selector-v1:prior"
-    },
-    {
-      "anchor": "baseline",
-      "as_of": "2026-10-24",
-      "baseline_policy": "corrected-weather-baseline-v1",
-      "checkpoint": "morning",
-      "city_key": "chengdu",
-      "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "policy": "city-horizon-selector-v1",
-      "priors": {
-        "bootstrap_samples": 2000,
-        "bootstrap_seed": 20261018,
-        "confidence": 0.95,
-        "max_age_days": 3,
-        "max_nightly_switches": 1,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "raw v3 is not authorized for this horizon; baseline retained",
-      "selected": "baseline",
-      "train_dates": 0,
-      "train_through": null,
-      "validated_through": null,
-      "validation_dates": 0,
-      "validation_from": null,
-      "version": "city-horizon-selector-v1:prior"
-    },
-    {
-      "anchor": "wxrd3",
-      "as_of": "2026-10-24",
-      "baseline_policy": "corrected-weather-baseline-v1",
-      "checkpoint": "noon",
-      "city_key": "chengdu",
-      "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "policy": "city-horizon-selector-v1",
-      "priors": {
-        "bootstrap_samples": 2000,
-        "bootstrap_seed": 20261018,
-        "confidence": 0.95,
-        "max_age_days": 3,
-        "max_nightly_switches": 1,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "insufficient independent training/validation dates",
-      "selected": "wxrd3",
-      "train_dates": 0,
-      "train_through": null,
-      "validated_through": null,
-      "validation_dates": 5,
-      "validation_from": "2026-10-18",
-      "version": "city-horizon-selector-v1:prior"
-    },
-    {
-      "anchor": "wxrd3",
-      "as_of": "2026-10-24",
-      "baseline_policy": "corrected-weather-baseline-v1",
-      "checkpoint": "prepeak_2h",
-      "city_key": "chengdu",
-      "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "policy": "city-horizon-selector-v1",
-      "priors": {
-        "bootstrap_samples": 2000,
-        "bootstrap_seed": 20261018,
-        "confidence": 0.95,
-        "max_age_days": 3,
-        "max_nightly_switches": 1,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "insufficient independent training/validation dates",
-      "selected": "wxrd3",
-      "train_dates": 0,
-      "train_through": null,
-      "validated_through": null,
-      "validation_dates": 4,
-      "validation_from": "2026-10-18",
-      "version": "city-horizon-selector-v1:prior"
-    },
-    {
-      "anchor": "wxrd3",
-      "as_of": "2026-10-24",
-      "baseline_policy": "corrected-weather-baseline-v1",
-      "checkpoint": "prepeak_1h",
-      "city_key": "chengdu",
-      "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "policy": "city-horizon-selector-v1",
-      "priors": {
-        "bootstrap_samples": 2000,
-        "bootstrap_seed": 20261018,
-        "confidence": 0.95,
-        "max_age_days": 3,
-        "max_nightly_switches": 1,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "insufficient independent training/validation dates",
-      "selected": "wxrd3",
-      "train_dates": 0,
-      "train_through": null,
-      "validated_through": null,
-      "validation_dates": 4,
-      "validation_from": "2026-10-18",
-      "version": "city-horizon-selector-v1:prior"
-    },
-    {
-      "anchor": "wxrd3",
-      "as_of": "2026-10-24",
-      "baseline_policy": "corrected-weather-baseline-v1",
-      "checkpoint": "postpeak_1h",
-      "city_key": "chengdu",
-      "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "policy": "city-horizon-selector-v1",
-      "priors": {
-        "bootstrap_samples": 2000,
-        "bootstrap_seed": 20261018,
-        "confidence": 0.95,
-        "max_age_days": 3,
-        "max_nightly_switches": 1,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "insufficient independent training/validation dates",
-      "selected": "wxrd3",
-      "train_dates": 0,
-      "train_through": null,
-      "validated_through": null,
-      "validation_dates": 4,
-      "validation_from": "2026-10-18",
-      "version": "city-horizon-selector-v1:prior"
-    },
-    {
-      "anchor": "baseline",
-      "as_of": "2026-10-24",
-      "baseline_policy": "corrected-weather-baseline-v1",
-      "checkpoint": "day_ahead",
       "city_key": "warsaw",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2768,7 +2768,7 @@
       "checkpoint": "d1_eve",
       "city_key": "warsaw",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2798,7 +2798,7 @@
       "checkpoint": "morning",
       "city_key": "warsaw",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2828,7 +2828,7 @@
       "checkpoint": "noon",
       "city_key": "warsaw",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2858,7 +2858,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "warsaw",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2888,7 +2888,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "warsaw",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2918,7 +2918,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "warsaw",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2948,7 +2948,7 @@
       "checkpoint": "day_ahead",
       "city_key": "mexico_city",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -2978,7 +2978,7 @@
       "checkpoint": "d1_eve",
       "city_key": "mexico_city",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3008,7 +3008,7 @@
       "checkpoint": "morning",
       "city_key": "mexico_city",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3038,7 +3038,7 @@
       "checkpoint": "noon",
       "city_key": "mexico_city",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3068,7 +3068,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "mexico_city",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3098,7 +3098,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "mexico_city",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3128,7 +3128,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "mexico_city",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3158,7 +3158,7 @@
       "checkpoint": "day_ahead",
       "city_key": "tel_aviv",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3188,7 +3188,7 @@
       "checkpoint": "d1_eve",
       "city_key": "tel_aviv",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3218,7 +3218,7 @@
       "checkpoint": "morning",
       "city_key": "tel_aviv",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3248,7 +3248,7 @@
       "checkpoint": "noon",
       "city_key": "tel_aviv",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3278,7 +3278,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "tel_aviv",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3308,7 +3308,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "tel_aviv",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3338,7 +3338,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "tel_aviv",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3368,7 +3368,7 @@
       "checkpoint": "day_ahead",
       "city_key": "busan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3398,7 +3398,7 @@
       "checkpoint": "d1_eve",
       "city_key": "busan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3428,7 +3428,7 @@
       "checkpoint": "morning",
       "city_key": "busan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3458,7 +3458,7 @@
       "checkpoint": "noon",
       "city_key": "busan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3488,7 +3488,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "busan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3518,7 +3518,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "busan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3548,7 +3548,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "busan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3578,7 +3578,7 @@
       "checkpoint": "day_ahead",
       "city_key": "manila",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3608,7 +3608,7 @@
       "checkpoint": "d1_eve",
       "city_key": "manila",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3638,7 +3638,7 @@
       "checkpoint": "morning",
       "city_key": "manila",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3668,7 +3668,7 @@
       "checkpoint": "noon",
       "city_key": "manila",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3698,7 +3698,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "manila",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3728,7 +3728,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "manila",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3758,7 +3758,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "manila",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3788,7 +3788,7 @@
       "checkpoint": "day_ahead",
       "city_key": "dallas",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3818,7 +3818,7 @@
       "checkpoint": "d1_eve",
       "city_key": "dallas",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3848,7 +3848,7 @@
       "checkpoint": "morning",
       "city_key": "dallas",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3878,7 +3878,7 @@
       "checkpoint": "noon",
       "city_key": "dallas",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3908,7 +3908,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "dallas",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3938,7 +3938,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "dallas",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3968,7 +3968,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "dallas",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -3998,7 +3998,7 @@
       "checkpoint": "day_ahead",
       "city_key": "sao_paulo",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4028,7 +4028,7 @@
       "checkpoint": "d1_eve",
       "city_key": "sao_paulo",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4058,7 +4058,7 @@
       "checkpoint": "morning",
       "city_key": "sao_paulo",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4088,7 +4088,7 @@
       "checkpoint": "noon",
       "city_key": "sao_paulo",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4118,7 +4118,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "sao_paulo",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4148,7 +4148,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "sao_paulo",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4178,7 +4178,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "sao_paulo",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4208,7 +4208,7 @@
       "checkpoint": "day_ahead",
       "city_key": "milan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4238,7 +4238,7 @@
       "checkpoint": "d1_eve",
       "city_key": "milan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4268,7 +4268,7 @@
       "checkpoint": "morning",
       "city_key": "milan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4298,7 +4298,7 @@
       "checkpoint": "noon",
       "city_key": "milan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4328,7 +4328,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "milan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4358,7 +4358,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "milan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4388,7 +4388,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "milan",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4418,7 +4418,7 @@
       "checkpoint": "day_ahead",
       "city_key": "istanbul",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4448,7 +4448,7 @@
       "checkpoint": "d1_eve",
       "city_key": "istanbul",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4478,7 +4478,7 @@
       "checkpoint": "morning",
       "city_key": "istanbul",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4508,7 +4508,7 @@
       "checkpoint": "noon",
       "city_key": "istanbul",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4538,7 +4538,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "istanbul",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4568,7 +4568,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "istanbul",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4598,7 +4598,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "istanbul",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4628,7 +4628,7 @@
       "checkpoint": "day_ahead",
       "city_key": "amsterdam",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4658,7 +4658,7 @@
       "checkpoint": "d1_eve",
       "city_key": "amsterdam",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4688,7 +4688,7 @@
       "checkpoint": "morning",
       "city_key": "amsterdam",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4718,7 +4718,7 @@
       "checkpoint": "noon",
       "city_key": "amsterdam",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4748,7 +4748,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "amsterdam",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4778,7 +4778,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "amsterdam",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4808,7 +4808,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "amsterdam",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4838,7 +4838,7 @@
       "checkpoint": "day_ahead",
       "city_key": "moscow",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4868,7 +4868,7 @@
       "checkpoint": "d1_eve",
       "city_key": "moscow",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4898,7 +4898,7 @@
       "checkpoint": "morning",
       "city_key": "moscow",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4928,7 +4928,7 @@
       "checkpoint": "noon",
       "city_key": "moscow",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4958,7 +4958,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "moscow",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -4988,7 +4988,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "moscow",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5018,7 +5018,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "moscow",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5048,7 +5048,7 @@
       "checkpoint": "day_ahead",
       "city_key": "qingdao",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5078,7 +5078,7 @@
       "checkpoint": "d1_eve",
       "city_key": "qingdao",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5108,7 +5108,7 @@
       "checkpoint": "morning",
       "city_key": "qingdao",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5138,7 +5138,7 @@
       "checkpoint": "noon",
       "city_key": "qingdao",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5168,7 +5168,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "qingdao",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5198,7 +5198,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "qingdao",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5228,7 +5228,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "qingdao",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5258,7 +5258,7 @@
       "checkpoint": "day_ahead",
       "city_key": "seoul",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5288,7 +5288,7 @@
       "checkpoint": "d1_eve",
       "city_key": "seoul",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5318,7 +5318,7 @@
       "checkpoint": "morning",
       "city_key": "seoul",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5348,7 +5348,7 @@
       "checkpoint": "noon",
       "city_key": "seoul",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5378,7 +5378,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "seoul",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5408,7 +5408,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "seoul",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5438,7 +5438,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "seoul",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5468,7 +5468,7 @@
       "checkpoint": "day_ahead",
       "city_key": "wellington",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5498,7 +5498,7 @@
       "checkpoint": "d1_eve",
       "city_key": "wellington",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5528,7 +5528,7 @@
       "checkpoint": "morning",
       "city_key": "wellington",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5558,7 +5558,7 @@
       "checkpoint": "noon",
       "city_key": "wellington",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5588,7 +5588,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "wellington",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5618,7 +5618,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "wellington",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5648,7 +5648,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "wellington",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5678,7 +5678,7 @@
       "checkpoint": "day_ahead",
       "city_key": "lucknow",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5708,7 +5708,7 @@
       "checkpoint": "d1_eve",
       "city_key": "lucknow",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5738,7 +5738,7 @@
       "checkpoint": "morning",
       "city_key": "lucknow",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5768,7 +5768,7 @@
       "checkpoint": "noon",
       "city_key": "lucknow",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5798,7 +5798,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "lucknow",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5828,7 +5828,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "lucknow",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5858,7 +5858,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "lucknow",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5888,7 +5888,7 @@
       "checkpoint": "day_ahead",
       "city_key": "paris",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5918,7 +5918,7 @@
       "checkpoint": "d1_eve",
       "city_key": "paris",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5948,7 +5948,7 @@
       "checkpoint": "morning",
       "city_key": "paris",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -5978,7 +5978,7 @@
       "checkpoint": "noon",
       "city_key": "paris",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6008,7 +6008,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "paris",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6038,7 +6038,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "paris",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6068,7 +6068,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "paris",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6098,7 +6098,7 @@
       "checkpoint": "day_ahead",
       "city_key": "houston",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6128,7 +6128,7 @@
       "checkpoint": "d1_eve",
       "city_key": "houston",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6158,7 +6158,7 @@
       "checkpoint": "morning",
       "city_key": "houston",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6188,7 +6188,7 @@
       "checkpoint": "noon",
       "city_key": "houston",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6218,7 +6218,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "houston",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6248,7 +6248,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "houston",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6278,7 +6278,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "houston",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6308,7 +6308,7 @@
       "checkpoint": "day_ahead",
       "city_key": "shenzhen",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6338,7 +6338,7 @@
       "checkpoint": "d1_eve",
       "city_key": "shenzhen",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6368,7 +6368,7 @@
       "checkpoint": "morning",
       "city_key": "shenzhen",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6398,7 +6398,7 @@
       "checkpoint": "noon",
       "city_key": "shenzhen",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6428,7 +6428,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "shenzhen",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6458,7 +6458,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "shenzhen",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6488,7 +6488,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "shenzhen",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6518,7 +6518,7 @@
       "checkpoint": "day_ahead",
       "city_key": "chicago",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6548,7 +6548,7 @@
       "checkpoint": "d1_eve",
       "city_key": "chicago",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6578,7 +6578,7 @@
       "checkpoint": "morning",
       "city_key": "chicago",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6608,7 +6608,7 @@
       "checkpoint": "noon",
       "city_key": "chicago",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6638,7 +6638,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "chicago",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6668,7 +6668,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "chicago",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6698,217 +6698,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "chicago",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "policy": "city-horizon-selector-v1",
-      "priors": {
-        "bootstrap_samples": 2000,
-        "bootstrap_seed": 20261018,
-        "confidence": 0.95,
-        "max_age_days": 3,
-        "max_nightly_switches": 1,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "insufficient independent training/validation dates",
-      "selected": "wxrd3",
-      "train_dates": 0,
-      "train_through": null,
-      "validated_through": null,
-      "validation_dates": 6,
-      "validation_from": "2026-10-17",
-      "version": "city-horizon-selector-v1:prior"
-    },
-    {
-      "anchor": "baseline",
-      "as_of": "2026-10-24",
-      "baseline_policy": "corrected-weather-baseline-v1",
-      "checkpoint": "day_ahead",
-      "city_key": "san_francisco",
-      "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "policy": "city-horizon-selector-v1",
-      "priors": {
-        "bootstrap_samples": 2000,
-        "bootstrap_seed": 20261018,
-        "confidence": 0.95,
-        "max_age_days": 3,
-        "max_nightly_switches": 1,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "raw v3 is not authorized for this horizon; baseline retained",
-      "selected": "baseline",
-      "train_dates": 0,
-      "train_through": null,
-      "validated_through": null,
-      "validation_dates": 0,
-      "validation_from": null,
-      "version": "city-horizon-selector-v1:prior"
-    },
-    {
-      "anchor": "baseline",
-      "as_of": "2026-10-24",
-      "baseline_policy": "corrected-weather-baseline-v1",
-      "checkpoint": "d1_eve",
-      "city_key": "san_francisco",
-      "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "policy": "city-horizon-selector-v1",
-      "priors": {
-        "bootstrap_samples": 2000,
-        "bootstrap_seed": 20261018,
-        "confidence": 0.95,
-        "max_age_days": 3,
-        "max_nightly_switches": 1,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "raw v3 is not authorized for this horizon; baseline retained",
-      "selected": "baseline",
-      "train_dates": 0,
-      "train_through": null,
-      "validated_through": null,
-      "validation_dates": 0,
-      "validation_from": null,
-      "version": "city-horizon-selector-v1:prior"
-    },
-    {
-      "anchor": "baseline",
-      "as_of": "2026-10-24",
-      "baseline_policy": "corrected-weather-baseline-v1",
-      "checkpoint": "morning",
-      "city_key": "san_francisco",
-      "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "policy": "city-horizon-selector-v1",
-      "priors": {
-        "bootstrap_samples": 2000,
-        "bootstrap_seed": 20261018,
-        "confidence": 0.95,
-        "max_age_days": 3,
-        "max_nightly_switches": 1,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "raw v3 is not authorized for this horizon; baseline retained",
-      "selected": "baseline",
-      "train_dates": 0,
-      "train_through": null,
-      "validated_through": null,
-      "validation_dates": 0,
-      "validation_from": null,
-      "version": "city-horizon-selector-v1:prior"
-    },
-    {
-      "anchor": "wxrd3",
-      "as_of": "2026-10-24",
-      "baseline_policy": "corrected-weather-baseline-v1",
-      "checkpoint": "noon",
-      "city_key": "san_francisco",
-      "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "policy": "city-horizon-selector-v1",
-      "priors": {
-        "bootstrap_samples": 2000,
-        "bootstrap_seed": 20261018,
-        "confidence": 0.95,
-        "max_age_days": 3,
-        "max_nightly_switches": 1,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "insufficient independent training/validation dates",
-      "selected": "wxrd3",
-      "train_dates": 0,
-      "train_through": null,
-      "validated_through": null,
-      "validation_dates": 6,
-      "validation_from": "2026-10-17",
-      "version": "city-horizon-selector-v1:prior"
-    },
-    {
-      "anchor": "wxrd3",
-      "as_of": "2026-10-24",
-      "baseline_policy": "corrected-weather-baseline-v1",
-      "checkpoint": "prepeak_2h",
-      "city_key": "san_francisco",
-      "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "policy": "city-horizon-selector-v1",
-      "priors": {
-        "bootstrap_samples": 2000,
-        "bootstrap_seed": 20261018,
-        "confidence": 0.95,
-        "max_age_days": 3,
-        "max_nightly_switches": 1,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "insufficient independent training/validation dates",
-      "selected": "wxrd3",
-      "train_dates": 0,
-      "train_through": null,
-      "validated_through": null,
-      "validation_dates": 6,
-      "validation_from": "2026-10-17",
-      "version": "city-horizon-selector-v1:prior"
-    },
-    {
-      "anchor": "wxrd3",
-      "as_of": "2026-10-24",
-      "baseline_policy": "corrected-weather-baseline-v1",
-      "checkpoint": "prepeak_1h",
-      "city_key": "san_francisco",
-      "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "policy": "city-horizon-selector-v1",
-      "priors": {
-        "bootstrap_samples": 2000,
-        "bootstrap_seed": 20261018,
-        "confidence": 0.95,
-        "max_age_days": 3,
-        "max_nightly_switches": 1,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "insufficient independent training/validation dates",
-      "selected": "wxrd3",
-      "train_dates": 0,
-      "train_through": null,
-      "validated_through": null,
-      "validation_dates": 6,
-      "validation_from": "2026-10-17",
-      "version": "city-horizon-selector-v1:prior"
-    },
-    {
-      "anchor": "wxrd3",
-      "as_of": "2026-10-24",
-      "baseline_policy": "corrected-weather-baseline-v1",
-      "checkpoint": "postpeak_1h",
-      "city_key": "san_francisco",
-      "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6938,7 +6728,7 @@
       "checkpoint": "day_ahead",
       "city_key": "karachi",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6968,7 +6758,7 @@
       "checkpoint": "d1_eve",
       "city_key": "karachi",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -6998,7 +6788,7 @@
       "checkpoint": "morning",
       "city_key": "karachi",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7028,7 +6818,7 @@
       "checkpoint": "noon",
       "city_key": "karachi",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7058,7 +6848,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "karachi",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7088,7 +6878,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "karachi",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7118,7 +6908,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "karachi",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7146,9 +6936,219 @@
       "as_of": "2026-10-24",
       "baseline_policy": "corrected-weather-baseline-v1",
       "checkpoint": "day_ahead",
+      "city_key": "san_francisco",
+      "decision": "held",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "policy": "city-horizon-selector-v1",
+      "priors": {
+        "bootstrap_samples": 2000,
+        "bootstrap_seed": 20261018,
+        "confidence": 0.95,
+        "max_age_days": 3,
+        "max_nightly_switches": 1,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "raw v3 is not authorized for this horizon; baseline retained",
+      "selected": "baseline",
+      "train_dates": 0,
+      "train_through": null,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_from": null,
+      "version": "city-horizon-selector-v1:prior"
+    },
+    {
+      "anchor": "baseline",
+      "as_of": "2026-10-24",
+      "baseline_policy": "corrected-weather-baseline-v1",
+      "checkpoint": "d1_eve",
+      "city_key": "san_francisco",
+      "decision": "held",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "policy": "city-horizon-selector-v1",
+      "priors": {
+        "bootstrap_samples": 2000,
+        "bootstrap_seed": 20261018,
+        "confidence": 0.95,
+        "max_age_days": 3,
+        "max_nightly_switches": 1,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "raw v3 is not authorized for this horizon; baseline retained",
+      "selected": "baseline",
+      "train_dates": 0,
+      "train_through": null,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_from": null,
+      "version": "city-horizon-selector-v1:prior"
+    },
+    {
+      "anchor": "baseline",
+      "as_of": "2026-10-24",
+      "baseline_policy": "corrected-weather-baseline-v1",
+      "checkpoint": "morning",
+      "city_key": "san_francisco",
+      "decision": "held",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "policy": "city-horizon-selector-v1",
+      "priors": {
+        "bootstrap_samples": 2000,
+        "bootstrap_seed": 20261018,
+        "confidence": 0.95,
+        "max_age_days": 3,
+        "max_nightly_switches": 1,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "raw v3 is not authorized for this horizon; baseline retained",
+      "selected": "baseline",
+      "train_dates": 0,
+      "train_through": null,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_from": null,
+      "version": "city-horizon-selector-v1:prior"
+    },
+    {
+      "anchor": "wxrd3",
+      "as_of": "2026-10-24",
+      "baseline_policy": "corrected-weather-baseline-v1",
+      "checkpoint": "noon",
+      "city_key": "san_francisco",
+      "decision": "held",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "policy": "city-horizon-selector-v1",
+      "priors": {
+        "bootstrap_samples": 2000,
+        "bootstrap_seed": 20261018,
+        "confidence": 0.95,
+        "max_age_days": 3,
+        "max_nightly_switches": 1,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "selected": "wxrd3",
+      "train_dates": 0,
+      "train_through": null,
+      "validated_through": null,
+      "validation_dates": 6,
+      "validation_from": "2026-10-17",
+      "version": "city-horizon-selector-v1:prior"
+    },
+    {
+      "anchor": "wxrd3",
+      "as_of": "2026-10-24",
+      "baseline_policy": "corrected-weather-baseline-v1",
+      "checkpoint": "prepeak_2h",
+      "city_key": "san_francisco",
+      "decision": "held",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "policy": "city-horizon-selector-v1",
+      "priors": {
+        "bootstrap_samples": 2000,
+        "bootstrap_seed": 20261018,
+        "confidence": 0.95,
+        "max_age_days": 3,
+        "max_nightly_switches": 1,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "selected": "wxrd3",
+      "train_dates": 0,
+      "train_through": null,
+      "validated_through": null,
+      "validation_dates": 6,
+      "validation_from": "2026-10-17",
+      "version": "city-horizon-selector-v1:prior"
+    },
+    {
+      "anchor": "wxrd3",
+      "as_of": "2026-10-24",
+      "baseline_policy": "corrected-weather-baseline-v1",
+      "checkpoint": "prepeak_1h",
+      "city_key": "san_francisco",
+      "decision": "held",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "policy": "city-horizon-selector-v1",
+      "priors": {
+        "bootstrap_samples": 2000,
+        "bootstrap_seed": 20261018,
+        "confidence": 0.95,
+        "max_age_days": 3,
+        "max_nightly_switches": 1,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "selected": "wxrd3",
+      "train_dates": 0,
+      "train_through": null,
+      "validated_through": null,
+      "validation_dates": 6,
+      "validation_from": "2026-10-17",
+      "version": "city-horizon-selector-v1:prior"
+    },
+    {
+      "anchor": "wxrd3",
+      "as_of": "2026-10-24",
+      "baseline_policy": "corrected-weather-baseline-v1",
+      "checkpoint": "postpeak_1h",
+      "city_key": "san_francisco",
+      "decision": "held",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "policy": "city-horizon-selector-v1",
+      "priors": {
+        "bootstrap_samples": 2000,
+        "bootstrap_seed": 20261018,
+        "confidence": 0.95,
+        "max_age_days": 3,
+        "max_nightly_switches": 1,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "selected": "wxrd3",
+      "train_dates": 0,
+      "train_through": null,
+      "validated_through": null,
+      "validation_dates": 6,
+      "validation_from": "2026-10-17",
+      "version": "city-horizon-selector-v1:prior"
+    },
+    {
+      "anchor": "baseline",
+      "as_of": "2026-10-24",
+      "baseline_policy": "corrected-weather-baseline-v1",
+      "checkpoint": "day_ahead",
       "city_key": "chongqing",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7178,7 +7178,7 @@
       "checkpoint": "d1_eve",
       "city_key": "chongqing",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7208,7 +7208,7 @@
       "checkpoint": "morning",
       "city_key": "chongqing",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7238,7 +7238,7 @@
       "checkpoint": "noon",
       "city_key": "chongqing",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7268,7 +7268,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "chongqing",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7298,7 +7298,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "chongqing",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7328,7 +7328,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "chongqing",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7358,7 +7358,7 @@
       "checkpoint": "day_ahead",
       "city_key": "london",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7388,7 +7388,7 @@
       "checkpoint": "d1_eve",
       "city_key": "london",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7418,7 +7418,7 @@
       "checkpoint": "morning",
       "city_key": "london",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7448,7 +7448,7 @@
       "checkpoint": "noon",
       "city_key": "london",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7478,7 +7478,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "london",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7508,7 +7508,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "london",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7538,7 +7538,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "london",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7568,7 +7568,7 @@
       "checkpoint": "day_ahead",
       "city_key": "seattle",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7598,7 +7598,7 @@
       "checkpoint": "d1_eve",
       "city_key": "seattle",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7628,7 +7628,7 @@
       "checkpoint": "morning",
       "city_key": "seattle",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7658,7 +7658,7 @@
       "checkpoint": "noon",
       "city_key": "seattle",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7688,7 +7688,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "seattle",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7718,7 +7718,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "seattle",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7748,7 +7748,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "seattle",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7778,7 +7778,7 @@
       "checkpoint": "day_ahead",
       "city_key": "guangzhou",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7808,7 +7808,7 @@
       "checkpoint": "d1_eve",
       "city_key": "guangzhou",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7838,7 +7838,7 @@
       "checkpoint": "morning",
       "city_key": "guangzhou",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7868,7 +7868,7 @@
       "checkpoint": "noon",
       "city_key": "guangzhou",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7898,7 +7898,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "guangzhou",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7928,7 +7928,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "guangzhou",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7958,7 +7958,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "guangzhou",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -7988,7 +7988,7 @@
       "checkpoint": "day_ahead",
       "city_key": "shanghai",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8018,7 +8018,7 @@
       "checkpoint": "d1_eve",
       "city_key": "shanghai",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8048,7 +8048,7 @@
       "checkpoint": "morning",
       "city_key": "shanghai",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8078,7 +8078,7 @@
       "checkpoint": "noon",
       "city_key": "shanghai",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8108,7 +8108,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "shanghai",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8138,7 +8138,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "shanghai",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8168,7 +8168,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "shanghai",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8198,7 +8198,7 @@
       "checkpoint": "day_ahead",
       "city_key": "beijing",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8228,7 +8228,7 @@
       "checkpoint": "d1_eve",
       "city_key": "beijing",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8258,7 +8258,7 @@
       "checkpoint": "morning",
       "city_key": "beijing",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8288,7 +8288,7 @@
       "checkpoint": "noon",
       "city_key": "beijing",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8318,7 +8318,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "beijing",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8348,7 +8348,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "beijing",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8378,7 +8378,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "beijing",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8408,7 +8408,7 @@
       "checkpoint": "day_ahead",
       "city_key": "toronto",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:CYYZ",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8438,7 +8438,7 @@
       "checkpoint": "d1_eve",
       "city_key": "toronto",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:CYYZ",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8468,7 +8468,7 @@
       "checkpoint": "morning",
       "city_key": "toronto",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:CYYZ",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8498,7 +8498,7 @@
       "checkpoint": "noon",
       "city_key": "toronto",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:CYYZ",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8528,7 +8528,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "toronto",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:CYYZ",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8558,7 +8558,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "toronto",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:CYYZ",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8588,7 +8588,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "toronto",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:CYYZ",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8618,7 +8618,7 @@
       "checkpoint": "day_ahead",
       "city_key": "atlanta",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KATL",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8648,7 +8648,7 @@
       "checkpoint": "d1_eve",
       "city_key": "atlanta",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KATL",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8678,7 +8678,7 @@
       "checkpoint": "morning",
       "city_key": "atlanta",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KATL",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8708,7 +8708,7 @@
       "checkpoint": "noon",
       "city_key": "atlanta",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KATL",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8738,7 +8738,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "atlanta",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KATL",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8768,7 +8768,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "atlanta",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KATL",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8798,7 +8798,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "atlanta",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KATL",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8828,7 +8828,7 @@
       "checkpoint": "day_ahead",
       "city_key": "nyc",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KLGA",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8858,7 +8858,7 @@
       "checkpoint": "d1_eve",
       "city_key": "nyc",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KLGA",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8888,7 +8888,7 @@
       "checkpoint": "morning",
       "city_key": "nyc",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KLGA",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8918,7 +8918,7 @@
       "checkpoint": "noon",
       "city_key": "nyc",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KLGA",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8948,7 +8948,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "nyc",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KLGA",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -8978,7 +8978,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "nyc",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KLGA",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9008,7 +9008,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "nyc",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KLGA",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9038,7 +9038,7 @@
       "checkpoint": "day_ahead",
       "city_key": "miami",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KMIA",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9068,7 +9068,7 @@
       "checkpoint": "d1_eve",
       "city_key": "miami",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KMIA",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9098,7 +9098,7 @@
       "checkpoint": "morning",
       "city_key": "miami",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KMIA",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9128,7 +9128,7 @@
       "checkpoint": "noon",
       "city_key": "miami",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KMIA",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9158,7 +9158,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "miami",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KMIA",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9188,7 +9188,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "miami",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KMIA",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9218,7 +9218,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "miami",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:KMIA",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9248,7 +9248,7 @@
       "checkpoint": "day_ahead",
       "city_key": "madrid",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:LEMD",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9278,7 +9278,7 @@
       "checkpoint": "d1_eve",
       "city_key": "madrid",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:LEMD",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9308,7 +9308,7 @@
       "checkpoint": "morning",
       "city_key": "madrid",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:LEMD",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9338,7 +9338,7 @@
       "checkpoint": "noon",
       "city_key": "madrid",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:LEMD",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9368,7 +9368,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "madrid",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:LEMD",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9398,7 +9398,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "madrid",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:LEMD",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9428,7 +9428,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "madrid",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:LEMD",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9458,7 +9458,7 @@
       "checkpoint": "day_ahead",
       "city_key": "panama_city",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:MPMG",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9488,7 +9488,7 @@
       "checkpoint": "d1_eve",
       "city_key": "panama_city",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:MPMG",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9518,7 +9518,7 @@
       "checkpoint": "morning",
       "city_key": "panama_city",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:MPMG",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9548,7 +9548,7 @@
       "checkpoint": "noon",
       "city_key": "panama_city",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:MPMG",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9578,7 +9578,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "panama_city",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:MPMG",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9608,7 +9608,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "panama_city",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:MPMG",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9638,7 +9638,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "panama_city",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:MPMG",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9668,7 +9668,7 @@
       "checkpoint": "day_ahead",
       "city_key": "buenos_aires",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:SAEZ",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9698,7 +9698,7 @@
       "checkpoint": "d1_eve",
       "city_key": "buenos_aires",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:SAEZ",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9728,7 +9728,7 @@
       "checkpoint": "morning",
       "city_key": "buenos_aires",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:SAEZ",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9758,7 +9758,7 @@
       "checkpoint": "noon",
       "city_key": "buenos_aires",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:SAEZ",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9788,7 +9788,7 @@
       "checkpoint": "prepeak_2h",
       "city_key": "buenos_aires",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:SAEZ",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9818,7 +9818,7 @@
       "checkpoint": "prepeak_1h",
       "city_key": "buenos_aires",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:SAEZ",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9848,7 +9848,7 @@
       "checkpoint": "postpeak_1h",
       "city_key": "buenos_aires",
       "decision": "held",
-      "fit_at": "2026-10-24T16:04:12.655357+00:00",
+      "fit_at": "2026-10-24T17:04:37.606865+00:00",
       "model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1:SAEZ",
       "policy": "city-horizon-selector-v1",
       "priors": {
@@ -9890,6 +9890,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -9936,6 +9939,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -9982,6 +9988,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10028,6 +10037,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10074,6 +10086,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10120,6 +10135,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10166,6 +10184,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10212,6 +10233,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10258,6 +10282,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10304,6 +10331,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10350,6 +10380,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10396,6 +10429,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10442,6 +10478,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10488,6 +10527,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10534,6 +10576,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10580,6 +10625,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10626,6 +10674,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10672,6 +10723,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10718,6 +10772,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10764,6 +10821,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10810,6 +10870,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10856,6 +10919,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10902,6 +10968,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10948,6 +11017,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -10994,6 +11066,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11040,6 +11115,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11086,6 +11164,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11132,6 +11213,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11178,6 +11262,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11224,6 +11311,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11270,6 +11360,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11316,6 +11409,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11362,6 +11458,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11398,144 +11497,6 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-24",
-      "city_key": "los_angeles",
-      "decision": "held",
-      "input_digest": "5fa40b9c44b218fb98baa3377c64c553fa4112277d1d7e24b2e4e13d69bea6e0",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "params": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "phase": "before_peak",
-      "policy": "wx-city-phase-season-v1",
-      "priors": {
-        "bootstrap_samples": 1000,
-        "bootstrap_seed": 20261017,
-        "max_age_days": 3,
-        "max_temperature_step": 0.05,
-        "max_tilt_step": 0.025,
-        "min_pool_dates": 20,
-        "min_pool_rows": 200,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "shrink_dates": 30,
-        "temperature_bounds": [
-          0.8,
-          1.5
-        ],
-        "tilt_bounds": [
-          -0.2,
-          0.2
-        ],
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "insufficient independent training/validation dates",
-      "train_dates": 0,
-      "train_rows": 0,
-      "validated_through": null,
-      "validation_dates": 5,
-      "validation_rows": 5,
-      "version": "wx-city-phase-season-v1:identity"
-    },
-    {
-      "anchor": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "as_of": "2026-10-24",
-      "city_key": "los_angeles",
-      "decision": "held",
-      "input_digest": "092e6de5c11ca3624ef1a3afa1815472aa2df518b47b708a52216f94f4485a58",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "params": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "phase": "near_peak",
-      "policy": "wx-city-phase-season-v1",
-      "priors": {
-        "bootstrap_samples": 1000,
-        "bootstrap_seed": 20261017,
-        "max_age_days": 3,
-        "max_temperature_step": 0.05,
-        "max_tilt_step": 0.025,
-        "min_pool_dates": 20,
-        "min_pool_rows": 200,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "shrink_dates": 30,
-        "temperature_bounds": [
-          0.8,
-          1.5
-        ],
-        "tilt_bounds": [
-          -0.2,
-          0.2
-        ],
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "insufficient independent training/validation dates",
-      "train_dates": 0,
-      "train_rows": 0,
-      "validated_through": null,
-      "validation_dates": 6,
-      "validation_rows": 6,
-      "version": "wx-city-phase-season-v1:identity"
-    },
-    {
-      "anchor": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "as_of": "2026-10-24",
-      "city_key": "los_angeles",
-      "decision": "held",
-      "input_digest": "21daa59cdb100b0ceccbb187dc1742c4579169e942495a4bfeeb83e8e2c159ad",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "params": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "phase": "after_peak",
-      "policy": "wx-city-phase-season-v1",
-      "priors": {
-        "bootstrap_samples": 1000,
-        "bootstrap_seed": 20261017,
-        "max_age_days": 3,
-        "max_temperature_step": 0.05,
-        "max_tilt_step": 0.025,
-        "min_pool_dates": 20,
-        "min_pool_rows": 200,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "shrink_dates": 30,
-        "temperature_bounds": [
-          0.8,
-          1.5
-        ],
-        "tilt_bounds": [
-          -0.2,
-          0.2
-        ],
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "insufficient independent training/validation dates",
-      "train_dates": 0,
-      "train_rows": 0,
-      "validated_through": null,
-      "validation_dates": 5,
-      "validation_rows": 5,
-      "version": "wx-city-phase-season-v1:identity"
-    },
-    {
-      "anchor": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "as_of": "2026-10-24",
       "city_key": "chengdu",
       "decision": "held",
       "input_digest": "5fa40b9c44b218fb98baa3377c64c553fa4112277d1d7e24b2e4e13d69bea6e0",
@@ -11546,6 +11507,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11592,6 +11556,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11638,6 +11605,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11674,6 +11644,153 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-24",
+      "city_key": "los_angeles",
+      "decision": "held",
+      "input_digest": "5fa40b9c44b218fb98baa3377c64c553fa4112277d1d7e24b2e4e13d69bea6e0",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 5,
+      "validation_rows": 5,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-24",
+      "city_key": "los_angeles",
+      "decision": "held",
+      "input_digest": "092e6de5c11ca3624ef1a3afa1815472aa2df518b47b708a52216f94f4485a58",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 6,
+      "validation_rows": 6,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-24",
+      "city_key": "los_angeles",
+      "decision": "held",
+      "input_digest": "21daa59cdb100b0ceccbb187dc1742c4579169e942495a4bfeeb83e8e2c159ad",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 5,
+      "validation_rows": 5,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-24",
       "city_key": "warsaw",
       "decision": "held",
       "input_digest": "5fa40b9c44b218fb98baa3377c64c553fa4112277d1d7e24b2e4e13d69bea6e0",
@@ -11684,6 +11801,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11730,6 +11850,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11776,6 +11899,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11822,6 +11948,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11868,6 +11997,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11914,6 +12046,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -11960,6 +12095,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12006,6 +12144,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12052,6 +12193,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12098,6 +12242,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12144,6 +12291,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12190,6 +12340,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12236,6 +12389,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12282,6 +12438,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12328,6 +12487,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12374,6 +12536,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12420,6 +12585,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12466,6 +12634,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12512,6 +12683,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12558,6 +12732,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12604,6 +12781,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12650,6 +12830,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12696,6 +12879,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12742,6 +12928,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12788,6 +12977,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12834,6 +13026,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12880,6 +13075,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12926,6 +13124,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -12972,6 +13173,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13018,6 +13222,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13064,6 +13271,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13110,6 +13320,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13156,6 +13369,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13202,6 +13418,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13248,6 +13467,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13294,6 +13516,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13340,6 +13565,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13386,6 +13614,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13432,6 +13663,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13478,6 +13712,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13524,6 +13761,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13570,6 +13810,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13616,6 +13859,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13662,6 +13908,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13708,6 +13957,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13754,6 +14006,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13800,6 +14055,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13846,6 +14104,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13892,6 +14153,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13938,6 +14202,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -13984,6 +14251,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14030,6 +14300,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14076,6 +14349,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14122,6 +14398,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14168,6 +14447,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14214,6 +14496,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14260,6 +14545,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14296,144 +14584,6 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-24",
-      "city_key": "san_francisco",
-      "decision": "held",
-      "input_digest": "5fa40b9c44b218fb98baa3377c64c553fa4112277d1d7e24b2e4e13d69bea6e0",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "params": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "phase": "before_peak",
-      "policy": "wx-city-phase-season-v1",
-      "priors": {
-        "bootstrap_samples": 1000,
-        "bootstrap_seed": 20261017,
-        "max_age_days": 3,
-        "max_temperature_step": 0.05,
-        "max_tilt_step": 0.025,
-        "min_pool_dates": 20,
-        "min_pool_rows": 200,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "shrink_dates": 30,
-        "temperature_bounds": [
-          0.8,
-          1.5
-        ],
-        "tilt_bounds": [
-          -0.2,
-          0.2
-        ],
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "insufficient independent training/validation dates",
-      "train_dates": 0,
-      "train_rows": 0,
-      "validated_through": null,
-      "validation_dates": 6,
-      "validation_rows": 6,
-      "version": "wx-city-phase-season-v1:identity"
-    },
-    {
-      "anchor": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "as_of": "2026-10-24",
-      "city_key": "san_francisco",
-      "decision": "held",
-      "input_digest": "092e6de5c11ca3624ef1a3afa1815472aa2df518b47b708a52216f94f4485a58",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "params": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "phase": "near_peak",
-      "policy": "wx-city-phase-season-v1",
-      "priors": {
-        "bootstrap_samples": 1000,
-        "bootstrap_seed": 20261017,
-        "max_age_days": 3,
-        "max_temperature_step": 0.05,
-        "max_tilt_step": 0.025,
-        "min_pool_dates": 20,
-        "min_pool_rows": 200,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "shrink_dates": 30,
-        "temperature_bounds": [
-          0.8,
-          1.5
-        ],
-        "tilt_bounds": [
-          -0.2,
-          0.2
-        ],
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "insufficient independent training/validation dates",
-      "train_dates": 0,
-      "train_rows": 0,
-      "validated_through": null,
-      "validation_dates": 6,
-      "validation_rows": 6,
-      "version": "wx-city-phase-season-v1:identity"
-    },
-    {
-      "anchor": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "as_of": "2026-10-24",
-      "city_key": "san_francisco",
-      "decision": "held",
-      "input_digest": "21daa59cdb100b0ceccbb187dc1742c4579169e942495a4bfeeb83e8e2c159ad",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "params": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "phase": "after_peak",
-      "policy": "wx-city-phase-season-v1",
-      "priors": {
-        "bootstrap_samples": 1000,
-        "bootstrap_seed": 20261017,
-        "max_age_days": 3,
-        "max_temperature_step": 0.05,
-        "max_tilt_step": 0.025,
-        "min_pool_dates": 20,
-        "min_pool_rows": 200,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "shrink_dates": 30,
-        "temperature_bounds": [
-          0.8,
-          1.5
-        ],
-        "tilt_bounds": [
-          -0.2,
-          0.2
-        ],
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "insufficient independent training/validation dates",
-      "train_dates": 0,
-      "train_rows": 0,
-      "validated_through": null,
-      "validation_dates": 4,
-      "validation_rows": 4,
-      "version": "wx-city-phase-season-v1:identity"
-    },
-    {
-      "anchor": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "as_of": "2026-10-24",
       "city_key": "karachi",
       "decision": "held",
       "input_digest": "5fa40b9c44b218fb98baa3377c64c553fa4112277d1d7e24b2e4e13d69bea6e0",
@@ -14444,6 +14594,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14490,6 +14643,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14536,6 +14692,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14572,6 +14731,153 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-24",
+      "city_key": "san_francisco",
+      "decision": "held",
+      "input_digest": "5fa40b9c44b218fb98baa3377c64c553fa4112277d1d7e24b2e4e13d69bea6e0",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 6,
+      "validation_rows": 6,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-24",
+      "city_key": "san_francisco",
+      "decision": "held",
+      "input_digest": "092e6de5c11ca3624ef1a3afa1815472aa2df518b47b708a52216f94f4485a58",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 6,
+      "validation_rows": 6,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-24",
+      "city_key": "san_francisco",
+      "decision": "held",
+      "input_digest": "21daa59cdb100b0ceccbb187dc1742c4579169e942495a4bfeeb83e8e2c159ad",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 4,
+      "validation_rows": 4,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-24",
       "city_key": "chongqing",
       "decision": "held",
       "input_digest": "5fa40b9c44b218fb98baa3377c64c553fa4112277d1d7e24b2e4e13d69bea6e0",
@@ -14582,6 +14888,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14628,6 +14937,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14674,6 +14986,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14720,6 +15035,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14766,6 +15084,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14812,6 +15133,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14858,6 +15182,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14904,6 +15231,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14950,6 +15280,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -14996,6 +15329,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15042,6 +15378,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15088,6 +15427,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15134,6 +15476,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15180,6 +15525,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15226,6 +15574,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15272,6 +15623,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15318,6 +15672,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15364,6 +15721,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15410,6 +15770,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15456,6 +15819,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15502,6 +15868,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15548,6 +15917,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15594,6 +15966,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15640,6 +16015,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15686,6 +16064,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15732,6 +16113,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15778,6 +16162,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15824,6 +16211,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15870,6 +16260,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15916,6 +16309,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -15962,6 +16358,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -16008,6 +16407,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -16054,6 +16456,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -16100,6 +16505,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -16146,6 +16554,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -16192,6 +16603,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -16238,6 +16652,9 @@
       },
       "phase": "before_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -16284,6 +16701,9 @@
       },
       "phase": "near_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
@@ -16330,6 +16750,9 @@
       },
       "phase": "after_peak",
       "policy": "wx-city-phase-season-v1",
+      "pool_dates": 0,
+      "pool_model_version": "wxrd3:v3:2e88d630d16d:awc-routine-v1",
+      "pool_rows": 0,
       "priors": {
         "bootstrap_samples": 1000,
         "bootstrap_seed": 20261017,
