@@ -143,3 +143,43 @@ def test_wrong_source_date_refuses_before_any_request(monkeypatch):
     monkeypatch.setattr(outcomes, "_get", lambda *a, **k: pytest.fail("must not fetch mismatched source"))
     with pytest.raises(outcomes.OutcomeError, match="target local day"):
         outcomes.collect_awc(object(), spec(), DAY, "Europe/Amsterdam", NOW)
+
+
+def test_an_unreadable_time_is_safe_only_when_it_cannot_change_the_proved_maximum(monkeypatch):
+    valid=b'METAR KLGA 231551Z 20/10 RMK T02000100'
+    result,_=collect(monkeypatch,valid+b'\nMETAR KLGA 23120Z 15/10')
+    assert result.detail['qualifying_max_c']=='20'
+    assert result.detail['nondecisive_unreadable_reports']==1
+    with pytest.raises(outcomes.OutcomeError,match='could change'):
+        collect(monkeypatch,valid+b'\nMETAR KLGA 23120Z 30/10')
+
+
+def test_padded_contract_window_covers_day_without_counting_next_day_temperature(monkeypatch):
+    padded=URL.replace('T04:00:00Z&hours=27','T07:00:00Z&hours=30')
+    target=b'METAR KLGA 232351Z 18/10 RMK T01830100\nMETAR KLGA 240651Z 40/10'
+    calls=[]
+    def get(session,url,**kwargs):
+        calls.append(url)
+        return SimpleNamespace(content=target if url==padded else FOLLOWING)
+    monkeypatch.setattr(outcomes,'_get',get)
+    s=outcomes.parse_rule_spec(RULES.replace(URL,padded),'F')
+    result=outcomes.collect_awc(object(),s,DAY,'America/New_York',NOW+dt.timedelta(hours=4))
+    assert result.detail['qualifying_max_c']=='18.3'
+    assert result.detail['eligible_readings']==1
+    assert calls[-1]==padded
+
+
+def test_window_validation_handles_a_daylight_saving_long_day_and_refuses_partial_coverage():
+    day=dt.date(2026,10,25)
+    padded=URL.replace('2026-10-24T04:00:00Z&hours=27','2026-10-26T03:00:00Z&hours=30')
+    assert metar.validate_window(padded,day,'Europe/London')[0]=='KLGA'
+    with pytest.raises(ValueError,match='target local day'):
+        metar.validate_window(padded.replace('hours=30','hours=24'),day,'Europe/London')
+    with pytest.raises(ValueError,match='source parameters'):
+        metar.source_parameters(padded.replace('hours=30','hours=1000'))
+
+
+def test_capped_response_is_refused_before_malformed_reports_can_reduce_the_count():
+    raw=b'\n'.join([b'METAR KLGA 23120Z 15/10']*400)
+    with pytest.raises(ValueError,match='result limit'):
+        metar.raw_reports(raw,'KLGA',NOW,strict=False)

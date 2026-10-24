@@ -348,7 +348,7 @@ def _bands_for_markets(market_ids):
     for i in range(0, len(market_ids), chunk):
         batch = market_ids[i:i + chunk]
         rows = rest_all("v_canonical_bands", [
-            ("select", "band_id,market_id,band_lo,band_hi,open_low,open_high,band_label,token_yes,token_no"),
+            ("select", "band_id,market_id,band_lo,band_hi,open_low,open_high,band_label,token_yes,token_no,condition_id"),
             ("market_id", f"in.({','.join(str(m) for m in batch)})"),
         ], order="band_id", page_size=500)
         out.extend(rows)
@@ -446,6 +446,10 @@ def main():
     # why this needs no other change. Reading the table directly is what threw
     #     TypeError: 'int' object is not iterable
     books = _latest_by_band("v_latest_book", "*", band_ids, "observed_at")
+    import book_recovery
+    repaired, book_repair = book_recovery.recover(bands, books, dt.datetime.now(dt.timezone.utc), MAX_BOOK_AGE)
+    if repaired:
+        books.update(_latest_by_band('v_latest_book', '*', [row['band_id'] for row in repaired], 'observed_at'))
 
     settings = _settings()
     max_slippage_c = (settings.get("max_slippage_cents") or {}).get("value", 5) / 100.0
@@ -609,7 +613,8 @@ def main():
          "missing_books": missing_books, "stale_books": stale_books,
          "stale_probabilities": stale_probabilities,
          "blocked_probabilities": blocked_probabilities,
-         "against_market_blocked": against_blocked, "against_market_gate": gate},
+         "against_market_blocked": against_blocked, "against_market_gate": gate,
+         "book_recovery": book_repair},
     )
     print(f"wrote {len(out_rows)} edge rows ({tradeable_n} tradeable, {n_anomalies} flagged anomalous)")
 

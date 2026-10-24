@@ -87,6 +87,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "book_snapshots": [
     {
+      "cadence": "several times a day",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/edge_engine.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
+    },
+    {
       "cadence": "whenever its n8n schedule fires",
       "file": "P0.3_book_volume_snapshot.template.json",
       "how": "n8n",
@@ -1392,7 +1399,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_city_running_max": [
     "cities",
+    "live_capture",
     "live_weather",
+    "markets",
     "weather_observations",
     "derived_weather_peak",
     "derived_climb_profile"
@@ -1436,7 +1445,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_city_trajectory_now": [
     "cities",
     "derived_climb_profile",
+    "live_capture",
     "live_weather",
+    "markets",
     "weather_observations",
     "derived_weather_peak",
     "derived_trajectory"

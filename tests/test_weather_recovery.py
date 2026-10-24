@@ -48,8 +48,9 @@ def test_recovery_request_and_retry_cannot_outlive_budget(monkeypatch):
         calls.append(kwargs['timeout'])
         return SimpleNamespace(status_code=429, headers={'Retry-After': '20'})
     with common.request_deadline(110):
-        with pytest.raises(w.OutcomeError, match='budget'):
+        with pytest.raises(w.OutcomeError, match='budget') as error:
             w._get(SimpleNamespace(get=get), 'https://example.test')
+    assert error.value.status == 'deferred'
     assert calls == [5]
     assert common._request_end.get() is None
 
@@ -93,6 +94,29 @@ def test_intraday_recovery_uses_existing_cadence_without_fitting():
     assert '--budget-seconds 90' in step['run'] and '--days 3' in step['run']
     assert step['timeout-minutes'] == 3 and "dry_run != 'true'" in step['if']
     assert steps.index(step) > next(i for i,s in enumerate(steps) if s.get('name') == 'Bank the ladders just confirmed (P4.7, bands only)')
+
+
+def test_budget_exhausted_during_a_city_is_deferred_without_a_false_source_verdict(monkeypatch):
+    monkeypatch.setattr(w,'rest_all',lambda *a,**kw:[{'city_key':c,'timezone':'UTC'} for c in ('a','b')])
+    monkeypatch.setattr(w,'_existing_evidence',lambda _: {})
+    monkeypatch.setattr(w,'_unparseable',lambda _: {})
+    monkeypatch.setattr(w,'_load_targets',lambda *a:[dict(city_key=c,resolution_date='2026-10-20',
+        market_id=c,unit='C',rules_text='rules') for c in ('a','b')])
+    monkeypatch.setattr(w,'parse_rule_spec',lambda *a:w.RuleSpec('weather_gov_wrh','authority','STA','https://example.test','C',True))
+    calls=[]
+    def collect(*a):
+        calls.append(1)
+        if len(calls)>1:
+            raise w.OutcomeError('deferred','retry would exceed request budget')
+        return w.Outcome(Decimal('25'),None,'hash',{}, {})
+    monkeypatch.setattr(w,'collect_with_fallback',collect)
+    writes,logs=[],[]
+    monkeypatch.setattr(w,'upsert',lambda table,rows,key:writes.extend((table,r) for r in rows))
+    monkeypatch.setattr(w,'log_run',lambda *a:logs.append(a))
+    result=w.run(now=dt.datetime(2026,10,21,8,tzinfo=dt.timezone.utc),budget_seconds=90)
+    assert result['captured']==result['deferred']==1 and result['failures']==0
+    assert {r['city_key'] for _,r in writes}=={'a'}
+    assert logs[-1][1]=='partial'
 
 
 def test_provider_wait_is_honoured_and_http_date_is_supported(monkeypatch):

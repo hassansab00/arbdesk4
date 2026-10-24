@@ -33,7 +33,9 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 NEVER_A_PRODUCT = {"ingest_log"}
 
 # call in a workflow's script -> the scripts/ module whose writes it makes.
-MODULE_WRITERS = {"city_correlation.recompute": "city_correlation"}
+MODULE_WRITERS = {"city_correlation.recompute": "city_correlation",
+                  "book_recovery.recover": "book_recovery",
+                  "contract_inputs.capture": "contract_inputs"}
 
 
 def _yaml_workflows():

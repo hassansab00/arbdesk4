@@ -34,7 +34,7 @@ from common import log_run, rest_all, upsert
 import metar_contract
 
 
-PARSER_VERSION = "weather-outcomes-v4"
+PARSER_VERSION = "weather-outcomes-v5"
 
 # How far back "recent" reaches. City-days inside this window are offered a
 # slot BEFORE the backlog, so yesterday is always attempted no matter how big
@@ -215,7 +215,7 @@ def _get(session: requests.Session, url: str, **kwargs) -> requests.Response:
         except (requests.ConnectionError, requests.Timeout) as exc:
             last_error = exc
         except TimeoutError as exc:
-            raise OutcomeError("source_unavailable", str(exc)) from exc
+            raise OutcomeError("deferred", str(exc)) from exc
         if attempt < 3:
             wait = retry_wait(response, attempt)
             if wait > MAX_RETRY_WAIT_S:
@@ -226,7 +226,7 @@ def _get(session: requests.Session, url: str, **kwargs) -> requests.Response:
                 if response is not None and response.status_code in {429, 503}:
                     cooldowns.pop(host, None)
             except TimeoutError as exc:
-                raise OutcomeError("source_unavailable", str(exc)) from exc
+                raise OutcomeError("deferred", str(exc)) from exc
     raise OutcomeError("source_unavailable", str(last_error or f"Unable to read {url}"))
 
 
@@ -536,33 +536,46 @@ def collect_awc(session, spec, for_date, timezone, now):
     the independent venue verifier can record that contract payout instead.
     """
     try:
-        station, anchor = metar_contract.source_parameters(spec.source_url)
+        station, anchor = metar_contract.validate_window(spec.source_url, for_date, timezone)
         zone = ZoneInfo(timezone)
         local_end = dt.datetime.combine(for_date + dt.timedelta(days=1), dt.time(), zone)
-        if station != spec.station_id or anchor != local_end.astimezone(dt.timezone.utc):
+        if station != spec.station_id:
             raise ValueError("AWC source station/date does not match the target local day")
         if now < local_end:
             raise OutcomeError("not_final", "The station's local day has not ended")
         cutoff = wu_fallback_cutoff(for_date)
         check_at = min(now, cutoff).astimezone(dt.timezone.utc)
-        hours = max(1, math.ceil((check_at - anchor).total_seconds() / 3600) + 1)
+        hours = max(1, math.ceil((check_at - local_end).total_seconds() / 3600) + 1)
         check_url = "https://aviationweather.gov/api/data/metar?" + urlencode({
             "ids": station, "format": "raw", "date": check_at.isoformat().replace("+00:00", "Z"),
             "hours": hours})
         # Check publication first, then read the contract's target-date surface.
         check = _get(session, check_url)
         following_raw = check.content
-        next_rows = metar_contract.raw_reports(following_raw, station, check_at)
+        next_rows = metar_contract.raw_reports(following_raw, station, check_at,strict=False)
         following = [r["when"] for r in next_rows
                      if r["routine"] and r["when"].astimezone(zone).date() == for_date + dt.timedelta(days=1)]
         if not following and now < cutoff:
             raise OutcomeError("not_final", "AWC has not published a routine observation for the following local date")
         response = _get(session, spec.source_url)
-        rows = metar_contract.raw_reports(response.content, station, anchor)
+        skipped=[]
+        rows = metar_contract.raw_reports(response.content, station, anchor,strict=False,skipped=skipped)
         if len(rows) >= 400:
             raise ValueError("AWC response reached its documented result limit")
         selected = [r for r in rows if r["routine"] and r["temp_c"] is not None
                     and r["when"].astimezone(zone).date() == for_date]
+        # A malformed time cannot be assigned to a local date. It is harmless
+        # only if its temperature cannot increase the proved valid maximum.
+        # Otherwise keep the outcome unknown, including at the fallback cutoff.
+        located={r['raw'] for r in rows}
+        uncertain=[]
+        for line in response.content.decode('utf-8-sig').splitlines():
+            line=line.strip().rstrip('=').strip()
+            if line and line not in located:
+                value=metar_contract.temperature_c(line)
+                if value is not None: uncertain.append(value)
+        if uncertain and (not selected or max(uncertain)>max(r['temp_c'] for r in selected)):
+            raise OutcomeError('parse_error','Unreadable observation time could change the qualifying maximum')
         if not selected:
             if now < cutoff:
                 raise OutcomeError("not_final", "AWC has no qualifying temperature; awaiting the contract fallback deadline")
@@ -593,6 +606,7 @@ def collect_awc(session, spec, for_date, timezone, now):
                         "source_timezone": timezone, "qualifying_max_c": str(maximum),
                         "eligible_readings": len(selected), "display_max": display, "display_unit": spec.unit,
                         "first_following_routine": canonical["first_following_routine"],
+                        "nondecisive_unreadable_reports":len(skipped),
                         "finality": "following_routine" if following else "contract_deadline"})
     except (ValueError, UnicodeDecodeError, ZoneInfoNotFoundError) as exc:
         raise OutcomeError("parse_error", str(exc)) from exc
@@ -1103,6 +1117,9 @@ def _run(days, maximum, dry_run, cities, now, bounded=False):
                 else:
                     status = "source_revised"
         except OutcomeError as exc:
+            if exc.status == "deferred":
+                counts["deferred"] = len(targets) - index
+                break  # No evidence/verdict was reached; next run starts here.
             status = exc.status
             error = _safe_error(exc)
             failed_authority, failed_source_url = exc.source_authority, exc.source_url

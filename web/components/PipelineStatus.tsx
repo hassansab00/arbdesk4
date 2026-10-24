@@ -57,7 +57,7 @@ const CHAIN: Array<{
 }> = [
   { jobs: ["P0.2_market_discovery"], mode: "either", label: "Markets & buckets", where: "n8n · P0.2",
     staleAfterH: 12, feeds: "the buckets on the Board. Missing ones mean a ladder that cannot sum to 100\u00a2." },
-  { jobs: ["P0.3_book_volume_snapshot"], mode: "either", label: "Order books", where: "n8n · P0.3",
+  { jobs: ["P0.3_book_volume_snapshot", "book_recovery"], mode: "either", label: "Order books", where: "n8n · P0.3 / intraday recovery",
     staleAfterH: 3, feeds: "every price. Without it each bucket is blocked, and Opportunities and Overview have nothing to rank." },
   { jobs: ["tick", "ingest_observations", "P1.6_iem_observations"], mode: "either", label: "Station observations", where: "Hourly tick · Observations fallback",
     staleAfterH: 2, feeds: "the running max, the climate baseline, hotness and the weather model." },

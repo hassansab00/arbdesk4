@@ -1,15 +1,4 @@
-"""WXPredict: every feature of one decision, from what was known at it.
-
-One implementation of the features (plan, phase 2.3), so that the training
-table and the live reader compute each one the same way. Every function here
-takes what it reads as arguments - one station's reports (`Reports`), its whole
-days, the daily and hourly forecasts, a ladder's price series - and reads no
-file, database or network; tools/wxpredict/build_table.py loads the committed
-sources into these shapes, and the live reader is to load the live sources into
-the same shapes. What a row may know at its decision time is set out in
-build_table.py's docstring and enforced here (REPORT_LAG_S, PUBLISH_H,
-SNAPSHOT_S, MARKET_MAX_AGE_S).
-"""
+"""Build forecast features from inputs available at the decision time."""
 import bisect
 import calendar
 import collections
@@ -23,24 +12,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from wxpredict import common  # noqa: E402
 
-# A report valid at v is used from v + REPORT_LAG_S. Measured 5 Oct 2026
-# against IEM's own service, polled once a minute (docs/WXPREDICT.md, "When a
-# report is known"): reports appeared 8-16 min after their valid time, most
-# ~11-12 min (IEM loads them in batches). 20 min covers the slowest seen with
-# a margin. The platform's own hourly ingest adds a median 38 min on top
-# (weather_observations, 7 days to 5 Oct): phase 2 reads IEM at the tick.
+# Default publication allowance; alternate model versions retain their own lag.
 REPORT_LAG_S = 20 * 60
-# WHEN A REPORT IS KNOWN, AGAIN (12 Oct). Aviation Weather's own receipt time
-# of each METAR, read for all 47 stations on 12 Oct (400 reports read 14:50-
-# 20:00Z; data/eval/wxpredict/report_latency_2026-10-12.json): 4.47 min after
-# the reading at the median, 6.22 at p75, 8.35 at p90, 13.27 at p95; the
-# minute poll (WP4) saw Jeddah's a median 1.0 min after the reading and
-# Istanbul's 6.0. A model whose decisions on the hour count a report only 20
-# min after its reading never sees a station's :50-:59 report (every US
-# airport's): in half of the 11-12h decisions the newest report it knew was
-# over an hour old. The table built with 8 min (the p90) is the v2 table;
-# v1 (20 min) stays the default, so the frozen sdyes-v1 pilot and the recorded
-# table are unchanged. A build or a reader sets the lag with report_lag().
 REPORT_LAG_V2_S = 8 * 60
 
 
@@ -77,7 +50,7 @@ WX_FLAGS = (("rain", ("RA", "DZ")), ("shower", ("SH",)), ("thunder", ("TS",)), (
 # numbers
 # ---------------------------------------------------------------------------
 def unix_of(stamp):
-    """'YYYY-MM-DDTHH:MM[Z]' (UTC) as unix seconds; strptime cost 22 s a build."""
+    """'YYYY-MM-DDTHH:MM[Z]' (UTC) as unix seconds."""
     return calendar.timegm((int(stamp[0:4]), int(stamp[5:7]), int(stamp[8:10]), int(stamp[11:13]),
                             int(stamp[14:16]), 0))
 
@@ -456,7 +429,7 @@ def event_context(e, rep, sdays, tz):
     }
 
 
-def decision_row(e, ctx, off, local, rep, sdays, bm, md, hourly, series, tz):
+def decision_row(e, ctx, off, local, rep, sdays, bm, md, hourly, series, tz, qualifying=None):
     """One row: the decision SNAPSHOT_S after `local` (an hour of D-1 or D on the
     city's clock, `off` -1 or 0), its identity, the event's label (from
     event_context) and every feature known at that instant."""
@@ -481,6 +454,16 @@ def decision_row(e, ctx, off, local, rep, sdays, bm, md, hourly, series, tz):
     v["station_reports_day"] = ctx["station_reports_day"]
     v["label_unit"] = ctx["label_unit"]
     obs_features(v, rep, t, d0, off, tz, unit, bands, sdays, day)
+    if qualifying is not None and off == 0:
+        # All reports may inform weather/trends. Only the contract authority's
+        # qualifying reports can establish an outcome floor. Missing authority
+        # input remains missing, never the old all-report maximum.
+        for name in ('rmax_c','rmax_unit','rmax_bucket','rmax_age_min','rmax6_c'):
+            v[name] = None
+        if qualifying:
+            for name in ('rmax_c','rmax_unit','rmax_age_min'):
+                v[name] = qualifying[name]
+            v['rmax_bucket'] = bucket_of(v['rmax_unit'], bands)
     fc_features(v, e["city"], day, t, tz, bm, md, hourly, rep)
     v["clim_mean_c"], v["clim_sd_c"], v["clim_n"], v["clim_peak_hour"] = \
         ctx["clim_with"] if t >= ctx["dm2_known_from"] else ctx["clim_without"]

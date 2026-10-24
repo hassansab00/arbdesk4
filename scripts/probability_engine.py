@@ -546,9 +546,11 @@ def _upcoming_markets():
     # CLOSED MARKETS ARE STILL NOT UPCOMING ONES. Pricing them (18 of 51 of
     # 21 Sep's markets, 198 bands) cost rows no strategy could read and made
     # `stale_book` read like a broken snapshot job; the view keeps that rule.
-    return rest("v_priceable_markets", [
+    rows = rest("v_priceable_markets", [
         ("select", "market_id,city_key,resolution_date,unit,correction_id"),
     ])
+    import contract_inputs
+    return contract_inputs.annotate(rows, rest)
 
 
 def _bands_for_markets(market_ids):
@@ -1671,6 +1673,8 @@ def main():
         bands_by_market[b["market_id"]].append(b)
 
     floors = _observed_floors()
+    import contract_inputs
+    floors = contract_inputs.floors(markets, cities, floors, rest_all)
     promoted = _promoted_models()
     model_forecasts = _model_forecasts(promoted)
     if promoted:

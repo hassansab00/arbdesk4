@@ -1,38 +1,7 @@
-"""WXPredict v2 on the day, in shadow: beside every same-day call the tick writes.
+"""Compare frozen forecast artifacts at original checkpoint decision times.
 
-Hassan, 12 Oct: the prediction has to be right before the peak. wxrd-v2
-(wxrd_fit.py; data/eval/wxpredict/report_lag_2026-10-12.json) is the
-remaining-day model that counts a station report 8 minutes after its reading.
-This runs it live, for every city, at the very checkpoints the engine is
-scored on, so the two (and the market at the same moment) are compared on the
-same days. NOTHING HERE PRICES OR TRADES.
-
-EACH TICK, after the live record has been collected (tick.yml, the last step):
-  due        every prediction_checkpoints row decided in the last RETRY_HOURS
-             at a checkpoint of CHECKPOINTS (the day itself) that has no wxrd
-             row yet, oldest first, at most MAX_DUE: a tick whose step failed
-             or timed out leaves its checkpoints to the next ticks rather than
-             losing them (Codex on #395), and a backlog is cleared over
-             several ticks: rows stop being built at ROW_BUDGET_S and what was
-             built is written, so a backlog cannot time the step out hour
-             after hour
-  the row    live_reader.row_at in arrival mode at the instant the engine
-             decided (its decided_at): what the live record had then
-             (public.live_capture, captured_at <= decided_at, so a retry
-             reads what an on-time run would have; the RECORD_HOURS before the
-             oldest due checkpoint, read for the due cities and their
-             stations only), the training's rules with the model's report
-             lag, the station's past days and the daily forecasts of the days
-             before from the repository
-  the model  the frozen wxrd-v2 (its sha256 checked); a row before 09h local
-             or without a running maximum gets no probability, counted
-  the write  one variant_shadow_checkpoints row per due checkpoint: variant
-             'wxrd', version 'wxrd:v2:<sha256 12>', the bucket probabilities,
-             the top bucket; one ingest_log row (P7.6_wxrd_shadow) a tick
-Bounded and never fails the tick: tick.yml runs it with its own timeout and
-continue-on-error; anything it cannot do is counted by reason in its log row.
-
-    python tools/wxpredict/wxrd_live.py [--dry-run] [--at 2026-10-13T12:40Z]
+Retries read the same as-of input history and preserve existing shadow rows.
+This runner writes diagnostics; it does not price or trade.
 """
 import argparse
 import datetime as dt
@@ -60,11 +29,11 @@ VARIANTS = {
 CHECKPOINTS = ("morning", "noon", "prepeak_2h", "prepeak_1h", "postpeak_1h")
 SERVED_WITHIN_MIN = 30      # a row decided further back than this was written by a retry
 RETRY_HOURS = 6             # the record the row reads reaches RETRY_HOURS + RECORD_HOURS back, joined from the database and committed mirror
-MAX_DUE = 30                # a tick wrote 2-19 such checkpoints an hour, 11-12 Oct (prediction_checkpoints)
+MAX_DUE = 30                # bounded per-run work
 ROW_BUDGET_S = 90           # rows stop being built here and what is built is written, inside the step's 3 min;
                             # bounds, not measurements: the first ticks' seconds are in the log rows
 RECORD_HOURS = 40           # the day's hourly forecasts reach the record up to 17 h ahead; older hours come from the committed mirror
-KINDS = ("report", "hourly", "hourly2", "models1", "models2", "hourly0", "models0")
+KINDS = ("report", "hourly", "hourly2", "models1", "models2", "hourly0", "models0", "awc_metar")
 TABLE = "variant_shadow_checkpoints"
 ON_CONFLICT = "city_key,target_date,checkpoint,variant"
 JOB = "P7.6_wxrd_shadow"

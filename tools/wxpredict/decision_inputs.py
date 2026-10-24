@@ -29,6 +29,9 @@ def history_identity():
 
 def pack(served, event, row, commit, committed_at, current=None):
     vector = {k: None if k in LABELS else row.get(k) for k in features.COLUMNS}
+    if row.get('observation_contract'):
+        vector.update(observation_contract=row['observation_contract'],rules_sha256=event.get('rules_sha256'),
+                      authority_input=row.get('authority_input'))
     raw = json.dumps(vector, sort_keys=True, separators=(",", ":"), allow_nan=False)
     payload = {"policy": POLICY, "checkpoint_id": served["checkpoint_id"], "city_key": served["city_key"],
                "target_date": str(served["target_date"]), "checkpoint": served["checkpoint"],
