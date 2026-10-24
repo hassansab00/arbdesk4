@@ -251,11 +251,11 @@ jobs:
           path: .venv-wx
           key: tick-wx-venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-${{ hashFiles('requirements.wxpredict.txt') }}
       - name: The accepted candidate weights
-        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' && hashFiles('data/models/wxrd/shadow-current.json') != '' }}
+        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' && hashFiles('data/models/wxrd/shadow-current.json', 'data/models/wxrd/current-shadow.json') != '' }}
         uses: actions/cache@v4
         with:
           path: .cache/wxpredict-models
-          key: wxpredict-model-${{ runner.os }}-${{ hashFiles('data/models/wxrd/shadow-current.json') }}
+          key: wxpredict-model-${{ runner.os }}-${{ hashFiles('data/models/wxrd/shadow-current.json', 'data/models/wxrd/current-shadow.json') }}
       - name: WXPredict on the day, in shadow (wxrd-v2)
         if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
         timeout-minutes: 3

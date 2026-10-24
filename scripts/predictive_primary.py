@@ -94,7 +94,7 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         sys.path.insert(0, os.path.join(root, "tools"))
         from wxpredict import common, live_reader as lr, wxrd_live as wl
-        from wxpredict import build_table, capture_history, decision_inputs
+        from wxpredict import build_table, capture_history, decision_inputs, current_forecasts
         import sdyes_forward
         ops = common.ops()
         meta_path = wl.VARIANTS["wxrd3"][0]
@@ -129,7 +129,7 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
         city_keys = {m["city_key"] for m in selected}
         first = now - dt.timedelta(hours=wl.RECORD_HOURS)
         rows = ops.rest_all("live_capture", [
-            ("select", "kind,key,captured_at,payload"),
+            ("select", "kind,key,captured_at,written_at,payload"),
             ("kind", f"in.({','.join(wl.KINDS)})"),
             ("captured_at", f"gte.{first.isoformat()}"),
             ("captured_at", f"lte.{now.isoformat()}"),
@@ -137,8 +137,18 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
         boundary = now.replace(hour=0, minute=0, second=0) - dt.timedelta(days=1)
         prefixes = {c + "|" for c in city_keys}
         prefixes.update(common.iem_id(cities[c]["icao"]) + "|" for c in city_keys if cities[c].get("icao"))
-        cold = capture_history.read(first.timestamp(), boundary.timestamp(), kinds=wl.KINDS, prefixes=prefixes)
-        record = lr.Record([*cold, *[(r["kind"], r["key"], r["captured_at"], r["payload"]) for r in rows]])
+        receipt_kinds=('hourly0','models0')
+        cold = capture_history.read(first.timestamp(), boundary.timestamp(), kinds=wl.KINDS,
+                                    prefixes=prefixes,receipt_kinds=receipt_kinds)
+        warm=[]
+        for receipt in rows:
+            available=receipt['captured_at']
+            if receipt['kind'] in receipt_kinds:
+                if not receipt.get('written_at'):
+                    continue
+                available=max((available,receipt['written_at']),key=lr.unix)
+            warm.append((receipt['kind'],receipt['key'],available,receipt['payload']))
+        record = lr.Record([*cold,*warm])
         all_bands = [b for m in selected for b in bands_by_market.get(m["market_id"], [])]
         dates = [str(m["resolution_date"]) for m in selected]
         events = lr.live_events(selected, all_bands, cities, min(dates), max(dates))
@@ -182,12 +192,26 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
                        "history_commit": commit, "history_committed_at": committed_at,
                        "model_fit_through": str(meta["fit_last"])[:10],
                        "band_ids": list(e["band_ids"]), "row": vector, "row_sha256": sha}
+            # Optional research context never changes the frozen weather vector
+            # or the working predictor if its provider snapshot is unavailable.
+            payload['timezone'] = cities[e['city']]['timezone']
+            try:
+                decision_inputs.add_current(payload, current_forecasts.context(
+                    record, e, int(now.timestamp()), common.zone(cities[e['city']])))
+                payload['current_received_at'] = current_forecasts.receipts(
+                    record, e, int(now.timestamp()), common.zone(cities[e['city']]))
+                payload['current_receipts_sha256'] = hashlib.sha256(json.dumps(
+                    payload['current_received_at'],sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            except Exception as exc:
+                errors=_detail.setdefault('current_context_errors',{})
+                errors[type(exc).__name__]=errors.get(type(exc).__name__,0)+1
+                payload['current_context_error'] = type(exc).__name__
             packed.append({"key": key, "payload": payload})
-            accepted.append((e, row, p, sha, key))
+            accepted.append((e, row, p, sha, key, payload))
         if packed and not dry_run:
             ops.rpc("live_capture_put", {"p_kind": decision_inputs.KIND,
                 "p_captured_at": dt.datetime.now(dt.timezone.utc).isoformat(), "p_rows": packed})
-        for e, row, p, sha, input_key in accepted:
+        for e, row, p, sha, input_key, payload in accepted:
             effective_version=contract_inputs.version(version,e.get('observation_contract'),e.get('contract_station'))
             # Market identity includes the ladder; a twin market cannot borrow
             # another listing's probabilities just because its city/day match.
@@ -195,6 +219,10 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
             raw_probs = dict(zip(map(str, e["band_ids"]), map(float, p)))
             context = {k: row.get(k) for k in lr.features.COLUMNS if k not in decision_inputs.LABELS}
             context.update(band_ids=list(map(str,e["band_ids"])), model_fit_through=str(meta["fit_last"])[:10])
+            if 'current_forecasts_sha256' in payload and 'current_receipts_sha256' in payload:
+                context.update(current_forecasts_sha256=payload['current_forecasts_sha256'],
+                               current_receipts_sha256=payload['current_receipts_sha256'],
+                               timezone=payload['timezone'])
             if row.get('observation_contract'):
                 context.update(observation_contract=row['observation_contract'],rules_sha256=e.get('rules_sha256'),
                                authority_input=row.get('authority_input'))

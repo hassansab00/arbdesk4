@@ -133,6 +133,12 @@ def test_a_primary_cannot_price_if_its_exact_input_record_was_not_saved(monkeypa
     assert payload["history_committed_at"] < now.timestamp()
     assert payload["row_sha256"] == next(iter(pp._predictions.values()))["input_sha256"]
     assert next(iter(pp._predictions.values()))["floor_unit"] == 35
+    from wxpredict import current_forecasts
+    monkeypatch.setattr(current_forecasts,'context',lambda *a:(_ for _ in ()).throw(ValueError('bad optional snapshot')))
+    result=pp.prepare(markets,{'m':[]},cities,now)
+    assert result['selected']==1 and not result.get('error') and not result['fallbacks']
+    assert writes[-1]['p_rows'][0]['payload']['row_sha256']==payload['row_sha256']
+    assert writes[-1]['p_rows'][0]['payload']['current_context_error']=='ValueError'
 
 
 def test_served_call_freezes_raw_baseline_calibration_and_exact_lineage(monkeypatch):

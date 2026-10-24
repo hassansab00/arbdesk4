@@ -379,7 +379,7 @@ jobs:
     needs: daily
     if: ${{ !cancelled() && inputs.evidence_only != true && github.ref_name == 'main' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 40 # Existing candidate plus bounded city validation and evidence commit.
+    timeout-minutes: 55 # Existing jobs plus bounded verified-mirror reads and current fit; no added cadence.
     permissions:
       contents: write
     steps:
@@ -412,8 +412,13 @@ jobs:
         if: ${{ !cancelled() }}
         timeout-minutes: 2
         run: python tools/wxpredict/candidate_cycle.py --plan
+      - name: Check recorded current-forecast training and forward validation
+        id: current_plan
+        if: ${{ !cancelled() }}
+        timeout-minutes: 6
+        run: python tools/wxpredict/current_cycle.py --plan
       - name: Install candidate research dependencies
-        if: ${{ !cancelled() && steps.plan.outputs.fit == 'true' }}
+        if: ${{ !cancelled() && (steps.plan.outputs.fit == 'true' || steps.current_plan.outputs.fit == 'true') }}
         run: pip install -r requirements.wxpredict.txt
       - name: Fit and evaluate the shadow challenger
         id: fit
@@ -422,13 +427,20 @@ jobs:
         run: python tools/wxpredict/candidate_cycle.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Fit and independently evaluate the current-forecast challenger
+        id: current_fit
+        if: ${{ !cancelled() && steps.current_plan.outcome == 'success' && steps.current_plan.outputs.fit == 'true' }}
+        timeout-minutes: 4
+        run: python tools/wxpredict/current_cycle.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Commit the candidate evidence and shadow registry
-        if: ${{ !cancelled() && steps.plan.outcome == 'success' && (steps.plan.outputs.fit != 'true' || steps.fit.outcome == 'success') }}
+        if: ${{ !cancelled() && steps.plan.outcome == 'success' && (steps.plan.outputs.fit != 'true' || steps.fit.outcome == 'success') && steps.current_plan.outcome == 'success' && (steps.current_plan.outputs.fit != 'true' || steps.current_fit.outcome == 'success') }}
         timeout-minutes: 3
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add data/models/wxrd data/eval/wxpredict/cycles
+          git add data/models/wxrd data/eval/wxpredict/cycles data/eval/wxpredict/current_forecast
           if git diff --cached --quiet; then exit 0; fi
           git commit -m 'WXPredict candidate cycle and evidence [skip ci]'
           for attempt in 1 2 3; do

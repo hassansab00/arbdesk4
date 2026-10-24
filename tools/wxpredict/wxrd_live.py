@@ -282,15 +282,35 @@ def main(argv=None):
     # step's 3 minutes hold every variant, so the second gets what the first
     # left and defers the rest to the next tick
     deadline = time.time() + ROW_BUDGET_S
+    current_selected = False
+    try:
+        from wxpredict import current_registry
+        current_selected = current_registry.selected() is not None
+    except Exception as exc:
+        failed.append('wx_current')
+        print(f'current shadow metadata refused: {exc!r}',flush=True)
+    # Reserve work only when an accepted current-context artifact exists.
+    legacy_deadline = deadline-20 if current_selected else deadline
     for variant, (model_json, _) in VARIANTS.items():
         if not os.path.exists(model_json):
             print(f"{variant}: no model at {os.path.relpath(model_json, ROOT)}, skipped")
             continue
         try:                                   # one variant failing does not stop the next
-            print(variant, json.dumps(run(now, args.dry_run, variant, deadline), indent=1, default=str), flush=True)
+            print(variant, json.dumps(run(now, args.dry_run, variant, legacy_deadline), indent=1, default=str), flush=True)
         except (Exception, SystemExit) as exc:  # noqa: BLE001 - a refused model too (Codex on #398)
             failed.append(variant)
             print(f"{variant} failed: {exc!r}", flush=True)
+    if current_selected:
+        try:
+            from wxpredict import current_shadow
+            result=current_shadow.run(now,args.dry_run,
+                deadline=time.monotonic()+max(0,deadline-time.time()))
+            print('wx_current',json.dumps(result,default=str),flush=True)
+            if result.get('attention'):
+                failed.append('wx_current')
+        except (Exception,SystemExit) as exc:
+            failed.append('wx_current')
+            print(f'current shadow failed: {exc!r}',flush=True)
     return 1 if failed else 0
 
 

@@ -39,13 +39,18 @@ def pack(served, event, row, commit, committed_at, current=None):
                "history_commit": commit, "history_committed_at": committed_at,
                "row": vector, "row_sha256": hashlib.sha256(raw.encode()).hexdigest()}
     if current is not None:
-        from wxpredict import current_forecasts
-        if set(current) != set(current_forecasts.FIELDS):
-            raise ValueError("unexpected current-forecast predictors")
-        encoded = json.dumps(current, sort_keys=True, separators=(",", ":"), allow_nan=False)
-        payload.update(current_forecasts=current,
-                       current_forecasts_sha256=hashlib.sha256(encoded.encode()).hexdigest())
+        add_current(payload, current)
     return {"key": "|".join((POLICY, served["city_key"], str(served["target_date"]), served["checkpoint"])), "payload": payload}
+
+
+def add_current(payload, current):
+    """An independently hashed extension; the existing weather row stays frozen."""
+    from wxpredict import current_forecasts
+    if not isinstance(current, dict) or set(current) != set(current_forecasts.FIELDS):
+        raise ValueError("unexpected current-forecast predictors")
+    encoded = json.dumps(current, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    payload.update(current_forecasts=dict(current),
+                   current_forecasts_sha256=hashlib.sha256(encoded.encode()).hexdigest())
 
 
 def eligible(payload, captured_at):

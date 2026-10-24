@@ -26,7 +26,9 @@ def validate_blob(blob, expected):
     return raw
 
 
-def ensure(meta, root=None, force_remote=False):
+def ensure(meta, root=None, force_remote=False, budget_s=60):
+    if not 0 < budget_s <= 60:
+        raise ValueError('invalid candidate download time budget')
     url = meta["asset_url"]
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https" or parsed.netloc != "github.com" or not parsed.path.startswith("/" + REPO + "/releases/download/"):
@@ -40,11 +42,11 @@ def ensure(meta, root=None, force_remote=False):
             validate_blob(fh.read(), sha)
         return path
     started = time.monotonic()
-    with requests.get(url, stream=True, timeout=(10, 20)) as response:
+    with requests.get(url, stream=True, timeout=(min(10, budget_s/2), min(20, budget_s/2))) as response:
         response.raise_for_status()
         chunks, size = [], 0
         for chunk in response.iter_content(65536):
-            if time.monotonic() - started > 60:
+            if time.monotonic() - started > budget_s:
                 raise TimeoutError("candidate weight download exceeded its time budget")
             size += len(chunk)
             if size > MAX_COMPRESSED:
