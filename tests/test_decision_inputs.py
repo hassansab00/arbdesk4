@@ -67,3 +67,16 @@ def test_retries_and_engine_versions_cannot_replace_the_first_call(monkeypatch):
     assert not plan['ready'] and plan['recorded_first_calls'] == 1
     assert '2026-10-16:morning' not in plan['sparse_checkpoint_dates']
     assert '2026-10-16:noon' in plan['sparse_checkpoint_dates']
+
+
+def test_scoped_preflight_counts_all_requested_first_calls_and_does_not_require_morning(monkeypatch):
+    call,event,row=case()
+    noon=dict(call,checkpoint='noon',checkpoint_id=13)
+    payload=di.pack(noon,event,row,'a'*40,0)['payload']
+    def recorded(*args):
+        assert args[-1]==('noon',)
+        return [noon],{'13':payload}
+    monkeypatch.setattr(arrivals,'recorded',recorded)
+    result=arrivals.preflight('2026-10-16','2026-10-16',0,minimum_cities=1,checkpoints=('noon',))
+    assert result['ready'] and result['first_calls']==1 and result['checkpoints']==['noon']
+    assert arrivals.first_calls([call,noon],'2026-10-16','2026-10-16',('noon',))==[noon]

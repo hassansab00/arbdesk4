@@ -15,15 +15,15 @@ from wxpredict import current_forecasts, decision_inputs as inputs, features
 
 
 def case(current=True):
-    call = dict(checkpoint_id=12, city_key="city", target_date="2026-10-16", checkpoint="morning",
-                decided_at="2026-10-16T09:36:00Z", top_band_id="high",
+    call = dict(checkpoint_id=12, city_key="city", target_date="2026-10-16", checkpoint="noon",
+                decided_at="2026-10-16T12:36:00Z", top_band_id="high",
                 market={"low": {"bid": .2, "ask": .4}, "high": {"bid": .4, "ask": .6}})
     event = dict(city="city", date="2026-10-16", station="SYN", unit="C", event_id="event",
                  band_ids=["low", "high"], bands=[(None, 20.), (20., None)])
     row = dict.fromkeys(features.COLUMNS, 0)
     row.update(city_key="city", date="2026-10-16", source="venue", station="SYN", unit="C", n_bands=2,
                bands_lo=";20", bands_hi="20;", decision_utc=int(inputs.unix(call["decided_at"])),
-               local_hour=9, rmax_unit=18, rmax_c=18, fc_daily_source="fixture")
+               local_hour=12, rmax_unit=18, rmax_c=18, fc_daily_source="fixture")
     context = dict(zip(current_forecasts.FIELDS, [24, 24, 21.123456789, 21., 7, 22., 1.]))
     payload = inputs.pack(call, event, row, "a" * 40, 0, current=context if current else None)["payload"]
     attached = arrivals.attach(call, payload, event, {"winner": 1, "label_unit": 22.}, include_current=True)
@@ -54,19 +54,21 @@ def test_context_is_opt_in_and_missing_inputs_are_not_replayed():
 def test_coverage_keeps_all_first_calls_in_the_denominator():
     _, _, _, row = case()
     rows = [{**row, "city_key": str(city), "checkpoint": cp}
-            for cp in dataset.candidate_cycle.CHECKPOINTS for city in range(20)]
-    report = dataset.coverage(rows, {"first_calls": 125}, "2026-10-16", "2026-10-16")
+            for cp in dataset.CHECKPOINTS for city in range(20)]
+    denominator=len(rows)/.8
+    report = dataset.coverage(rows, {"first_calls": denominator}, "2026-10-16", "2026-10-16")
     assert report["coverage_ready"] and report["current_coverage"] == .8
     assert not report["changes_serving"]
-    assert not dataset.coverage(rows, {"first_calls": 126}, "2026-10-16", "2026-10-16")["coverage_ready"]
-    assert not dataset.coverage(rows[:-1], {"first_calls": 125}, "2026-10-16", "2026-10-16")["coverage_ready"]
+    assert not dataset.coverage(rows, {"first_calls": denominator+1}, "2026-10-16", "2026-10-16")["coverage_ready"]
+    assert not dataset.coverage(rows[:-1], {"first_calls": denominator}, "2026-10-16", "2026-10-16")["coverage_ready"]
+    assert report['checkpoints']==list(dataset.CHECKPOINTS) and 'morning' not in dataset.CHECKPOINTS
     assert dataset.complete({**row, "current_hours": 25, "expected_hours": 25})
     assert not dataset.complete({**row, "current_hours": 24, "expected_hours": 25})
     assert not dataset.complete({**row, "current_max_c": float("nan")})
     with pytest.raises(ValueError, match="duplicate"):
-        dataset.coverage(rows + [rows[0]], {"first_calls": 125}, "2026-10-16", "2026-10-16")
+        dataset.coverage(rows + [rows[0]], {"first_calls": denominator}, "2026-10-16", "2026-10-16")
     with pytest.raises(ValueError, match="denominator"):
-        dataset.coverage(rows, {"first_calls": 99}, "2026-10-16", "2026-10-16")
+        dataset.coverage(rows, {"first_calls": len(rows)-1}, "2026-10-16", "2026-10-16")
     with pytest.raises(ValueError, match="reversed"):
         dataset.coverage([], {"first_calls": 0}, "2026-10-17", "2026-10-16")
 
@@ -76,7 +78,7 @@ def test_export_is_stable_and_keeps_full_precision_and_provenance(tmp_path, monk
     table = tmp_path / "labels.csv.gz"
     table.write_bytes(gzip.compress(b"label fixture"))
     def build(*args, **kw):
-        assert kw == {"include_current": True}
+        assert kw == {"include_current": True,"checkpoints":dataset.CHECKPOINTS}
         return [row], {"first_calls": 2, "paired_rows": 1}
     monkeypatch.setattr(arrivals, "build", build)
     out = tmp_path / "dataset.csv.gz"

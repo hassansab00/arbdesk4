@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 import random
+import re
 from collections import defaultdict
 from zoneinfo import ZoneInfo
 
@@ -67,7 +68,13 @@ def seasonal_weight(date, target):
     return .25 + .75*(1+math.cos(2*math.pi*(d.timetuple().tm_yday-t.timetuple().tm_yday)/365.25))/2
 
 
-def eligible_rows(rows, as_of, model_version):
+def pool_version(model_version):
+    """Same weights and observation contract; station stays a local fit key."""
+    match = re.fullmatch(r'(.+:awc-routine-v1):[A-Z0-9]{4}', str(model_version))
+    return match[1] if match else model_version
+
+
+def eligible_rows(rows, as_of, model_version, *, pooled=False):
     cutoff = dt.datetime.combine(as_of, dt.time(), dt.timezone.utc)
     first = as_of-dt.timedelta(days=PRIORS['window_days'])
     selected = {}
@@ -80,7 +87,9 @@ def eligible_rows(rows, as_of, model_version):
             frozen, input_at = timestamp(r['frozen_at']), timestamp(r['input_as_of'])
             settled, received = timestamp(r['settled_at']), timestamp(r['label_received_at'])
             fit = dt.date.fromisoformat(ctx['model_fit_through'])
-            if (r['model_version'] != model_version or not ph or not first <= day < as_of
+            compatible = (pool_version(r['model_version']) == pool_version(model_version)
+                          if pooled else r['model_version'] == model_version)
+            if (not compatible or not ph or not first <= day < as_of
                 or fit >= day or not input_at <= frozen < end <= cutoff
                 or not frozen < settled <= received < cutoff):
                 continue
@@ -152,6 +161,7 @@ def _validation(rows, candidate, current):
 
 def fit(rows, cities, model_version, as_of, previous=()):
     as_of = dt.date.fromisoformat(str(as_of))
+    pool_rows = eligible_rows(rows, as_of, model_version, pooled=True)
     rows = eligible_rows(rows, as_of, model_version)
     split = as_of-dt.timedelta(days=PRIORS['validation_days'])
     previous = {(s['city_key'], s['phase']): s for s in previous if s['model_version'] == model_version}
@@ -162,8 +172,8 @@ def fit(rows, cities, model_version, as_of, previous=()):
             current = old.get('params', IDENTITY)
             # A rerun uses the same night's anchor, never takes another step.
             anchor = old.get('anchor', current) if old.get('as_of') == str(as_of) else current
-            pool = [r for r in rows if r['phase'] == ph and r['target_date'] < str(split)]
-            train = [r for r in pool if r['city_key'] == city]
+            pool = [r for r in pool_rows if r['phase'] == ph and r['target_date'] < str(split)]
+            train = [r for r in rows if r['phase'] == ph and r['target_date'] < str(split) and r['city_key'] == city]
             val = [r for r in rows if r['phase'] == ph and r['city_key'] == city and r['target_date'] >= str(split)]
             nt, nv = len({r['target_date'] for r in train}), len({r['target_date'] for r in val})
             state = dict(model_version=model_version, city_key=city, phase=ph, as_of=str(as_of),
@@ -171,9 +181,11 @@ def fit(rows, cities, model_version, as_of, previous=()):
                          version=old.get('version', POLICY+':identity'),
                          validated_through=old.get('validated_through'),
                          train_dates=nt, validation_dates=nv, train_rows=len(train), validation_rows=len(val),
+                         pool_model_version=pool_version(model_version),pool_rows=len(pool),
+                         pool_dates=len({r['target_date'] for r in pool}),
                          decision='held', reason='insufficient independent training/validation dates')
             state['input_digest'] = hashlib.sha256(json.dumps([(r['city_key'],r['target_date'],r['input_sha256'],r['winning_band_id'])
-                for r in rows if r['phase'] == ph], separators=(',',':')).encode()).hexdigest()
+                for r in pool_rows if r['phase'] == ph], separators=(',',':')).encode()).hexdigest()
             if (nt >= PRIORS['min_train_dates'] and nv >= PRIORS['min_validation_dates']
                 and len(pool) >= PRIORS['min_pool_rows'] and len({r['target_date'] for r in pool}) >= PRIORS['min_pool_dates']):
                 grid = [dict(temperature=t, tilt=b) for t in (.8,1.,1.2,1.5) for b in (-.2,0.,.2)]

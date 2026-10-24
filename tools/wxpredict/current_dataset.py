@@ -19,7 +19,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from wxpredict import arrival_dataset, candidate_cycle, current_forecasts, live_reader
 
-POLICY = "wx-current-context-v1"
+POLICY = "wx-current-context-v2"
+CHECKPOINTS = candidate_cycle.REMAINING_CHECKPOINTS
 EXTRA = ("checkpoint", "current_context_available", "recorded_checkpoint_id",
          "recorded_row_sha256", "recorded_current_sha256", *current_forecasts.FIELDS)
 COLUMNS = (*live_reader.COLUMNS, *EXTRA)
@@ -46,7 +47,7 @@ def coverage(rows, input_coverage, first, last):
     seen = set()
     for row in rows:
         key = row["date"], row["checkpoint"], row["city_key"]
-        if key in seen or key[0] not in dates or key[1] not in candidate_cycle.CHECKPOINTS:
+        if key in seen or key[0] not in dates or key[1] not in CHECKPOINTS:
             raise ValueError("duplicate or out-of-window research call")
         seen.add(key)
         group = groups[key[:2]]
@@ -58,7 +59,7 @@ def coverage(rows, input_coverage, first, last):
                 "paired": groups[(day, cp)]["paired"],
                 "with_context": groups[(day, cp)]["with_context"],
                 "complete_current_cities": len(groups[(day, cp)]["complete"])}
-               for day in dates for cp in candidate_cycle.CHECKPOINTS]
+               for day in dates for cp in CHECKPOINTS]
     n = sum(row["complete_current_cities"] for row in by_date)
     expected = input_coverage["first_calls"]
     if expected < len(rows):
@@ -67,6 +68,7 @@ def coverage(rows, input_coverage, first, last):
     sparse = [r["date"] + ":" + r["checkpoint"] for r in by_date
               if r["complete_current_cities"] < candidate_cycle.MIN_CITIES_PER_DATE]
     return {"policy": POLICY, "first_calls": expected, "paired_rows": len(rows),
+            "checkpoints":list(CHECKPOINTS),
             "complete_current_rows": n, "current_coverage": fraction,
             "minimum_cities_per_checkpoint_date": candidate_cycle.MIN_CITIES_PER_DATE,
             "minimum_coverage": candidate_cycle.MIN_COVERAGE,
@@ -100,7 +102,8 @@ def main(argv=None):
     through = live_reader.unix(args.through)
     if dt.date.fromisoformat(args.last) < dt.date.fromisoformat(args.first):
         raise ValueError("reversed dataset dates")
-    rows, inputs = arrival_dataset.build(args.first, args.last, args.labels_table, through, include_current=True)
+    rows, inputs = arrival_dataset.build(args.first, args.last, args.labels_table, through,
+                                        include_current=True,checkpoints=CHECKPOINTS)
     result = coverage(rows, inputs, args.first, args.last)
     result.update(dates=[args.first, args.last], through=args.through,
                   dataset_sha256=write(args.out, rows), uses_reconstructed_features=False)
