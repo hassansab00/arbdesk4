@@ -8,6 +8,27 @@ FIELDS = ("current_hours", "expected_hours", "current_max_c", "current_rest_max_
           "current_models_n", "current_models_mean_c", "current_models_sd_c")
 
 
+def receipts(record, event, decision, tz):
+    """Conservative receipt of each current snapshot contributing to this day."""
+    first,last = common.local_day_bounds(dt.date.fromisoformat(event['date']),tz)
+    out = {}
+    for kind in ('hourly0','models0'):
+        selected = []
+        for key,versions in record.kinds[kind].items():
+            if not key.startswith(event['city']+'|'):
+                continue
+            known = [(at,p) for at,p in versions if at<=decision]
+            if not known:
+                continue
+            at,payload = known[-1]
+            hours = payload.get('hours') if isinstance(payload,dict) else {key.split('|',1)[1]:payload}
+            if hours and any(first<=lr.features.unix_of(t)<last for t in hours):
+                selected.append(at)
+        if selected:
+            out[kind] = dt.datetime.fromtimestamp(min(selected),common.UTC).isoformat()
+    return out
+
+
 def context(record, event, decision, tz):
     first, last = common.local_day_bounds(dt.date.fromisoformat(event["date"]), tz)
     required = int((last - first) / 3600)

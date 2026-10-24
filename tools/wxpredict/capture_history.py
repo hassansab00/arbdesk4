@@ -19,7 +19,7 @@ def unix(value):
     return dt.datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
 
 
-def read(first, last, kinds=None, prefixes=None, root=None):
+def read(first, last, kinds=None, prefixes=None, root=None, receipt_kinds=()):
     """[(kind,key,captured_at,payload)] in [first,last), hash/count checked."""
     if first >= last:
         return []
@@ -53,7 +53,14 @@ def read(first, last, kinds=None, prefixes=None, root=None):
                 continue
             if kinds and r["kind"] not in kinds or prefixes and not any(r["key"].startswith(p) for p in prefixes):
                 continue
-            out.append((r["kind"], r["key"], r["captured_at"], r["payload"]))
+            available=r['captured_at']
+            if r['kind'] in receipt_kinds:
+                if not r.get('written_at'):
+                    continue  # unknown original availability stays unknown
+                available=max((r['captured_at'],r['written_at']),key=unix)
+                if not first<=unix(available)<last:
+                    continue
+            out.append((r["kind"], r["key"], available, r["payload"]))
         if count != entry["rows"]:
             raise ValueError("capture mirror row count mismatch")
     return out

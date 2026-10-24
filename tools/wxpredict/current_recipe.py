@@ -7,11 +7,17 @@ RECIPE = "remaining-current-context-v1"
 def features(df):
     import numpy as np
     import pandas as pd
-    from wxpredict import remaining, walkforward
+    from wxpredict import remaining, decision_inputs
     # Explicit source columns prevent provenance, checkpoint IDs, labels from
     # other recipes and future dataset additions becoming model predictors.
     base = df[list(contract.COLUMNS)].copy()
-    out = remaining.features(base, walkforward.features(base))
+    identifiers = {'event_id','source','city_key','station','date','unit','n_bands',
+                   'bands_lo','bands_hi','decision_utc','decision_local','fc_daily_source'}
+    weather = base[[k for k in contract.COLUMNS if k not in identifiers | decision_inputs.LABELS
+                    and not k.startswith('mkt_')]].copy()
+    weather['city'] = base.city_key.astype('category')
+    weather['is_f'] = (base.unit=='F').astype(int)
+    out = remaining.features(base, weather)
     for name in current_forecasts.FIELDS:
         out[name] = pd.to_numeric(df[name], errors="raise")
     per_step = np.where(base.unit.values == "F", 10 / 9, 1.0)

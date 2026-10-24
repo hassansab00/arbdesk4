@@ -17,7 +17,7 @@ from wxpredict import common, capture_history, decision_inputs as inputs, live_r
 CHECKPOINTS = ("morning", "noon", "prepeak_2h", "prepeak_1h", "postpeak_1h")
 
 
-def mirrored_rows(table, first, through, root=None):
+def mirrored_rows(table, first, through, root=None, where=None):
     root = root or common.ROOT
     folder = os.path.join(root, "data/mirror")
     with open(os.path.join(folder, "manifest.json")) as fh:
@@ -36,10 +36,14 @@ def mirrored_rows(table, first, through, root=None):
             blob = fh.read()
         if hashlib.sha256(blob).hexdigest() != entry["sha256"]:
             raise ValueError(table + " mirror hash mismatch")
-        part = list(csv.DictReader(io.StringIO(gzip.decompress(blob).decode())))
-        if len(part) != entry["rows"]:
+        count = 0
+        with gzip.GzipFile(fileobj=io.BytesIO(blob)) as raw:
+            for row in csv.DictReader(io.TextIOWrapper(raw)):
+                count += 1
+                if where is None or where(row):
+                    rows.append(row)
+        if count != entry["rows"]:
             raise ValueError(table + " mirror count mismatch")
-        rows.extend(part)
     return rows
 
 
