@@ -387,6 +387,32 @@ def test_engine_cannot_spend_the_paired_capture_reserve(world, monkeypatch):
     assert 'coverage_incomplete' not in detail
 
 
+def test_pool_wait_keeps_finalization_time_and_does_not_invent_time_after_expiry():
+    wait,reserve=tick.pricing_time_left(tick.BUDGET_S,60.)
+    assert wait+reserve+60==pytest.approx(tick.BUDGET_S)
+    assert reserve==tick.FINALIZE_RESERVE_S
+    wait,small=tick.pricing_time_left(45.,5.)
+    assert 8<=small<tick.FINALIZE_RESERVE_S and wait+small+5==45
+    assert tick.pricing_time_left(45.,50.)[0]==0
+
+
+def test_slow_freeze_still_leaves_engine_and_paired_capture_time(world,monkeypatch):
+    original=tick.freeze_rows
+    real=tick.time.monotonic
+    offset=[0.]
+    def slow(rows,failed):
+        result=original(rows,failed)
+        offset[0]+=140.  # simulated elapsed time, no sleep or real database write
+        return result
+    monkeypatch.setattr(tick.time,'monotonic',lambda:real()+offset[0])
+    monkeypatch.setattr(tick,'freeze_rows',slow)
+    detail=tick.run(now=at('2026-09-24T22:35'))
+    assert detail['written']==1 and detail['freeze_s']>=140
+    assert world['engine_kw'][0]['deadline']>tick.time.monotonic()
+    assert world['variants'][0][2]['deadline']>tick.time.monotonic()
+    assert world['logged'][0][1]=='ok'
+
+
 def test_a_checkpoint_already_held_is_not_priced(world):
     world["held"] = [{"city_key": "nyc", "target_date": "2026-09-25", "checkpoint": "d1_eve"}]
     out = tick.run(now=at("2026-09-24T22:35"))
@@ -434,7 +460,7 @@ def test_the_tick_is_one_job_with_no_matrix():
     assert len(jobs) == 1, "each job bills its own whole minutes"
     job = next(iter(jobs.values()))
     assert "strategy" not in job and "matrix" not in json.dumps(job)
-    assert job["timeout-minutes"] == 9, "includes the bounded collector, backstops and WXPredict shadow"
+    assert job["timeout-minutes"] == 10, "includes bounded finalization, collector backstops and WXPredict shadow"
     assert doc["concurrency"] == {"group": "tick", "cancel-in-progress": False}
 
 

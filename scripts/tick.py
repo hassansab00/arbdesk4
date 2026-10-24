@@ -59,7 +59,9 @@ GRACE_MIN = 75
 # P6.1, 19 Oct: after primary inference was added, the 18 Oct 18:36 run
 # took 116.3 s against 100 and lost both paired captures. This is an
 # operational allowance, not a prediction or calibration parameter.
-BUDGET_S = 140.0
+# P6.1: allow bounded checkpoint finalization and downstream captures after
+# primary inference. This is an operational cap, never a forecast parameter.
+BUDGET_S = 210.0
 # THE JOB'S DEADLINE BINDS THE TICK TOO (Codex on #353, 9 Oct). tick.py
 # starts after the checkout and the virtualenv, so BUDGET_S counted from its
 # own start can run past TICK_DEADLINE when the setup is slow: budget() takes
@@ -72,6 +74,7 @@ MIN_BUDGET_S = 45.0
 PRIMARY_DOWNSTREAM_RESERVE_S = 30.0
 # Outside the optional engine's deadline: paired captures and the final log.
 PAIRED_CAPTURE_RESERVE_S = 12.0
+FINALIZE_RESERVE_S = 80.0
 # S10 in shadow fetches at most this long per tick (about four cities' two
 # requests each, in parallel); the engine's own work keeps the rest.
 S10_FETCH_S = 8.0
@@ -478,6 +481,12 @@ def budget(deadline=None, now_epoch=None, budget_s=BUDGET_S):
     return max(MIN_BUDGET_S, min(budget_s, left))
 
 
+def pricing_time_left(budget_s, elapsed):
+    """Keep books, immutable writes and downstream stages outside pool waits."""
+    reserve=min(FINALIZE_RESERVE_S,max(8.,budget_s*.4))
+    return max(0.,budget_s-reserve-elapsed),reserve
+
+
 def run(now=None, budget_s=BUDGET_S, dry_run=False):
     import probability_engine as pe
     import current_ladder
@@ -590,7 +599,8 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
             continue
         futures[pool.submit(pe.process_city_day, city, target, unit, band_rows,
                             history_cache, floors, promoted, model_forecasts, False)] = (city, target)
-    remaining = max(1.0, budget_s - 8.0 - (time.monotonic() - t0))   # 8 s kept for books + write
+    remaining,reserve=pricing_time_left(budget_s,time.monotonic()-t0)
+    detail.update(pricing_wait_allowance_s=round(remaining,2),finalize_reserve_s=round(reserve,2))
     done, not_done = wait(futures, timeout=remaining)
     reprice_set = set(reprice)
     for f in not_done:
@@ -627,6 +637,8 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     results={key:(checkpoint_results[(*key,newest[key][0])] if key in newest
                   else predictive_primary.apply(*key,base)) for key,base in baseline_results.items()}
 
+    detail['pricing_done_s']=round(time.monotonic()-t0,2)
+    t_books=time.monotonic()
     token_rows = []
     priced_bands = [str(r["band_id"]) for rows, _, _ in results.values() for r in rows]
     for i in range(0, len(priced_bands), 100):
@@ -638,6 +650,7 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
         books = {}
         notes.append(f"CLOB books unavailable: {type(e).__name__}: {str(e)[:120]}")
 
+    detail['books_s']=round(time.monotonic()-t_books,2)
     out = []
     for city, target, name, local in due:
         res = checkpoint_results.get((city, target, name))
@@ -654,8 +667,10 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
         out.append(row)
 
     written = 0
+    t_freeze=time.monotonic()
     if out and not dry_run:
         written = freeze_rows(out, failed)
+    detail['freeze_s']=round(time.monotonic()-t_freeze,2)
 
     # Every ladder this tick priced, as the city-day's current prediction
     # (plan v2.3 P4.9): one per city-day, the newest winning, never appended.
