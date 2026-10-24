@@ -102,10 +102,10 @@ def fetch_batch(batch,now):
     hours=1
     for market,city in batch:
         spec=weather_outcomes.parse_rule_spec(market['rules_text'],market.get('unit'))
-        station,anchor=metar.source_parameters(spec.source_url)
+        station,anchor=metar.validate_window(spec.source_url,dt.date.fromisoformat(str(market['resolution_date'])),city['timezone'])
         end=dt.datetime.combine(dt.date.fromisoformat(str(market['resolution_date']))+dt.timedelta(days=1),
                                 dt.time(),ZoneInfo(city['timezone']))
-        if anchor!=end or spec.unit!=(market.get('unit') or city['unit']):
+        if spec.unit!=(market.get('unit') or city['unit']):
             raise ValueError('AWC contract date/unit does not match the market')
         stations[station]=(market,city)
         start=end-dt.timedelta(days=1)

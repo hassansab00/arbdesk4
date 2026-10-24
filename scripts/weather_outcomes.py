@@ -536,16 +536,16 @@ def collect_awc(session, spec, for_date, timezone, now):
     the independent venue verifier can record that contract payout instead.
     """
     try:
-        station, anchor = metar_contract.source_parameters(spec.source_url)
+        station, anchor = metar_contract.validate_window(spec.source_url, for_date, timezone)
         zone = ZoneInfo(timezone)
         local_end = dt.datetime.combine(for_date + dt.timedelta(days=1), dt.time(), zone)
-        if station != spec.station_id or anchor != local_end.astimezone(dt.timezone.utc):
+        if station != spec.station_id:
             raise ValueError("AWC source station/date does not match the target local day")
         if now < local_end:
             raise OutcomeError("not_final", "The station's local day has not ended")
         cutoff = wu_fallback_cutoff(for_date)
         check_at = min(now, cutoff).astimezone(dt.timezone.utc)
-        hours = max(1, math.ceil((check_at - anchor).total_seconds() / 3600) + 1)
+        hours = max(1, math.ceil((check_at - local_end).total_seconds() / 3600) + 1)
         check_url = "https://aviationweather.gov/api/data/metar?" + urlencode({
             "ids": station, "format": "raw", "date": check_at.isoformat().replace("+00:00", "Z"),
             "hours": hours})

@@ -10,6 +10,7 @@ import datetime as dt
 import re
 from decimal import Decimal, ROUND_FLOOR
 from urllib.parse import parse_qs, urlsplit
+from zoneinfo import ZoneInfo
 
 AWC_URL = re.compile(r"https://aviationweather\.gov/api/data/metar\?[^\s<>\\]+", re.I)
 HEADER = re.compile(r"^(?:(METAR|SPECI)\s+)?(?:COR\s+)?([A-Z0-9]{4})\s+(?:COR\s+)?(\d{2})(\d{2})(\d{2})Z(?:\s|$)")
@@ -31,12 +32,25 @@ def source_parameters(url: str) -> tuple[str, dt.datetime]:
             or set(q) != {"ids", "format", "date", "hours"}
             or any(len(v) != 1 for v in q.values())
             or not re.fullmatch(r"[A-Z0-9]{4}", q["ids"][0].upper())
-            or q["format"] != ["raw"] or q["hours"] != ["27"]):
+            or q["format"] != ["raw"]
+            or not re.fullmatch(r"(?:[1-9]|[1-3][0-9]|4[0-8])", q["hours"][0])):
         raise ValueError("Unsupported AWC contract source parameters")
     at = dt.datetime.fromisoformat(q["date"][0].replace("Z", "+00:00"))
     if at.tzinfo is None or at.utcoffset() != dt.timedelta(0):
         raise ValueError("AWC source date must specify UTC")
     return q["ids"][0].upper(), at
+
+
+def validate_window(url: str, for_date: dt.date, timezone: str):
+    """The saved source may include padding, but must cover the whole local day."""
+    station, anchor = source_parameters(url)
+    zone = ZoneInfo(timezone)
+    start = dt.datetime.combine(for_date, dt.time(), zone).astimezone(dt.timezone.utc)
+    end = dt.datetime.combine(for_date + dt.timedelta(days=1), dt.time(), zone).astimezone(dt.timezone.utc)
+    hours = int(parse_qs(urlsplit(url).query)['hours'][0])
+    if anchor < end or anchor - dt.timedelta(hours=hours) > start:
+        raise ValueError('AWC source window does not cover the target local day')
+    return station, anchor
 
 
 def temperature_c(report: str, routine_only: bool = True) -> Decimal | None:
@@ -75,6 +89,8 @@ def raw_reports(raw: bytes, station: str, reference: dt.datetime, *, strict=True
     the nearest month, including year transitions. No station substitution.
     """
     text = raw.decode("utf-8-sig").strip()
+    if sum(bool(line.strip()) for line in text.splitlines()) >= 400:
+        raise ValueError('AWC response reached its documented result limit')
     rows = {}
     conflicted=set()
     for line in text.splitlines():

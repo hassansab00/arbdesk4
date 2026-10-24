@@ -31,3 +31,16 @@ their sample, forward-validation and bounded-update gates. Model artifacts are
 not refitted by this compatibility update. Forward accuracy must be measured on
 subsequent venue-settled frozen calls; source compatibility alone is not evidence
 of improved accuracy.
+
+Contract source windows can include padding after local midnight. The parser
+accepts bounded raw-METAR windows only when they cover the entire station-local
+day, and still excludes every reading outside that day. Publication checks start
+from local day-end independently of the source URL's padded anchor.
+
+The existing edge calculation adds a bounded recovery pass for missing or stale
+books on priceable markets. It batches public CLOB requests, checks token and
+condition identity, retries only missing tokens, and appends full YES/NO depth
+without replacing previous snapshots. The edge reader reloads acknowledged rows
+so generated snapshot identities remain attached to decisions. The normal book
+collector and schedules stay active. The pipeline panel reads the recovery
+receipt separately; incomplete recoveries remain attention states.
