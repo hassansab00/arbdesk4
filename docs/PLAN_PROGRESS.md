@@ -3,6 +3,27 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Handoff — 25 Oct ~11:15Z (session paused by Hassan)
+
+#434 merged (`e9c46e7`): the da_floor:v1 first look, the live_capture prune
+check, the weekly-refit research and the display-test date pin. Open, in this
+order:
+- **Same-day YES pilot evaluator:** `tools/wxpredict/sdyes_forward.py --to
+  <last settled date>` on the mirrored record from 13 Oct, counts only
+  (decisions, skips by reason, valid dates) until the first look at 20 valid
+  dates (`docs/SAME_DAY_YES_PREREG.md`). Not run yet; 13 Oct's books were
+  whole (above, Same-day YES pilot row).
+- **WP3b parity, 13-15 Oct** (live reader rule rows against the table, then
+  arrival against rule): not run yet; its trigger fired late (25 Oct).
+- **Weekly refit of wxrd-v3** (`tools/wxpredict/wxrd_retrain.py`, unwired):
+  waits on Hassan. Since #409 v3 serves noon onwards, so a refit changes the
+  served model (G5), and the model files' home (repository, about 80 MB a
+  week, or Release assets) is his choice.
+- **Pre-registered looks already scheduled** (they wake this session and count
+  dates first): sd_corr:v1 26 Oct 10:30Z (`trig_014487X2FuvGvAtbTfgzBuhf`),
+  the P3.10 ensemble record test 29 Oct 10:30Z (`trig_01KbKRaWUvyM5rVwzkZLZvim`),
+  da_floor:v1 second look 14 Nov 10:30Z (`trig_01D6fCuEL6KDsHRe1EVPmMeq`).
+
 ## da_floor:v1 first look — 25 Oct: insufficient evidence
 
 The pre-registered first look (`docs/P11_DA_FLOOR_PREREG.md`), run when 21
