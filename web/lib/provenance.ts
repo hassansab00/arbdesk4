@@ -1696,8 +1696,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "markets",
     "weather_observations",
     "bands",
-    "paper_resolution_evidence",
-    "resolution_verdicts"
+    "resolution_verdicts",
+    "paper_resolution_evidence"
   ],
   "v_mirror_book_kept": [
     "bands",
@@ -2039,8 +2039,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_venue_market_resolution": [
     "bands",
     "markets",
-    "paper_resolution_evidence",
-    "resolution_verdicts"
+    "resolution_verdicts",
+    "paper_resolution_evidence"
   ],
   "v_venue_truth": [
     "bands",
