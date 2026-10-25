@@ -3,6 +3,43 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## da_floor:v1 first look — 25 Oct: insufficient evidence
+
+The pre-registered first look (`docs/P11_DA_FLOOR_PREREG.md`), run when 21
+target dates had scored rows (4-24 Oct; 4,666 rows, 117 left out with no graded
+outcome yet). Read-only query, its result committed with the md5 the database
+computed (`data/eval/p11/da_floor_first_look_2026-10-25/`), scored by
+`tools/p11_da_floor_look.py` with fec-v1's `cluster_boot` (seed 11, 1,000).
+- Pooled log-loss gain, served minus `da_floor`: +0.0020, 90% -0.0569 to
+  +0.0655. Morning +0.1746 (+0.1134 to +0.2405); post-peak -0.1067 (-0.1861 to
+  -0.0180, wholly below 0). Top-1: served 51.48%, `da_floor` 48.26% (below the
+  served Wilson 95% lower end, 50.04%).
+- **Verdict: insufficient evidence.** Not accepted (rules 1-3 fail), not
+  rejected (the pooled interval includes 0). The second and last look is at 40
+  dates, about 13 Nov (`trig_01D6fCuEL6KDsHRe1EVPmMeq`, 14 Nov 10:30Z, counts
+  first). Nothing changes in serving.
+- Descriptive: the market is ahead of both (log loss about +0.51 for each,
+  4,122 rows with a whole book). From 17 Oct the served noon-to-post-peak calls
+  are WXPredict's frozen v3 (#409, 1,274 of 4,911 first calls).
+
+## live_capture archive and prune — verified 25 Oct (the 15 Oct check, late)
+
+The check set for the first prune (15 Oct 02:36Z run) reached this session
+only on 25 Oct, so it covers all eleven nights since. Read-only:
+- **Archive files:** 11 in `data/archive/live_capture/`, read back from the
+  repository: 12 Oct 08:36Z to 23 Oct 23:37Z, back to back (each file starts
+  at the next tick after the last ends). Rows per file 17,428-27,724.
+- **Prune:** every `archive_live_capture` log row, 15-25 Oct, status ok, with
+  deleted equal to the expected rows and to the file's read-back count
+  (15 Oct: 18,068 of 18,068, older than 13 Oct 02:39:55Z; from 16 Oct the cut
+  is 00:00 UTC of the day before the run, so two days are kept).
+- **Now:** `live_capture` holds 34,799 rows, 24 Oct 00:36Z to 25 Oct 10:39Z,
+  27 MB, so nothing at or after the cut was touched.
+- **Reclaim:** each log row reports `ad4_reclaim_after_archive_live_capture`
+  requested ok. Its run is not in `cron.job_run_details` under that name (the
+  one-off job is not listed after it runs); the run itself and the 03:05
+  backstop's runs were not verified here.
+
 ## Contract-authorized Weather Underground fallback — 22 Oct, release checks pending
 
 The final-weather collector recognizes the saved NOAA-to-Weather-Underground
