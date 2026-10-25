@@ -1,0 +1,658 @@
+{
+ "contract": "docs/P11_DA_FLOOR_PREREG.md",
+ "scored_under": "fec-v1",
+ "aggregates": {
+  "file": "aggregates.txt",
+  "md5": "7a1dff736d20affe227968329fcb4778",
+  "bytes": 12303
+ },
+ "bootstrap": {
+  "seed": 11,
+  "resamples": 1000
+ },
+ "pooled": {
+  "rows": 4666,
+  "dates": 21,
+  "log_loss_gain_served_minus_da_floor": {
+   "mean": 0.002,
+   "ci90": [
+    -0.0569,
+    0.0655
+   ],
+   "ci95": [
+    -0.0687,
+    0.0736
+   ],
+   "dates": 21,
+   "n": 4666
+  },
+  "brier_gain_served_minus_da_floor": {
+   "mean": -0.0126,
+   "ci90": [
+    -0.0284,
+    0.0043
+   ],
+   "ci95": [
+    -0.0306,
+    0.007
+   ],
+   "dates": 21,
+   "n": 4666
+  },
+  "top1_served": {
+   "k": 2401,
+   "rate": 0.5146,
+   "wilson95": [
+    0.5002,
+    0.5289
+   ]
+  },
+  "top1_da_floor": {
+   "k": 2252,
+   "rate": 0.4826,
+   "wilson95": [
+    0.4683,
+    0.497
+   ]
+  },
+  "market_descriptive": {
+   "rows_book_whole": 4122,
+   "top1_market": 0.6594,
+   "log_loss_served_minus_market": {
+    "mean": 0.5073,
+    "ci90": [
+     0.439,
+     0.5765
+    ],
+    "ci95": [
+     0.4231,
+     0.5894
+    ],
+    "dates": 21,
+    "n": 4122
+   },
+   "log_loss_da_floor_minus_market": {
+    "mean": 0.5056,
+    "ci90": [
+     0.4494,
+     0.5607
+    ],
+    "ci95": [
+     0.4377,
+     0.5741
+    ],
+    "dates": 21,
+    "n": 4122
+   }
+  },
+  "rd1_descriptive": {
+   "rows_with_rd1": 4550,
+   "top1_rd1": 0.5127,
+   "log_loss_served_minus_rd1": {
+    "mean": 0.0994,
+    "ci90": [
+     0.0368,
+     0.1647
+    ],
+    "ci95": [
+     0.0229,
+     0.1792
+    ],
+    "dates": 21,
+    "n": 4550
+   },
+   "log_loss_da_floor_minus_rd1": {
+    "mean": 0.1063,
+    "ci90": [
+     0.0596,
+     0.1488
+    ],
+    "ci95": [
+     0.0503,
+     0.1563
+    ],
+    "dates": 21,
+    "n": 4550
+   }
+  }
+ },
+ "per_checkpoint": {
+  "morning": {
+   "rows": 926,
+   "dates": 21,
+   "log_loss_gain_served_minus_da_floor": {
+    "mean": 0.1746,
+    "ci90": [
+     0.1134,
+     0.2405
+    ],
+    "ci95": [
+     0.0962,
+     0.2556
+    ],
+    "dates": 21,
+    "n": 926
+   },
+   "brier_gain_served_minus_da_floor": {
+    "mean": 0.0384,
+    "ci90": [
+     0.0192,
+     0.0587
+    ],
+    "ci95": [
+     0.0154,
+     0.0617
+    ],
+    "dates": 21,
+    "n": 926
+   },
+   "top1_served": {
+    "k": 346,
+    "rate": 0.3737,
+    "wilson95": [
+     0.3431,
+     0.4053
+    ]
+   },
+   "top1_da_floor": {
+    "k": 363,
+    "rate": 0.392,
+    "wilson95": [
+     0.3611,
+     0.4238
+    ]
+   },
+   "market_descriptive": {
+    "rows_book_whole": 818,
+    "top1_market": 0.5159,
+    "log_loss_served_minus_market": {
+     "mean": 0.6241,
+     "ci90": [
+      0.5532,
+      0.6968
+     ],
+     "ci95": [
+      0.5429,
+      0.7158
+     ],
+     "dates": 21,
+     "n": 818
+    },
+    "log_loss_da_floor_minus_market": {
+     "mean": 0.4394,
+     "ci90": [
+      0.3792,
+      0.4982
+     ],
+     "ci95": [
+      0.3684,
+      0.5085
+     ],
+     "dates": 21,
+     "n": 818
+    }
+   },
+   "rd1_descriptive": {
+    "rows_with_rd1": 910,
+    "top1_rd1": 0.3549,
+    "log_loss_served_minus_rd1": {
+     "mean": 0.1508,
+     "ci90": [
+      0.0863,
+      0.217
+     ],
+     "ci95": [
+      0.0753,
+      0.2332
+     ],
+     "dates": 21,
+     "n": 910
+    },
+    "log_loss_da_floor_minus_rd1": {
+     "mean": -0.0137,
+     "ci90": [
+      -0.0681,
+      0.0369
+     ],
+     "ci95": [
+      -0.0796,
+      0.046
+     ],
+     "dates": 21,
+     "n": 910
+    }
+   }
+  },
+  "noon": {
+   "rows": 934,
+   "dates": 21,
+   "log_loss_gain_served_minus_da_floor": {
+    "mean": -0.0,
+    "ci90": [
+     -0.0678,
+     0.072
+    ],
+    "ci95": [
+     -0.0867,
+     0.086
+    ],
+    "dates": 21,
+    "n": 934
+   },
+   "brier_gain_served_minus_da_floor": {
+    "mean": -0.0163,
+    "ci90": [
+     -0.0345,
+     0.002
+    ],
+    "ci95": [
+     -0.0379,
+     0.0052
+    ],
+    "dates": 21,
+    "n": 934
+   },
+   "top1_served": {
+    "k": 439,
+    "rate": 0.47,
+    "wilson95": [
+     0.4382,
+     0.5021
+    ]
+   },
+   "top1_da_floor": {
+    "k": 408,
+    "rate": 0.4368,
+    "wilson95": [
+     0.4053,
+     0.4688
+    ]
+   },
+   "market_descriptive": {
+    "rows_book_whole": 830,
+    "top1_market": 0.6265,
+    "log_loss_served_minus_market": {
+     "mean": 0.5151,
+     "ci90": [
+      0.4307,
+      0.5978
+     ],
+     "ci95": [
+      0.4162,
+      0.608
+     ],
+     "dates": 21,
+     "n": 830
+    },
+    "log_loss_da_floor_minus_market": {
+     "mean": 0.5171,
+     "ci90": [
+      0.4526,
+      0.5819
+     ],
+     "ci95": [
+      0.4409,
+      0.5915
+     ],
+     "dates": 21,
+     "n": 830
+    }
+   },
+   "rd1_descriptive": {
+    "rows_with_rd1": 912,
+    "top1_rd1": 0.4923,
+    "log_loss_served_minus_rd1": {
+     "mean": 0.1395,
+     "ci90": [
+      0.0638,
+      0.2214
+     ],
+     "ci95": [
+      0.0522,
+      0.2325
+     ],
+     "dates": 21,
+     "n": 912
+    },
+    "log_loss_da_floor_minus_rd1": {
+     "mean": 0.1497,
+     "ci90": [
+      0.1041,
+      0.1949
+     ],
+     "ci95": [
+      0.0974,
+      0.2056
+     ],
+     "dates": 21,
+     "n": 912
+    }
+   }
+  },
+  "prepeak_2h": {
+   "rows": 934,
+   "dates": 21,
+   "log_loss_gain_served_minus_da_floor": {
+    "mean": -0.0349,
+    "ci90": [
+     -0.1081,
+     0.0396
+    ],
+    "ci95": [
+     -0.1194,
+     0.0513
+    ],
+    "dates": 21,
+    "n": 934
+   },
+   "brier_gain_served_minus_da_floor": {
+    "mean": -0.0249,
+    "ci90": [
+     -0.0443,
+     -0.0031
+    ],
+    "ci95": [
+     -0.0489,
+     0.0016
+    ],
+    "dates": 21,
+    "n": 934
+   },
+   "top1_served": {
+    "k": 408,
+    "rate": 0.4368,
+    "wilson95": [
+     0.4053,
+     0.4688
+    ]
+   },
+   "top1_da_floor": {
+    "k": 350,
+    "rate": 0.3747,
+    "wilson95": [
+     0.3443,
+     0.4062
+    ]
+   },
+   "market_descriptive": {
+    "rows_book_whole": 828,
+    "top1_market": 0.5882,
+    "log_loss_served_minus_market": {
+     "mean": 0.4863,
+     "ci90": [
+      0.4021,
+      0.5744
+     ],
+     "ci95": [
+      0.3829,
+      0.5857
+     ],
+     "dates": 21,
+     "n": 828
+    },
+    "log_loss_da_floor_minus_market": {
+     "mean": 0.5214,
+     "ci90": [
+      0.4566,
+      0.5821
+     ],
+     "ci95": [
+      0.4443,
+      0.5962
+     ],
+     "dates": 21,
+     "n": 828
+    }
+   },
+   "rd1_descriptive": {
+    "rows_with_rd1": 914,
+    "top1_rd1": 0.4508,
+    "log_loss_served_minus_rd1": {
+     "mean": 0.0867,
+     "ci90": [
+      0.0032,
+      0.1718
+     ],
+     "ci95": [
+      -0.0169,
+      0.1905
+     ],
+     "dates": 21,
+     "n": 914
+    },
+    "log_loss_da_floor_minus_rd1": {
+     "mean": 0.1364,
+     "ci90": [
+      0.067,
+      0.1958
+     ],
+     "ci95": [
+      0.0548,
+      0.2055
+     ],
+     "dates": 21,
+     "n": 914
+    }
+   }
+  },
+  "prepeak_1h": {
+   "rows": 933,
+   "dates": 21,
+   "log_loss_gain_served_minus_da_floor": {
+    "mean": -0.0209,
+    "ci90": [
+     -0.0864,
+     0.0461
+    ],
+    "ci95": [
+     -0.1053,
+     0.0576
+    ],
+    "dates": 21,
+    "n": 933
+   },
+   "brier_gain_served_minus_da_floor": {
+    "mean": -0.0115,
+    "ci90": [
+     -0.0321,
+     0.0085
+    ],
+    "ci95": [
+     -0.0349,
+     0.0111
+    ],
+    "dates": 21,
+    "n": 933
+   },
+   "top1_served": {
+    "k": 475,
+    "rate": 0.5091,
+    "wilson95": [
+     0.4771,
+     0.5411
+    ]
+   },
+   "top1_da_floor": {
+    "k": 424,
+    "rate": 0.4544,
+    "wilson95": [
+     0.4227,
+     0.4865
+    ]
+   },
+   "market_descriptive": {
+    "rows_book_whole": 826,
+    "top1_market": 0.6731,
+    "log_loss_served_minus_market": {
+     "mean": 0.4933,
+     "ci90": [
+      0.4076,
+      0.581
+     ],
+     "ci95": [
+      0.3894,
+      0.5974
+     ],
+     "dates": 21,
+     "n": 826
+    },
+    "log_loss_da_floor_minus_market": {
+     "mean": 0.514,
+     "ci90": [
+      0.4528,
+      0.5739
+     ],
+     "ci95": [
+      0.4378,
+      0.585
+     ],
+     "dates": 21,
+     "n": 826
+    }
+   },
+   "rd1_descriptive": {
+    "rows_with_rd1": 916,
+    "top1_rd1": 0.4967,
+    "log_loss_served_minus_rd1": {
+     "mean": 0.0655,
+     "ci90": [
+      -0.0114,
+      0.1401
+     ],
+     "ci95": [
+      -0.0249,
+      0.1549
+     ],
+     "dates": 21,
+     "n": 916
+    },
+    "log_loss_da_floor_minus_rd1": {
+     "mean": 0.0979,
+     "ci90": [
+      0.0508,
+      0.1443
+     ],
+     "ci95": [
+      0.0409,
+      0.1549
+     ],
+     "dates": 21,
+     "n": 916
+    }
+   }
+  },
+  "postpeak_1h": {
+   "rows": 939,
+   "dates": 21,
+   "log_loss_gain_served_minus_da_floor": {
+    "mean": -0.1067,
+    "ci90": [
+     -0.1861,
+     -0.018
+    ],
+    "ci95": [
+     -0.2028,
+     -0.0001
+    ],
+    "dates": 21,
+    "n": 939
+   },
+   "brier_gain_served_minus_da_floor": {
+    "mean": -0.048,
+    "ci90": [
+     -0.0775,
+     -0.0178
+    ],
+    "ci95": [
+     -0.0818,
+     -0.0136
+    ],
+    "dates": 21,
+    "n": 939
+   },
+   "top1_served": {
+    "k": 733,
+    "rate": 0.7806,
+    "wilson95": [
+     0.753,
+     0.8059
+    ]
+   },
+   "top1_da_floor": {
+    "k": 707,
+    "rate": 0.7529,
+    "wilson95": [
+     0.7243,
+     0.7794
+    ]
+   },
+   "market_descriptive": {
+    "rows_book_whole": 820,
+    "top1_market": 0.8939,
+    "log_loss_served_minus_market": {
+     "mean": 0.4179,
+     "ci90": [
+      0.3375,
+      0.5072
+     ],
+     "ci95": [
+      0.3183,
+      0.5286
+     ],
+     "dates": 21,
+     "n": 820
+    },
+    "log_loss_da_floor_minus_market": {
+     "mean": 0.5357,
+     "ci90": [
+      0.4692,
+      0.5952
+     ],
+     "ci95": [
+      0.4616,
+      0.6098
+     ],
+     "dates": 21,
+     "n": 820
+    }
+   },
+   "rd1_descriptive": {
+    "rows_with_rd1": 898,
+    "top1_rd1": 0.7728,
+    "log_loss_served_minus_rd1": {
+     "mean": 0.0544,
+     "ci90": [
+      -0.0262,
+      0.1465
+     ],
+     "ci95": [
+      -0.0402,
+      0.1619
+     ],
+     "dates": 21,
+     "n": 898
+    },
+    "log_loss_da_floor_minus_rd1": {
+     "mean": 0.1618,
+     "ci90": [
+      0.1156,
+      0.2076
+     ],
+     "ci95": [
+      0.1095,
+      0.2193
+     ],
+     "dates": 21,
+     "n": 898
+    }
+   }
+  }
+ },
+ "rule": {
+  "1_pooled_ci90_above_0_over_20_dates": false,
+  "2_no_checkpoint_ci90_wholly_below_0": false,
+  "3_da_floor_top1_not_below_served_wilson95": false,
+  "pooled_ci90_wholly_below_0": false,
+  "verdict": "insufficient evidence"
+ }
+}

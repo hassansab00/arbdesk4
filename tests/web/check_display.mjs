@@ -83,8 +83,10 @@ t("days ahead is what a trader says", () => {
 });
 t("a city peak hour shows both clocks", () => {
   // Chicago's 15:00 peak, read from Beirut. CDT is UTC-5 in September,
-  // Beirut UTC+3 - eight hours, so 23:00 the same evening.
-  const s = T.fmtCityHour(15, "America/Chicago", "Asia/Beirut");
+  // Beirut UTC+3 - eight hours, so 23:00 the same evening. The date is given:
+  // left to today, the gap is seven hours from Beirut's last Sunday of October
+  // until Chicago leaves CDT, and the assertion failed on 25 Oct 2026.
+  const s = T.fmtCityHour(15, "America/Chicago", "Asia/Beirut", "2026-09-15");
   assert.ok(s.startsWith("15:00"), s);
   assert.ok(s.includes("23:00"), s);
   assert.ok(s.includes("your time"), s);

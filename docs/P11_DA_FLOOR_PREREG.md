@@ -124,3 +124,56 @@ served one only if all of these hold:
 
 ## Result
 (appended below after the first look; nothing above changes)
+
+### First look, 25 Oct 2026 (~11:00Z): insufficient evidence
+
+Run as fixed above, read-only against production
+(`data/eval/p11/da_floor_first_look_2026-10-25/`: `query.sql`, its result
+`aggregates.txt` (md5 7a1dff73…, equal to the md5 the database computed),
+`result.json` by `tools/p11_da_floor_look.py`, tested in
+`tests/test_p11_da_floor_look.py`).
+
+**Rows.** 4,783 `da_floor:v1` rows at the five checkpoints, target dates
+4-25 Oct. Scored: **4,666 rows on 21 target dates (4-24 Oct)**; both ladders hold the same buckets on every scored row. Left
+out: 117 rows with no graded outcome yet (18 Oct and 25 Oct). None left out for
+a missing day-ahead call, a calibrated served ladder or a winner off the
+ladder. Tick time-outs before the capture were not counted here (the tick's
+logs).
+
+**The rule** (log loss, served minus `da_floor`; 90% date-clustered interval,
+seed 11, 1,000 resamples; 95% beside it):
+
+| | rows | gain | 90% | 95% | top-1 served | top-1 `da_floor` |
+|---|---|---|---|---|---|---|
+| pooled | 4,666 | +0.0020 | -0.0569 to +0.0655 | -0.0687 to +0.0736 | 51.46% (50.02-52.89) | 48.26% (46.83-49.70) |
+| morning | 926 | +0.1746 | +0.1134 to +0.2405 | +0.0962 to +0.2556 | 37.37% | 39.20% |
+| noon | 934 | -0.0000 | -0.0678 to +0.0720 | -0.0867 to +0.0860 | 47.00% | 43.68% |
+| prepeak_2h | 934 | -0.0349 | -0.1081 to +0.0396 | -0.1194 to +0.0513 | 43.68% | 37.47% |
+| prepeak_1h | 933 | -0.0209 | -0.0864 to +0.0461 | -0.1053 to +0.0576 | 50.91% | 45.44% |
+| postpeak_1h | 939 | -0.1067 | -0.1861 to -0.0180 | -0.2028 to -0.0001 | 78.06% | 75.29% |
+
+- Rule 1 fails: the pooled 90% interval includes 0.
+- Rule 2 fails: post-peak's 90% interval lies wholly below 0 (`da_floor` worse).
+- Rule 3 fails: `da_floor`'s top-1, 48.26%, is below the served top-1's Wilson
+  95% lower end, 50.02%.
+- Not rejected: the pooled interval is not wholly below 0.
+
+**Verdict: insufficient evidence.** One more look at 40 scored dates, then the
+test stops; nothing is looked at in between. Brier (secondary), pooled
+served minus `da_floor`: -0.0126 (90% -0.0284 to +0.0043).
+
+**Beside the rule, descriptive.** The market, on the 4,122 rows with a whole
+book: top-1 65.94%; log loss served minus market +0.5073 (90% +0.4390 to
++0.5765), `da_floor` minus market +0.5056 (+0.4494 to +0.5607). S10 `rd1`
+(`rd1:2026-09-25:f5372ebb05`), on 4,550 rows: top-1 51.27%; served minus `rd1`
++0.0994 (+0.0368 to +0.1647), `da_floor` minus `rd1` +0.1063 (+0.0596 to
++0.1488). Neither beats the market; this rule does not ask it to.
+
+**The served engine changed during the window.** Every served first call
+carries its `engine_version` (the deployed commit): 151 distinct versions over
+the 4,911 first calls at these checkpoints, 4-24 Oct (47 cities). The one change of the same-day path itself: from 17 Oct
+(15:37Z, first call) the served noon, prepeak_2h, prepeak_1h and postpeak_1h
+calls are WXPredict's frozen v3 (`model_path` `wxpredict`, `wxrd3-horizons-v1`,
+#409): 1,274 of those 4,911 first calls, 17-24 Oct; morning stayed on
+the forecast path. The comparison is with the ladder actually served, as
+fixed above.
