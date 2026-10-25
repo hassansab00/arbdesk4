@@ -1,27 +1,7 @@
--- Keep venue proof semantics and the live outcome check used by the freeze
--- trigger. Resolve only this band's exact condition/YES/NO identity rather than
--- aggregating the entire verdict ledger for every city/checkpoint insert.
+-- A city/checkpoint outcome check must not aggregate unrelated verdicts.
+-- Keep the shared band view unchanged: its historical bulk joins need the
+-- original global aggregation. Only scope the market view's proof lookups.
 -- No rows, archives, grants, schedules, or prediction guards are changed.
--- The same scoped aggregation also removes global proof sorts for callers of
--- the shared band view, including materialized page-cache refreshes.
-create or replace view public.v_venue_band_resolution
-with (security_invoker = true)
-as
-select b.band_id,b.market_id,b.condition_id,b.token_yes,b.token_no,
- r.evidence_count,r.confirmed_at,
- case when r.winner_count=1 then r.winning_token end winning_token,
- case when r.winner_count=1 then r.winning_token=b.token_yes end settled_yes,
- case when r.winner_count=1 then 'confirmed' else 'disputed' end resolution_state
-from public.bands b
-cross join lateral (
- select count(*)::integer evidence_count,
- count(distinct e.winning_token)::integer winner_count,
- max(e.captured_at) confirmed_at,min(e.winning_token) winning_token
- from public.resolution_verdicts e
- where e.condition_id=b.condition_id and e.token_yes=b.token_yes and e.token_no=b.token_no
- having count(*)>0
-) r;
-
 create or replace view public.v_venue_market_resolution
 with (security_invoker = true)
 as

@@ -1,26 +1,28 @@
-# Scoped settlement proof lookups
+# Scoped market settlement lookups
 
-The band and market resolution views previously joined a global aggregation of
-settlement proofs. A lookup for one city and date could therefore aggregate
-unrelated historical proofs before returning the selected market.
+A city/day settlement check previously joined an aggregation of unrelated
+historical band verdicts. The market resolution view now aggregates proofs
+within each selected band's exact condition, YES token and NO token, using
+the existing verdict primary key.
 
-The replacement uses a lateral aggregate scoped to each selected band's exact
-condition, YES token and NO token. It uses the existing verdict primary key.
-The market view keeps the original rules for missing bands, incomplete evidence,
+The market view retains its columns, invoker security, grants, latest
+confirmation time and original rules for missing bands, incomplete evidence,
 conflicting proofs, and confirmation of every band with exactly one YES winner.
-The band view retains its original columns, repeated-proof counts and latest
-confirmation time.
+The shared band resolution view remains unchanged, so its historical bulk
+readers keep their existing aggregation plan.
 
-This migration replaces view definitions only. It does not change source rows,
-archive behavior, schedules, grants, or the freeze trigger. Both views remain
-security invokers. Outcome checks continue to use live venue evidence.
+The migration changes only the market view definition. It does not change
+source rows, archive behavior, schedules, grants, or the freeze trigger.
+Outcome checks continue to use live venue evidence.
 
-The database contract test compares against independent copies of both original
-view definitions. It covers absent bands and proofs, repeated proofs, disputes,
-incorrect token identities, zero or multiple YES winners, timestamps,
-idempotent application, reader roles and invoker row-level security.
+The database contract compares against independent original view definitions.
+It covers absent bands and proofs, repeated proofs, disputes, incorrect token
+identities, zero or multiple YES winners, timestamps, rerunnable DDL, reader
+roles and invoker row-level security.
 
-Before application, compare old and replacement results in a single REPEATABLE
-READ snapshot with EXCEPT ALL in both directions. After application, verify the
-actual reader roles and existing refresh paths. Query-level improvements do not
-establish that a hosting provider's project-wide I/O budget has recovered.
+Before application, compare old and replacement results in one REPEATABLE READ
+snapshot with EXCEPT ALL in both directions. After application, check actual
+reader roles and existing refresh paths. Query-level improvements do not
+establish that a provider's project-wide I/O budget has recovered.
+Check the full cache workload as well as individual lookups: a scoped query
+plan can improve one caller while making a historical bulk join more expensive.
