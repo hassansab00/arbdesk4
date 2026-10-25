@@ -46,7 +46,7 @@ function Table({ scores, label }: { scores: CheckpointScore[]; label: string }) 
       <tbody>
         {scores.map((s) => (
           <tr key={s.checkpoint} className={`border-b border-border/40 ${s.afterPeak ? "text-muted" : ""}`}>
-            <td className="p-2">{MOMENT[s.checkpoint] ?? s.checkpoint}{s.afterPeak ? " (answered)" : ""}</td>
+            <td className="p-2">{MOMENT[s.checkpoint] ?? s.checkpoint}{s.afterPeak ? " (later information)" : ""}</td>
             <td className="p-2 text-right font-mono">{s.days}</td>
             <td className="p-2 text-right font-mono">{pct(s.hitRate)} <span className="text-muted">({s.hits})</span></td>
             <td className="p-2 text-right font-mono">{pct(s.claimed)}</td>
@@ -93,8 +93,9 @@ export default function CheckpointScoreboard({ rows, cityKey, cityName, loading,
       lower is better. The market is the book at the same moment: each bucket&apos;s mid, or its last
       trade inside a one-sided quote, renormalised over the buckets we priced, and scored only on
       days the book priced all of them; our scores beside it are on those same days. The Brier is
-      green where we scored lower than the market and red where the market did. An hour after the
-      peak the day has mostly answered itself, so that row is greyed.
+      green where we scored lower than the market and red where the market did. The explicit after-peak row is greyed.
+      These are scheduled checkpoints, not guaranteed before-peak captures: the hourly writer can arrive up to 75 minutes
+      after the schedule, and the typical peak can differ from today&apos;s actual peak. City accuracy provides a separate verified timing filter.
     </p>
     {short.length > 0 && !loading && !error && <p className="text-[11px] text-warn">
       The city rows do not add up to the view&apos;s own total at {short.map((k) => MOMENT[k] ?? k).join(", ")}:

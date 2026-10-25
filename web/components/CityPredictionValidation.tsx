@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { useQuery } from '@/lib/useQuery';
 import { DataState } from '@/components/DataState';
 import { fmtDateTime } from '@/lib/time';
-import { HORIZONS, CityReport, rankCities, recentCityScores, evidenceWords } from '@/lib/cityValidation';
+import { HORIZONS, CityReport, rankCities, recentCityScores, evidenceWords, timingView, timingReason } from '@/lib/cityValidation';
 
 type Row = { city_key: string; checkpoint: string; scope: string; as_of: string; report: CityReport };
 const pct = (n: number | null | undefined) => n == null ? '—' : `${(100*n).toFixed(1)}%`;
@@ -12,10 +12,11 @@ const num = (n: number | null | undefined) => n == null ? '—' : n.toFixed(3);
 export default function CityPredictionValidation({ cities, moment }: { cities: string[]; moment: string }) {
   const [horizon,setHorizon] = useState('day_ahead');
   const [scope,setScope] = useState('served');
+  const [strict,setStrict] = useState(false);
   useEffect(()=>{ if(HORIZONS.some(([k])=>k===moment)) setHorizon(moment); },[moment]);
   const q = useQuery<Row[]>(()=>supabase.from('v_city_prediction_validation').select('*')
     .eq('checkpoint',horizon).eq('scope',scope).in('city_key',cities).limit(500),[horizon,scope,cities.join(',')],60000,500);
-  const ranked = rankCities((q.data ?? []).map(r=>r.report));
+  const ranked = rankCities((q.data ?? []).map(r=>timingView(r.report,strict)));
   const recent = recentCityScores(ranked);
   const asOf = q.data?.map(r=>r.as_of).sort()[0];
   const overdue = asOf && Date.now()-Date.parse(asOf)>36*3600000;
@@ -31,6 +32,9 @@ export default function CityPredictionValidation({ cities, moment }: { cities: s
           <option value="served">All served predictors</option><option value="wxrd3">Served WXPredict v3</option>
           <option value="wxrd3_raw">WXPredict v3 · all raw paired calls</option>
         </select>
+        <select aria-label="Capture timing" className="rounded border border-border bg-panel p-1" value={strict ? 'strict' : 'all'} onChange={e=>setStrict(e.target.value==='strict')}>
+          <option value="all">All scheduled calls</option><option value="strict">Before expected peak · verified</option>
+        </select>
       </div>
     </div>
     <p className="max-w-5xl text-xs leading-relaxed text-muted">
@@ -40,6 +44,15 @@ export default function CityPredictionValidation({ cities, moment }: { cities: s
       Day ahead is the clean comparison before the local day starts.
       Raw paired calls include WXPredict even when the baseline was selected, so model selection cannot hide its misses.
     </p>
+    <p className="max-w-5xl text-xs leading-relaxed text-muted">
+      Scheduled time is a label; the actual server freeze can be up to 75 minutes later. The verified timing view requires a server receipt before
+      the earliest peak estimate saved with that call (or before the target day begins for an early call). It excludes explicit after-peak calls,
+      missing receipts and unknown saved peaks. It never substitutes today&apos;s forecast or peak table.
+      <strong> Expected peak is an estimate, not proof that today&apos;s final maximum was still ahead.</strong> This is a reporting filter; model fitting and promotion are unchanged.
+      {strict && horizon === 'overall' && ' Overall requires every common scheduled horizon on the date to pass this timing filter; incomplete dates remain excluded.'}
+    </p>
+    {strict && ranked.some(r=>!r.capture_timing) && <p className="text-xs text-warn">Some reports await the timing-aware scoring run. Their strict scores are unavailable; scheduled accuracy is not substituted.</p>}
+    {strict && horizon === 'day_ahead' && <p className="text-xs text-muted">The day-ahead archive supplies pre-day call timestamps without server freeze receipts. Those rows remain available under All scheduled calls and do not qualify for this verified filter.</p>}
     {scope !== 'served' && ['day_ahead','d1_eve','morning'].includes(horizon) && <p className="text-xs text-muted">WXPredict v3 is not used at this horizon. Choose noon or a peak-relative checkpoint to inspect its record.</p>}
     {scope === 'served' && ['day_ahead','d1_eve'].includes(horizon) && <p className="text-xs text-muted">
       Early calls use the corrected weather forecast. Its nightly station and MOS learning is separate from the WXPredict noon/peak selector.
@@ -71,12 +84,26 @@ export default function CityPredictionValidation({ cities, moment }: { cities: s
           <td className="whitespace-nowrap px-2 py-2">{pct(r.hit_rate)}<span className="block text-muted">{r.interval95 ? r.interval95.map(pct).join('–') : 'Not measured'}</span></td>
           <td className="whitespace-nowrap px-2 py-2">{num(r.metrics.log_loss)} / {num(r.metrics.brier)}</td>
           <td className="px-2 py-2">{pct(r.calibration_gap)}</td>
-          <td className="min-w-72 px-2 py-2"><p>{evidenceWords(r)}</p>
+          <td className="min-w-72 px-2 py-2"><p>{strict ? (r.n ? 'Timing-qualified subset · compare the same horizon and city' : 'Awaiting timing-qualified settled calls') : evidenceWords(r)}</p>
+            {r.capture_timing && <p className="mt-1 text-muted">Timing: {r.capture_timing.eligible_calls}/{r.capture_timing.calls} calls qualify · {r.capture_timing.excluded_calls} excluded.
+              {Object.entries(r.capture_timing.exclusions).map(([why,n])=>` ${timingReason(why)}: ${n}.`).join('')}</p>}
             {!!r.recent_dates?.length && <p className="mt-1 text-muted">Recent target dates: {r.recent_dates.map(d=>`${d.date}: ${d.hits}/${d.n}${d.pending == null ? ' (pending not measured)' : d.pending ? `, ${d.pending} pending` : ''}`).join(' · ')}</p>}
             {r.model_selection && <p className="mt-1">Horizon choice: {r.model_selection.effective.selected === 'baseline' ? 'corrected weather baseline' : 'WXPredict v3'} · {r.model_selection.effective.active ? 'validated selection' : 'horizon prior'}</p>}
             <details className="mt-1 text-muted"><summary className="cursor-pointer text-accent">Freeze, learning and validation</summary>
             <p className="mt-1">{r.period_start}–{r.period_end} · {r.verified} server-receipted / {r.legacy} legacy calls. Legacy timestamps are not new training evidence.</p>
-            {r.horizon === 'd1_eve' && <p>Early correction comparison: {r.early_comparison?.calls ?? 0} frozen pairs · raw input centre right {r.early_comparison?.raw_centre_hits ?? 0}, corrected right {r.early_comparison?.corrected_hits ?? 0}; correction helped {r.early_comparison?.correction_helped ?? 0}, hurt {r.early_comparison?.correction_hurt ?? 0}. Log-loss gain {num(r.early_comparison?.mean_log_loss_gain)} (positive favours correction). Only the centre changes; this is a diagnostic, not a validated replacement model.</p>}
+            {!!r.capture_timing?.recent_calls.length && <div className="my-2 overflow-x-auto">
+              <p>Recent original captures · city clock ({r.timezone}); includes calls excluded by the timing filter.</p>
+              <table className="mt-1 text-[11px]"><thead><tr>{['Target / checkpoint','Scheduled local','Actual freeze local','Delay','Eligibility cutoff local','Timing / result'].map(h=><th key={h} className="px-2 py-1 text-left font-normal">{h}</th>)}</tr></thead>
+                <tbody>{r.capture_timing.recent_calls.map(c=><tr key={`${c.date}-${c.checkpoint}`} className="border-t border-border">
+                  <td className="whitespace-nowrap px-2 py-1">{c.date} · {HORIZONS.find(([k])=>k===c.checkpoint)?.[1] ?? c.checkpoint}</td>
+                  <td className="whitespace-nowrap px-2 py-1">{c.scheduled_local ? fmtDateTime(c.scheduled_local,r.timezone) : 'Not recorded'}</td>
+                  <td className="whitespace-nowrap px-2 py-1" title={c.frozen_at ?? ''}>{c.frozen_at ? fmtDateTime(c.frozen_at,r.timezone) : 'No server receipt'}</td>
+                  <td className="whitespace-nowrap px-2 py-1">{c.delay_minutes == null ? '—' : `${c.delay_minutes.toFixed(1)} min`}</td>
+                  <td className="whitespace-nowrap px-2 py-1">{c.cutoff_local ? fmtDateTime(c.cutoff_local,r.timezone) : 'Unknown'}</td>
+                  <td className={`px-2 py-1 ${c.before_expected_peak ? '' : 'text-warn'}`}>{timingReason(c.reason)} · {c.hit == null ? 'pending' : c.hit ? 'hit' : 'miss'}</td>
+                </tr>)}</tbody></table>
+            </div>}
+            {!strict && r.horizon === 'd1_eve' && <p>Early correction comparison: {r.early_comparison?.calls ?? 0} frozen pairs · raw input centre right {r.early_comparison?.raw_centre_hits ?? 0}, corrected right {r.early_comparison?.corrected_hits ?? 0}; correction helped {r.early_comparison?.correction_helped ?? 0}, hurt {r.early_comparison?.correction_hurt ?? 0}. Log-loss gain {num(r.early_comparison?.mean_log_loss_gain)} (positive favours correction). Only the centre changes; this is a diagnostic, not a validated replacement model.</p>}
             {r.early_learning?.map(s=><p key={s.lead_days} className="mt-1">Current weather-model learning · lead {s.lead_days} day(s): {s.version}, fitted {s.as_of}, refreshed {fmtDateTime(s.computed_at)}. Width calibration {s.calibration?.applies ? 'validated for this blend' : 'held at existing width'} · {s.calibration?.reason ?? 'no calibration evidence recorded'}. {s.calibration?.n_fit ?? 0} earlier fit dates / {s.calibration?.n_validation ?? 0} later validation dates. This is the current recipe state, not a change to any historical call.</p>)}
             <p>Exact paired baseline: {r.baseline.n} calls · {pct(r.baseline.hit)} · log loss {num(r.baseline.log_loss)}. Raw v3: {r.raw.n} · {pct(r.raw.hit)} · {num(r.raw.log_loss)}.</p>
             {r.paired_audit && <p>Matched forward audit: {r.paired_audit.calls} calls across {r.paired_audit.dates} dates · baseline alone right {r.paired_audit.baseline_only_hits}, raw v3 alone right {r.paired_audit.raw_only_hits}, both missed {r.paired_audit.both_missed}. Raw misses warmer than settlement {r.paired_audit.raw_warmer_misses}, cooler {r.paired_audit.raw_cooler_misses}. Mean saved report age {r.paired_audit.mean_report_age_min?.toFixed(1) ?? '—'} min. These describe the frozen evidence, not a causal explanation.</p>}

@@ -1,3 +1,5 @@
+import { cityInstant } from './time';
+
 export const HORIZONS = [
   ['day_ahead','Day ahead'], ['d1_eve','Evening before'], ['morning','Morning'], ['noon','Noon'],
   ['prepeak_2h','2 h before typical peak'], ['prepeak_1h','1 h before typical peak'],
@@ -14,10 +16,18 @@ export type EarlyComparison = { calls: number; dates: number; raw_centre_hits: n
   mean_log_loss_gain: number | null };
 export type DailyScore = { date: string; n: number; hits: number; hit_rate: number | null;
   pending: number | null; claimed: number | null; early_comparison: EarlyComparison };
+export type CaptureCall = { date: string; checkpoint: string; hit: number | null;
+  scheduled_local?: string; received_at?: string; received_local?: string; frozen_at?: string | null;
+  delay_minutes?: number; cutoff_local?: string | null; before_expected_peak: boolean; reason: string };
+export type CaptureTiming = { policy: string; calls: number; eligible_calls: number; excluded_calls: number;
+  exclusions: Record<string, number>; strict: Pick<CityReport, 'n' | 'hits' | 'hit_rate' | 'interval95' |
+    'dates' | 'pending' | 'verified' | 'legacy' | 'metrics' | 'baseline' | 'raw' | 'calibration_gap' | 'versions' | 'recent_dates'>;
+  recent_calls: CaptureCall[] };
 export type CityReport = { city: string; display_name: string; timezone: string; scope: string; horizon: string;
   n: number; hits: number; hit_rate: number | null; interval95: number[] | null; dates: number;
   pending: number | null; verified: number; legacy: number; calibration_gap: number | null;
   period_start: string; period_end: string;
+  capture_timing?: CaptureTiming;
   metrics: { log_loss: number | null; brier: number | null };
   baseline: { n: number; hit: number | null; log_loss: number | null };
   raw: { n: number; hit: number | null; log_loss: number | null };
@@ -34,6 +44,31 @@ export type CityReport = { city: string; display_name: string; timezone: string;
     raw_warmer_misses: number; raw_cooler_misses: number; mean_report_age_min: number | null } };
 export function rankCities(rows: CityReport[]) {
   return [...rows].sort((a,b) => (b.hit_rate ?? -1)-(a.hit_rate ?? -1) || b.n-a.n || a.display_name.localeCompare(b.display_name));
+}
+/** Missing strict evidence never falls back to the scheduled hit rate. */
+export function timingView(row: CityReport, strict: boolean): CityReport {
+  if (!strict) return row;
+  const score = row.capture_timing?.strict;
+  return { ...row, ...(score ?? { n: 0, hits: 0, hit_rate: null, interval95: null, dates: 0,
+    pending: null, verified: 0, legacy: 0, calibration_gap: null, metrics: { log_loss: null, brier: null },
+    baseline: { n: 0, hit: null, log_loss: null }, raw: { n: 0, hit: null, log_loss: null }, versions: {}, recent_dates: [] }),
+    // These diagnostics describe the complete scheduled cohort, not the subset.
+    why: { missed_dates: 0, reviewed_dates: 0, weather: {}, mean_peak_shift_h: null,
+      public_forecast_mae_c: null, public_forecast_bias_c: null },
+    paired_audit: undefined, early_comparison: undefined };
+}
+export function timingReason(reason: string): string {
+  return ({ eligible: 'Before expected peak', missing_server_receipt: 'No server freeze receipt',
+    explicit_postpeak_call: 'Explicit after-peak call', missing_saved_peak: 'No saved peak estimate',
+    at_or_after_expected_peak: 'At / after expected peak', incomplete_strict_date: 'Incomplete strict date' } as Record<string,string>)[reason] ?? reason;
+}
+/** Compare instants, not a local wall timestamp parsed in the viewer's zone. */
+export function captureDelay(scheduled: string | null, captured: string | null, zone?: string | null): number | null {
+  const m = scheduled?.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})/);
+  if (!m || !captured || !zone) return null;
+  const plan = cityInstant(m[1],Number(m[2])+Number(m[3])/60,zone);
+  const actual = Date.parse(captured);
+  return plan && Number.isFinite(actual) ? (actual-plan.getTime())/60000 : null;
 }
 /** Aggregate only the selected cities' same target dates; missing is not a miss. */
 export function recentCityScores(rows: CityReport[]) {
