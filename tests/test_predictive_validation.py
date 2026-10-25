@@ -27,6 +27,73 @@ def test_original_miss_survives_perfect_later_engine_and_backfill_rejected():
     assert not v.collect([p],[early],[],CITIES,{},NOW)[0]['settled']
 
 
+def test_strict_timing_uses_actual_receipt_and_earliest_saved_peak_not_checkpoint_name():
+    import copy
+    p=call(checkpoint='prepeak_1h',local_decision_time='2026-10-16T11:00:00',
+           decided_at='2026-10-16T12:10:00Z',frozen_at='2026-10-16T12:10:00Z',
+           predictive_context=dict(clim_peak_hour=13,fch_peak_local_hour=12))
+    original=copy.deepcopy(p)
+    t=v.capture_timing(p,CITIES[0])
+    assert not t['before_expected_peak'] and t['reason']=='at_or_after_expected_peak'
+    assert t['cutoff_local']=='2026-10-16T12:00:00+00:00' and t['delay_minutes']==70
+    assert p==original, 'reporting must never rewrite the scheduled time or prediction'
+    assert not v.capture_timing(dict(p,frozen_at='2026-10-16T12:00:00Z'),CITIES[0])['before_expected_peak']
+    assert v.capture_timing(dict(p,frozen_at='2026-10-16T11:59:59Z'),CITIES[0])['before_expected_peak']
+
+
+def test_strict_early_calls_unknown_peaks_and_legacy_are_separate():
+    early=call(checkpoint='d1_eve',local_decision_time='2026-10-15T18:00:00',
+               frozen_at='2026-10-15T18:36:00Z')
+    assert v.capture_timing(early,CITIES[0])['before_expected_peak']
+    assert v.capture_timing(call(),CITIES[0])['reason']=='missing_server_receipt'
+    assert v.capture_timing(call(frozen_at='2026-10-16T12:36:00Z'),CITIES[0])['reason']=='missing_saved_peak'
+    assert v.capture_timing(call(checkpoint='postpeak_1h',frozen_at='2026-10-16T12:36:00Z',
+        predictive_context=dict(clim_peak_hour=20)),CITIES[0])['reason']=='explicit_postpeak_call'
+    # A city's early peak makes a noon call a late-information call.
+    assert v.capture_timing(call(frozen_at='2026-10-16T12:36:00Z',
+        predictive_context=dict(clim_peak_hour=11)),CITIES[0])['reason']=='at_or_after_expected_peak'
+
+
+def test_strict_timing_city_clock_handles_dst_and_keeps_missing_evidence_unknown():
+    c=dict(city_key='city',timezone='Europe/Paris')
+    p=call(target_date='2026-10-25',local_decision_time='2026-10-25T12:00:00',
+           decided_at='2026-10-25T11:37:00Z',frozen_at='2026-10-25T11:37:00Z',
+           predictive_context=dict(clim_peak_hour=14,fch_peak_local_hour=float('nan')))
+    t=v.capture_timing(p,c)
+    assert t['received_local']=='2026-10-25T12:37:00+01:00'
+    assert t['delay_minutes']==37 and t['before_expected_peak']
+    p['predictive_context']={'clim_peak_hour':'invalid','fch_peak_local_hour':None}
+    assert v.capture_timing(p,c)['reason']=='missing_saved_peak'
+
+
+def test_strict_scores_expose_denominator_and_never_replace_an_original_miss():
+    p=call(frozen_at='2026-10-16T12:36:00Z',predictive_context=dict(clim_peak_hour=14))
+    late=call('later',decided_at='2026-10-16T12:55:00Z',frozen_at='2026-10-16T12:55:00Z',
+              predictive_context=dict(clim_peak_hour=14),probs={'a':.01,'b':.99})
+    rows=v.collect([late,p],[outcome(),outcome('later')],[],CITIES,{},NOW)
+    report=next(r['report'] for r in v.reports(rows,CITIES,[],[],NOW) if r['checkpoint']=='noon' and r['scope']=='served')
+    t=report['capture_timing']
+    assert report['n']==1 and t['strict']['n']==1 and t['strict']['hits']==0
+    assert t['eligible_calls']==1 and t['excluded_calls']==0
+    assert t['recent_calls'][0]['frozen_at']=='2026-10-16T12:36:00+00:00'
+    p['predictive_context']['clim_peak_hour']=11
+    rows=v.collect([p],[outcome()],[],CITIES,{},NOW)
+    t=v.timing_report(rows,'noon')
+    assert t['strict']['n']==0 and t['calls']==1 and t['excluded_calls']==1
+    assert t['exclusions']=={'at_or_after_expected_peak':1}
+    assert t['recent_calls'][0]['hit']==0, 'an excluded miss stays visible'
+
+
+def test_strict_overall_requires_common_eligible_dates_without_cherry_picking():
+    base=dict(target_date='2026-10-16',settled=True,verified=True,top_prob=.9,
+              metrics=dict(hit=1,log_loss=.1,brier=.01),version='v',baseline=None,raw=None)
+    rows=[dict(base,checkpoint='morning',timing=dict(before_expected_peak=True,reason='eligible')),
+          dict(base,checkpoint='noon',timing=dict(before_expected_peak=False,reason='at_or_after_expected_peak'))]
+    t=v.timing_report(rows,'overall')
+    assert t['strict']['n']==0 and t['excluded_calls']==2
+    assert t['exclusions']==dict(incomplete_strict_date=1,at_or_after_expected_peak=1)
+
+
 def test_day_ahead_local_midnight_and_common_horizon_overall():
     da=dict(city_key='city',for_date='2026-10-16',called_at='2026-10-16T00:01:00Z',hit=True,predicted_pct=99)
     assert not v.collect([],[],[da],CITIES,{},NOW)

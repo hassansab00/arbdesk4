@@ -26,6 +26,78 @@ SCOPES = ('served', 'wxrd3', 'wxrd3_raw')
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def capture_timing(p, city):
+    """A reporting-only eligibility test using evidence saved with the call.
+
+    The earliest saved peak estimate is conservative. Neither this estimate
+    nor an eventual high hit rate proves the day's final maximum was unknown.
+    Never rebuild an old forecast or use today's mutable peak table here.
+    """
+    zone = ZoneInfo(city['timezone'])
+    context = p.get('predictive_context') or {}
+    frozen = cal.timestamp(p['frozen_at']) if p.get('frozen_at') else None
+    received = frozen or cal.timestamp(p['decided_at'])
+    scheduled = dt.datetime.fromisoformat(p['local_decision_time']).replace(tzinfo=zone)
+    start = dt.datetime.combine(dt.date.fromisoformat(p['target_date']), dt.time(), zone)
+    peaks = []
+    # The immutable peak-relative schedule also preserves its original anchor.
+    offsets = {'prepeak_2h': -2, 'prepeak_1h': -1, 'postpeak_1h': 1}
+    if p['checkpoint'] in offsets:
+        peaks.append(('checkpoint schedule', scheduled-dt.timedelta(hours=offsets[p['checkpoint']])))
+    for key in ('clim_peak_hour', 'fch_peak_local_hour'):
+        value = context.get(key)
+        try:
+            hour = float(value) if value is not None else None
+        except (TypeError, ValueError):
+            hour = None
+        if hour is not None and math.isfinite(hour) and 0 <= hour < 24:
+            peaks.append((key, start+dt.timedelta(minutes=round(hour*60))))
+    cutoff = min((stamp for _, stamp in peaks), default=None)
+    if not frozen:
+        reason = 'missing_server_receipt'
+    elif p['checkpoint'] == 'postpeak_1h':
+        reason = 'explicit_postpeak_call'
+    elif frozen < start:
+        reason, cutoff = 'eligible', start
+    elif cutoff is None:
+        reason = 'missing_saved_peak'
+    elif frozen >= cutoff:
+        reason = 'at_or_after_expected_peak'
+    else:
+        reason = 'eligible'
+    return dict(scheduled_local=scheduled.isoformat(), received_at=received.isoformat(),
+        frozen_at=frozen.isoformat() if frozen else None,
+        received_local=received.astimezone(zone).isoformat(),
+        delay_minutes=round((received-scheduled.astimezone(dt.timezone.utc)).total_seconds()/60, 2),
+        cutoff_local=cutoff.isoformat() if cutoff else None,
+        peak_sources=[name for name, _ in peaks], before_expected_peak=reason=='eligible', reason=reason)
+
+
+def timing_report(rows, horizon):
+    """Preserve every scheduled call and expose all strict exclusions."""
+    eligible = [r for r in rows if (r.get('timing') or {}).get('before_expected_peak')]
+    if horizon == 'overall':
+        required = {r['checkpoint'] for r in rows}
+        dates = [{r['target_date'] for r in eligible if r['checkpoint']==h} for h in required]
+        common = set.intersection(*dates) if dates else set()
+        eligible = [r for r in eligible if r['target_date'] in common]
+    included = {id(r) for r in eligible}
+    reasons = Counter()
+    for r in rows:
+        if id(r) not in included:
+            reason = (r.get('timing') or {}).get('reason', 'missing_server_receipt')
+            reasons['incomplete_strict_date' if reason=='eligible' else reason] += 1
+    recent = sorted(rows, key=lambda r: (r['target_date'],
+        (r.get('timing') or {}).get('received_at', ''), r['checkpoint']), reverse=True)[:14]
+    return dict(policy='before-expected-peak-v1', calls=len(rows), eligible_calls=len(eligible),
+        excluded_calls=len(rows)-len(eligible), exclusions=dict(reasons),
+        strict=dict(summarize(eligible, horizon), recent_dates=daily_scores(eligible)),
+        recent_calls=[dict(date=r['target_date'], checkpoint=r['checkpoint'],
+            hit=r['metrics']['hit'] if r.get('settled') else None,
+            **(r.get('timing') or dict(reason='missing_server_receipt', before_expected_peak=False)))
+            for r in recent])
+
+
 def wilson(hits, n):
     if not n:
         return None
@@ -70,6 +142,7 @@ def collect(checkpoints, outcomes, day_ahead, cities, peaks, now):
                  metrics=cal.metrics(probs,winner) if settled else None,
                  baseline=None,raw=None,
                  raw_model_version=(p.get('predictive_context') or {}).get('raw_model_version') or p.get('priced_from'),
+                 timing=capture_timing(p,c),
                  paired_context=p.get('predictive_context') or {},probs=probs,
                  raw_probs=p.get('raw_probs'),baseline_probs=p.get('baseline_probs'),winner=winner)
         if settled:
@@ -225,6 +298,7 @@ def reports(rows,cities,reviews,states,now,model_version=None,selections=(),earl
                     chosen=[r for r in group if r['checkpoint']==horizon]
                 report=summarize(chosen,horizon)
                 report.update(city=city,display_name=c.get('display_name') or city,timezone=c['timezone'],
+                    capture_timing=timing_report(chosen,horizon),
                     scope=scope,horizon=horizon,period_start=period_start,period_end=period_end,
                     why=diagnostic(chosen,[r for r in reviews if r['city_key']==city]),
                     paired_audit=paired_diagnostic(chosen),

@@ -7,6 +7,7 @@ import { DataState } from "@/components/DataState";
 import { compareFocus, summariseByMoment, type HindsightRow } from "@/lib/focus";
 import type { FocusSet } from "@/components/FocusFilter";
 import { displayTz, fmtDateTime, tzLabel } from "@/lib/time";
+import { captureDelay } from "@/lib/cityValidation";
 
 /**
  * WAS THE DESK RIGHT? - graded only on calls frozen before the answer.
@@ -87,9 +88,9 @@ const WHEN: Record<string, string> = {
   day_ahead: "the last pricing before the city's local day began",
   d1_eve: "scheduled at 18:00 on the previous day in the city's timezone",
   morning: "scheduled at 09:00 in the city's timezone",
-  noon: "frozen at local noon",
-  prepeak_2h: "frozen two hours before the usual peak",
-  prepeak_1h: "frozen one hour before the usual peak",
+  noon: "scheduled at local noon; the actual capture can follow the day's peak",
+  prepeak_2h: "scheduled two hours before the typical peak; see the actual capture time and delay",
+  prepeak_1h: "scheduled one hour before the typical peak; see the actual capture time and delay",
   postpeak_1h: "scheduled one hour after the city's typical monthly peak; today's maximum is not guaranteed final",
 };
 
@@ -205,13 +206,18 @@ export default function PredictionHindsight({
   return <section className="space-y-2">
     <h2 className="text-sm font-semibold">Was it right?</h2>
     <p className="max-w-3xl text-xs leading-relaxed text-muted">
-      Every call graded here was <strong>frozen before the answer was known</strong> and scored only
+      These are <strong>saved original calls</strong>, scored only
       after the day settled: the day-ahead call is the last pricing before the city&apos;s local day
       began, and each checkpoint is recorded once after its scheduled city-local time. Nothing
       captured before its scheduled local moment counts. The actual capture time is shown separately;
       the hourly tick can arrive after the scheduled time. <strong>The number that matters is the gap</strong>{" "}
       between what the desk claimed and what happened — a hit rate on its own says nothing, since
       eleven buckets means blind guessing scores about 9%.
+    </p>
+    <p className="max-w-3xl text-xs text-muted">
+      A saved call is not proof it preceded the day&apos;s actual maximum. Peak-relative names use a typical monthly peak;
+      the capture window extends 75 minutes after the schedule. Use the verified before-expected-peak filter in City accuracy
+      to separate late captures and missing timing evidence. Live forecast updates never replace these saved calls.
     </p>
     <p className="text-[11px] text-muted">
       Totals for the {cities.length === active.length ? `${active.length} active cities` : `${cities.length} selected ${cities.length === 1 ? "city" : "cities"}`},
@@ -333,7 +339,7 @@ export default function PredictionHindsight({
       <div className="overflow-x-auto rounded border border-border">
         <table className="w-full text-xs">
           <thead className="bg-panel2 text-muted"><tr>
-            {["Day", "City", "Scheduled (city local)", "Captured (city local)", "Your time", "Engine called", "Sure", "Market called", "Actual", "Observed", "Priced centre", "Error", "", "Source"]
+            {["Day", "City", "Scheduled (city local)", "Captured (city local)", "Capture delay", "Your time", "Engine called", "Sure", "Market called", "Actual", "Observed", "Priced centre", "Error", "", "Source"]
               .map((h, i) => <th key={i} className="px-2 py-1.5 text-left font-normal">{h}</th>)}
           </tr></thead>
           <tbody>
@@ -349,6 +355,10 @@ export default function PredictionHindsight({
                 {cityZones[r.city_key]
                   ? `${fmtDateTime(r.called_at, cityZones[r.city_key]!)} ${r.called_at ? tzLabel(cityZones[r.city_key]!, new Date(r.called_at)) : ""}`
                   : utcClock(r.called_at)}
+              </td>
+              <td className="whitespace-nowrap px-2 py-1 font-mono text-muted" title="Actual capture minus the scheduled city-local instant. Legacy rows may lack a server freeze receipt; check City accuracy for verified evidence.">
+                {(() => { const delay=captureDelay(r.scheduled_local,r.called_at,cityZones[r.city_key]);
+                  return delay == null ? '—' : `${delay.toFixed(1)} min`; })()}
               </td>
               <td className="whitespace-nowrap px-2 py-1 font-mono text-muted" title={displayTz()}>
                 {fmtDateTime(r.called_at)}
