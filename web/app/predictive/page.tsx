@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { readAllRows } from "@/lib/readAll";
 import { DataState } from "@/components/DataState";
+import PredictiveSectionNav from "@/components/PredictiveSectionNav";
 import PredictionHindsight from "@/components/PredictionHindsight";
 import SettlementStatus from "@/components/SettlementStatus";
 import CheckpointScoreboard from "@/components/CheckpointScoreboard";
@@ -585,7 +586,8 @@ export default function PredictivePage() {
 
   return (
     <div className="space-y-8">
-      <div>
+      <PredictiveSectionNav />
+      <div id="predictive-overview" className="scroll-mt-20" tabIndex={-1}>
         <h1 className="text-lg font-semibold">Predictive</h1>
         <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted">
           The same question in both directions. <strong className="text-text">Forward</strong>: what
@@ -609,19 +611,25 @@ export default function PredictivePage() {
       </div>
 
       {/* ======================================= THE SELECTION, FOR EVERY PANEL == */}
-      <FocusFilter scope={scope} setScope={setScope} custom={custom} setCustom={setCustom}
+      <div id="predictive-filters" className="scroll-mt-20" tabIndex={-1}>
+        <FocusFilter scope={scope} setScope={setScope} custom={custom} setCustom={setCustom}
         moment={moment} setMoment={setMoment} cities={cities} focus={focus} shown={selected.length} />
+      </div>
 
-      <SettlementStatus cities={cities.filter(c => selectedSet.has(c.city_key))}
+      <div id="predictive-settlements" className="scroll-mt-20" tabIndex={-1}>
+        <SettlementStatus cities={cities.filter(c => selectedSet.has(c.city_key))}
         moment={moment} />
+      </div>
 
       {/* ================================================ 0. EVERY CITY == */}
-      <CityCards onPick={setCity} cities={selected} moment={moment}
+      <div id="predictive-cities" className="scroll-mt-20" tabIndex={-1}>
+        <CityCards onPick={setCity} cities={selected} moment={moment}
         hindsight={hindsightQ.data ?? []} status={statusQ.data ?? []}
         statusError={statusQ.error} onRefreshStatus={statusQ.refresh} scorecard={scoreQ.data ?? []} summary={hitSumQ.data ?? []} />
+      </div>
 
       {/* ======================================================== 1. FORWARD == */}
-      <section className="space-y-2">
+      <section id="predictive-outlook" tabIndex={-1} className="scroll-mt-20 space-y-2">
         <h2 className="text-sm font-semibold">What the desk expects</h2>
         <p className="max-w-3xl text-xs leading-relaxed text-muted">
           One row per city-day still open. The bucket the model puts most weight on, what the
@@ -710,18 +718,26 @@ export default function PredictivePage() {
           rather than at the bottom of the page because a claim and its
           track record are one thought, and separating them is how a desk
           keeps believing a number nothing has checked. */}
-      <PredictionClocks cities={cities.filter(c => selected.includes(c.city_key))} />
-      <CityPredictionValidation cities={selected} moment={moment} />
-      <PredictionHindsight rows={hindsightQ.data ?? []} loading={hindsightQ.loading} error={hindsightQ.error}
+      <div id="predictive-clocks" className="scroll-mt-20" tabIndex={-1}>
+        <PredictionClocks cities={cities.filter(c => selected.includes(c.city_key))} />
+      </div>
+      <div id="predictive-accuracy" className="scroll-mt-20" tabIndex={-1}>
+        <CityPredictionValidation cities={selected} moment={moment} />
+      </div>
+      <div id="predictive-results" className="scroll-mt-20" tabIndex={-1}>
+        <PredictionHindsight rows={hindsightQ.data ?? []} loading={hindsightQ.loading} error={hindsightQ.error}
         cityZones={Object.fromEntries(cities.map(c => [c.city_key, c.timezone]))}
         truncated={hindsightQ.truncated} onRetry={hindsightQ.refresh}
         cities={selected} active={activeKeys} focus={focus} universe={universe}
         moment={moment} setMoment={setMoment} />
+      </div>
 
-      <PredictionLineup cities={selected} />
+      <div id="predictive-predictors" className="scroll-mt-20" tabIndex={-1}>
+        <PredictionLineup cities={selected} />
+      </div>
 
       {/* ==================================================== 2. THE FUNNEL == */}
-      <section className="space-y-2">
+      <section id="predictive-convergence" tabIndex={-1} className="scroll-mt-20 space-y-2">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold">How the forecast converged</h2>
           <select
@@ -764,7 +780,7 @@ export default function PredictivePage() {
           ladder a 1 C miss is a different bucket, which is a total loss on
           the band that was called - so skill has to be read in buckets,
           against what settled, beside what the market said on the same day. */}
-      <section className="space-y-3">
+      <section id="predictive-history" tabIndex={-1} className="scroll-mt-20 space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold">Hit and miss, day by day</h2>
           <select
@@ -977,7 +993,7 @@ export default function PredictivePage() {
           to be a half-width chart sharing a row with error-by-lead, with two
           sentences and no numbers - a picture of a cloud of dots that could
           not be argued with either way. */}
-      <section className="space-y-3">
+      <section id="predictive-errors" tabIndex={-1} className="scroll-mt-20 space-y-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className="text-sm font-semibold">Actual against predicted</h2>
           <Freshness relation="v_forecast_convergence" />
@@ -1116,7 +1132,7 @@ export default function PredictivePage() {
       </section>
 
       {/* ---------------------------------------------- error against lead day */}
-      <section className="space-y-2">
+      <section id="predictive-decay" tabIndex={-1} className="scroll-mt-20 space-y-2">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className="text-sm font-semibold">How fast the forecast decays</h2>
           <Freshness relation="v_prediction_scorecard" />
@@ -1155,7 +1171,7 @@ export default function PredictivePage() {
       </section>
 
       {/* ------------------------------------------------ the scorecard table */}
-      <section className="space-y-2">
+      <section id="predictive-scorecard" tabIndex={-1} className="scroll-mt-20 space-y-2">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold">Raw forecast accuracy, per city, per model, per lead</h2>
           <select
@@ -1254,7 +1270,7 @@ export default function PredictivePage() {
       </section>
 
       {/* ============================================ 4. DID BEING RIGHT PAY == */}
-      <section className="grid gap-6 lg:grid-cols-2">
+      <section id="predictive-returns" tabIndex={-1} className="scroll-mt-20 grid gap-6 lg:grid-cols-2">
         <div className="space-y-2">
           <h2 className="text-sm font-semibold">Bankroll</h2>
           <p className="text-xs leading-relaxed text-muted">
