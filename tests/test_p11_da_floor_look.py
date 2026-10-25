@@ -15,8 +15,8 @@ FIRST = os.path.join(ROOT, "data", "eval", "p11", "da_floor_first_look_2026-10-2
 
 def test_the_aggregates_are_the_query_result():
     raw = open(os.path.join(FIRST, "aggregates.txt"), "rb").read()
-    assert hashlib.md5(raw).hexdigest() == "b4d0c726a8f0d957d07a6e00fdfd322f"
-    assert "b4d0c726a8f0d957d07a6e00fdfd322f" in open(os.path.join(FIRST, "query.sql")).read()
+    assert hashlib.md5(raw).hexdigest() == "7a1dff736d20affe227968329fcb4778"
+    assert "7a1dff736d20affe227968329fcb4778" in open(os.path.join(FIRST, "query.sql")).read()
 
 
 def test_the_committed_first_look_is_what_the_rule_gives():
@@ -55,3 +55,15 @@ def test_the_pairs_keep_each_dates_sum_and_count():
     p = L.pairs(rows, "n", "s")
     assert len(p) == 6
     assert abs(sum(v for d, v in p if d == "d1") - 0.8) < 1e-12 and abs(sum(v for d, v in p if d == "d2") - 0.4) < 1e-12
+
+
+def test_an_absent_comparator_reads_none_not_a_crash():
+    """The market and rd1 are descriptive: a checkpoint without them still gets
+    its verdict (Codex on #434)."""
+    row = {"date": "2026-10-04", "checkpoint": "noon", "n": 3, "s_ll": 0.3, "k_served": 1, "k_da_floor": 2,
+           "s_brier": 0.1, "n_market": 0, "s_ll_served_market": 0.0, "s_ll_da_floor_market": 0.0, "k_market": 0,
+           "n_rd1": 0, "s_ll_served_rd1": 0.0, "s_ll_da_floor_rd1": 0.0, "k_rd1": 0}
+    b = L.block([row])
+    assert b["market_descriptive"]["log_loss_served_minus_market"] is None
+    assert b["rd1_descriptive"]["log_loss_da_floor_minus_rd1"] is None and b["rd1_descriptive"]["top1_rd1"] is None
+    assert b["log_loss_gain_served_minus_da_floor"]["n"] == 3

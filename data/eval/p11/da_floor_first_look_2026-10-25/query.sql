@@ -1,6 +1,8 @@
 -- da_floor:v1 first look (docs/P11_DA_FLOOR_PREREG.md), run read-only against
--- production on 25 Oct 2026 ~10:40Z. One line per (target date, checkpoint) of
--- the scored rows; the result's md5 was b4d0c726a8f0d957d07a6e00fdfd322f
+-- production on 25 Oct 2026 ~11:00Z (first at ~10:40Z with top-1 ties to the
+-- lowest band_index; rerun with the prereg's bucket-id ties, Codex on #434:
+-- one line changed, 15 Oct noon served top-1 20 -> 19). One line per (target date, checkpoint) of
+-- the scored rows; the result's md5 was 7a1dff736d20affe227968329fcb4778
 -- (12,303 bytes) and aggregates.txt has the same md5.
 --
 -- Scored row: a da_floor:v1 row at one of the five same-day checkpoints, matched
@@ -11,8 +13,9 @@
 -- hold the same buckets (checked: 4,666 of 4,666).
 --
 -- Scores as fec-v1 (tools/fec_same_day.score): log loss -ln(max(p_winner, 1e-6)),
--- top-1 the largest p with ties to the lowest bucket (band_index), Brier summed
--- over the ladder's buckets.
+-- top-1 the largest p with ties broken by bucket id, as the prereg fixes it (the
+-- smallest band_id in byte order, as scripts/variant_shadow.py picks its top
+-- bucket), Brier summed over the ladder's buckets.
 --
 -- Columns: date | checkpoint | n | sum(ll_served - ll_da_floor) | top-1 served |
 -- top-1 da_floor | sum(brier_served - brier_da_floor) | n book whole |
@@ -32,8 +35,8 @@ lad as (select j.shadow_id, e.key band_id, b.band_index, (j.sprobs->>e.key)::flo
         from j cross join lateral jsonb_each(j.sprobs) e join bands b on b.band_id = e.key::uuid),
 r as (select j.shadow_id, j.city_key, j.target_date, j.checkpoint, j.winner_band_id,
    -ln(greatest(max(ps) filter (where won),1e-6)) ll_s, -ln(greatest(max(pd) filter (where won),1e-6)) ll_d,
-   ((array_agg(won order by ps desc, band_index asc))[1])::int top_s,
-   ((array_agg(won order by pd desc, band_index asc))[1])::int top_d,
+   ((array_agg(won order by ps desc, band_id collate "C" asc))[1])::int top_s,
+   ((array_agg(won order by pd desc, band_id collate "C" asc))[1])::int top_d,
    sum((ps - won::int)^2) br_s, sum((pd - won::int)^2) br_d
   from j join lad using (shadow_id) group by 1,2,3,4,5),
 m as (select r.*, c.market_complete, c.log_loss_market::float8 ll_m, c.market_hit::int km,

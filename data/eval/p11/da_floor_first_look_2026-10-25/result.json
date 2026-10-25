@@ -3,7 +3,7 @@
  "scored_under": "fec-v1",
  "aggregates": {
   "file": "aggregates.txt",
-  "md5": "b4d0c726a8f0d957d07a6e00fdfd322f",
+  "md5": "7a1dff736d20affe227968329fcb4778",
   "bytes": 12303
  },
  "bootstrap": {
@@ -40,11 +40,11 @@
    "n": 4666
   },
   "top1_served": {
-   "k": 2402,
-   "rate": 0.5148,
+   "k": 2401,
+   "rate": 0.5146,
    "wilson95": [
-    0.5004,
-    0.5291
+    0.5002,
+    0.5289
    ]
   },
   "top1_da_floor": {
@@ -253,11 +253,11 @@
     "n": 934
    },
    "top1_served": {
-    "k": 440,
-    "rate": 0.4711,
+    "k": 439,
+    "rate": 0.47,
     "wilson95": [
-     0.4393,
-     0.5032
+     0.4382,
+     0.5021
     ]
    },
    "top1_da_floor": {

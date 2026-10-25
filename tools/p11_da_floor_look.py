@@ -50,6 +50,13 @@ def pairs(rows, n_key, s_key):
     return out
 
 
+def boot(rows, n_key, s_key):
+    """cluster_boot of a comparison, or None where no row has it (the market and
+    rd1 are descriptive and may be absent: Codex on #434)."""
+    p = pairs(rows, n_key, s_key)
+    return F.cluster_boot(p) if p else None
+
+
 def block(rows):
     n = sum(r["n"] for r in rows)
     ks, kd = sum(r["k_served"] for r in rows), sum(r["k_da_floor"] for r in rows)
@@ -63,12 +70,12 @@ def block(rows):
         "top1_da_floor": {"k": kd, "rate": round(kd / n, 4), "wilson95": F.wilson(kd, n)},
         "market_descriptive": {
             "rows_book_whole": nm, "top1_market": round(km / nm, 4) if nm else None,
-            "log_loss_served_minus_market": F.cluster_boot(pairs(rows, "n_market", "s_ll_served_market")),
-            "log_loss_da_floor_minus_market": F.cluster_boot(pairs(rows, "n_market", "s_ll_da_floor_market"))},
+            "log_loss_served_minus_market": boot(rows, "n_market", "s_ll_served_market"),
+            "log_loss_da_floor_minus_market": boot(rows, "n_market", "s_ll_da_floor_market")},
         "rd1_descriptive": {
             "rows_with_rd1": nr, "top1_rd1": round(kr / nr, 4) if nr else None,
-            "log_loss_served_minus_rd1": F.cluster_boot(pairs(rows, "n_rd1", "s_ll_served_rd1")),
-            "log_loss_da_floor_minus_rd1": F.cluster_boot(pairs(rows, "n_rd1", "s_ll_da_floor_rd1"))},
+            "log_loss_served_minus_rd1": boot(rows, "n_rd1", "s_ll_served_rd1"),
+            "log_loss_da_floor_minus_rd1": boot(rows, "n_rd1", "s_ll_da_floor_rd1")},
     }
 
 

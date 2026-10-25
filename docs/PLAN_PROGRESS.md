@@ -12,8 +12,8 @@ computed (`data/eval/p11/da_floor_first_look_2026-10-25/`), scored by
 `tools/p11_da_floor_look.py` with fec-v1's `cluster_boot` (seed 11, 1,000).
 - Pooled log-loss gain, served minus `da_floor`: +0.0020, 90% -0.0569 to
   +0.0655. Morning +0.1746 (+0.1134 to +0.2405); post-peak -0.1067 (-0.1861 to
-  -0.0180, wholly below 0). Top-1: served 51.48%, `da_floor` 48.26% (below the
-  served Wilson 95% lower end, 50.04%).
+  -0.0180, wholly below 0). Top-1 (ties by bucket id): served 51.46%, `da_floor` 48.26% (below the
+  served Wilson 95% lower end, 50.02%).
 - **Verdict: insufficient evidence.** Not accepted (rules 1-3 fail), not
   rejected (the pooled interval includes 0). The second and last look is at 40
   dates, about 13 Nov (`trig_01D6fCuEL6KDsHRe1EVPmMeq`, 14 Nov 10:30Z, counts
