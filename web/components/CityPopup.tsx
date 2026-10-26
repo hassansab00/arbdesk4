@@ -1,6 +1,8 @@
 "use client";
 
 import CityLearning from "./CityLearning";
+import FrozenCallPanel from "./FrozenCallPanel";
+import type { FrozenCall } from "@/lib/frozenCalls";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
@@ -102,10 +104,12 @@ function useEnsemble(city: PopupCity, day: string, model: EnsembleModel, meta: s
 
 export default function CityPopup({
   c, city, ladder, current, status, hindsight, scorecard, summary, moment, onClose,
+  frozen = null, frozenLoading = false, frozenError = null,
 }: {
   c: CityCard; city: PopupCity; ladder: LadderRow[]; current: CurrentRow[];
   status: StatusRow | null; hindsight: HindsightRow[]; scorecard: ScoreRow[]; summary: HitSummaryRow | null;
   moment: string; onClose: () => void;
+  frozen?: FrozenCall | null; frozenLoading?: boolean; frozenError?: string | null;
 }) {
   const u: Unit = c.unit;
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -216,12 +220,13 @@ export default function CityPopup({
           </div>
         )}
 
+        <FrozenCallPanel call={frozen} moment={moment} timezone={city.timezone} loading={frozenLoading} error={frozenError} />
         <div className="mt-3 grid gap-3 lg:grid-cols-2">
           {/* THE CALL */}
           <section className="rounded border border-border bg-panel2 p-2">
-            <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">The call</h3>
+            <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">Live forecast · updates as new data arrives</h3>
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-              <dt className="text-muted">Platform&rsquo;s pick</dt>
+              <dt className="text-muted">Live pick</dt>
               <dd className="tabular-nums">
                 {c.top_band ? <><b className="text-sm">{c.top_band}</b> · {fmtPct(c.top_prob, 0)} likely · market charges {fmtPrice(c.top_yes_price)}</>
                   : <span className="text-muted">not priced yet</span>}

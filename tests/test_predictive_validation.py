@@ -219,7 +219,7 @@ def test_raw_comparison_keeps_misses_when_baseline_is_the_served_predictor():
 def test_raw_overall_requires_its_three_prepeak_supported_calls_and_never_counts_postpeak():
     rows=[]
     for h in ('noon','prepeak_2h','prepeak_1h','postpeak_1h'):
-        p=call(checkpoint=h,local_decision_time='2026-10-16T12:00:00Z',frozen_at='2026-10-16T12:36:00Z',
+        p=call(checkpoint=h,local_decision_time='2026-10-16T12:00:00',frozen_at='2026-10-16T12:36:00Z',
             priced_from='corrected-baseline',probs={'a':.1,'b':.9},raw_probs={'a':.8,'b':.2},
             baseline_probs={'a':.1,'b':.9},predictive_context=dict(raw_model_version='wxrd3:v3:checked',band_ids=['a','b']))
         # The source clock guards are covered in collect's tests; test aggregation here.
