@@ -1,0 +1,30 @@
+{
+ "changes_serving": false,
+ "decision": "wait",
+ "evaluation_first": "2026-10-11",
+ "evaluation_last": "2026-10-24",
+ "fit_last": "2026-10-09",
+ "incumbent_fit_last": "2026-10-11",
+ "night": "2026-10-26",
+ "policy": {
+  "evaluation_checkpoints": [
+   "noon",
+   "prepeak_2h",
+   "prepeak_1h",
+   "postpeak_1h"
+  ],
+  "holdout_dates": 14,
+  "improvement_checkpoints": [
+   "noon",
+   "prepeak_2h",
+   "prepeak_1h"
+  ],
+  "maximum_validation_bucket_change": 0.1,
+  "minimum_cities_per_date": 20,
+  "minimum_coverage": 0.8,
+  "minimum_training_rows": 50000,
+  "rounds": 250,
+  "seed": 20261011
+ },
+ "reason": "incumbent trained inside this holdout"
+}

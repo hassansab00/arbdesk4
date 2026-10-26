@@ -12,6 +12,12 @@
    "night": "2026-10-25",
    "report": "data/eval/wxpredict/current_forecast/2026-10-25.json",
    "report_sha256": "67921c557e544c4adb01993aa8d7adcb9a9cbc7f42ebeccd5efcbde55d97df74"
+  },
+  {
+   "decision": "wait",
+   "night": "2026-10-26",
+   "report": "data/eval/wxpredict/current_forecast/2026-10-26.json",
+   "report_sha256": "d9a08419442dd79c2bb423ae826fc1107cece3008fdbd1624b49eb2d5fff712b"
   }
  ],
  "paused": false,
