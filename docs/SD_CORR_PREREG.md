@@ -152,3 +152,61 @@ gain on the rows both have, with its 90% date-clustered interval.
 
 ## Result
 (appended below after the first look; nothing above changes)
+
+### First look, 26 Oct 2026 (~10:35Z): insufficient evidence
+
+Run as fixed above, from the nightly mirror in the repository (the database was
+not reachable from the session that ran it): `tools/p11_sd_corr_look.py`, its
+result `data/eval/p11/sd_corr_first_look_2026-10-26/result.json`, which names
+the 114 mirror files it read with their sha256; `tests/test_p11_sd_corr_look.py`
+rebuilds it from exactly those files. The mirror ran to the night of 26 Oct
+(the newest `sd_corr` row is for 26 Oct). The market columns are
+`fact_checkpoint_outcome`'s.
+
+**Rows.** 4,765 `sd_corr:v1` rows at the five checkpoints, target dates 5-26
+Oct. Scored: **4,656 rows on 21 target dates (5-25 Oct), 47 cities**; both
+ladders hold the same buckets on every scored row. Left out: 109 with no graded
+outcome yet (18, 25 and 26 Oct). None left out for a missing or widthless live
+row, a calibrated served ladder or a winner off the ladder. Tick time-outs
+before the capture were not counted here.
+
+**The rule** (log loss, served minus `sd_corr`; 90% date-clustered interval,
+seed 11, 1,000 resamples; 95% beside it; top-1 ties by bucket id, served with
+its Wilson 95% interval):
+
+| | rows | gain | 90% | 95% | top-1 served | top-1 `sd_corr` |
+|---|---|---|---|---|---|---|
+| pooled | 4,656 | +0.0460 | -0.0221 to +0.1094 | -0.0364 to +0.1232 | 52.00% (50.56-53.43) | 49.33% |
+| morning | 927 | +0.2411 | +0.1771 to +0.3058 | +0.1683 to +0.3206 | 37.65% (34.59-40.81) | 40.02% |
+| noon | 931 | +0.0389 | -0.0397 to +0.1189 | -0.0548 to +0.1385 | 47.91% (44.71-51.12) | 45.11% |
+| prepeak_2h | 932 | +0.0063 | -0.0816 to +0.0916 | -0.1011 to +0.1085 | 44.21% (41.05-47.41) | 40.45% |
+| prepeak_1h | 929 | +0.0124 | -0.0628 to +0.0827 | -0.0749 to +0.0933 | 51.45% (48.24-54.65) | 46.50% |
+| postpeak_1h | 937 | -0.0672 | -0.1444 to +0.0110 | -0.1651 to +0.0199 | 78.55% (75.81-81.06) | 74.39% |
+
+- Rule 1 fails: the pooled 90% interval includes 0.
+- Rule 2 holds: no checkpoint's 90% interval lies wholly below 0.
+- Rule 3 fails at prepeak_2h, prepeak_1h and postpeak_1h: `sd_corr`'s top-1 is
+  below the served top-1's Wilson 95% lower end there.
+- Not rejected: the pooled interval is not wholly below 0.
+
+**Verdict: insufficient evidence.** One more look at 40 scored dates (about
+13 Nov; `trig_01PFzq7b8YbCvk6WFf8UiB91`, 15 Nov 10:30Z, counts first), then the
+test stops; nothing is looked at in between. Brier (secondary), pooled served
+minus `sd_corr`: -0.0012 (90% -0.0214 to +0.0174).
+
+**Against `da_floor`** (the same 4,656 rows, both have a row on each): pooled
+`da_floor` minus `sd_corr` +0.0595 (90% +0.0338 to +0.0872): `sd_corr` loses
+less than `da_floor`. Neither is accepted, so nothing is proposed.
+
+**Beside the rule, descriptive.** The market, on the 4,112 rows with a whole
+book: top-1 65.95%; log loss served minus market +0.4861 (90% +0.4152 to
++0.5640), `sd_corr` minus market +0.4436 (+0.3897 to +0.5084). S10 `rd1`
+(`rd1:2026-09-25:f5372ebb05`), on 4,540 rows: top-1 51.50%; served minus `rd1`
++0.0824 (+0.0206 to +0.1464), `sd_corr` minus `rd1` +0.0452 (+0.0015 to
++0.0899).
+
+**The served engine changed during the window.** 140 distinct `engine_version`s
+over the scored rows' served calls. From 17 Oct the served noon to post-peak
+calls are WXPredict's frozen v3 (#409): 1,354 of the 4,656 scored rows have
+`model_path` `wxpredict`, 3,302 `forecast`. The comparison is with the ladder
+actually served, as fixed above.
