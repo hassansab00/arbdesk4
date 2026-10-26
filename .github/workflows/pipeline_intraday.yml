@@ -236,20 +236,28 @@ jobs:
         timeout-minutes: 7
         run: python scripts/ingest_trades.py --backfill --budget 300
 
-      # THE PAGES READ STORED ROWS (plan v2 P6.5): refresh them now that this
-      # run has written, rather than at the next :12 / :42 of pg_cron.
+      # THE PAGES READ STORED ROWS (plan v2 P6.5): request their refresh after
+      # this run's writes, rather than wait for the next :12 / :42 schedule.
       # CONCURRENTLY, so a page open during the refresh keeps reading.
       - name: Score the original frozen city calls
         if: ${{ !cancelled() }}
         timeout-minutes: 4
         run: python scripts/predictive_validation.py --score-only
-      - name: Refresh the stored page rows
+      - name: Queue the stored page refresh
         if: ${{ !cancelled() }}
-        # 16 Oct: the refresh continued successfully after the default
-        # 120-second HTTP deadline had reported failure. Bound both clocks.
-        timeout-minutes: 5
+        # This final display-only refresh is already a durable database job.
+        # End once submission is acknowledged instead of paying runner minutes
+        # to poll while it contends with the scheduled refresh or archive.
+        # Terminal failures remain in ingest_log and the existing watchdog.
+        timeout-minutes: 1
         run: |
           python - <<'PY'
-          from common import rpc
-          print("page cache refreshed (ms):", rpc("refresh_page_cache", timeout=270))
+          import json, os
+          from page_cache_refresh import request
+          receipt = request()
+          print("page cache request accepted:", json.dumps(receipt))
+          if os.environ.get('GITHUB_STEP_SUMMARY'):
+              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+                  summary.write(f"Dashboard cache request: `{receipt['request_id']}` — **{receipt['status']}**.\n\n")
+                  summary.write("Acceptance is not completion. The database worker records success or failure; the existing watchdog monitors errors.\n")
           PY

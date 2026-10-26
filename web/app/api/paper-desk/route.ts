@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { requireOperator } from '../../../lib/operatorAuth';
 import { deskActivity, mergeTradeRows, type AccountRow, type DecisionRow, type DeskActivity, type PositionRow,
-  type StrategyRow, type TradeRow } from '../../../lib/paperDesks';
+  type StrategyRow, type StrategyRunState, type TradeRow } from '../../../lib/paperDesks';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -89,7 +89,7 @@ async function readArchive():Promise<Archive> {
 // included, for the page's "All desks" summary.
 async function readActivity(client:ReturnType<typeof serverClient>,archived:TradeRow[]):Promise<DeskActivity[]> {
   const since=new Date(Date.now()-24*3600*1000).toISOString();
-  const [accounts,trades,positions,strategies,decisions]=await Promise.all([
+  const [accounts,trades,positions,strategies,decisions,states]=await Promise.all([
     readAll<AccountRow>((f,t)=>client.from('paper_accounts')
       .select('account_id,name,mode,entries_paused,status,archived_at,retired_at,strategy_id')
       .eq('access_mode','single_desk').is('owner_id',null).order('account_id').range(f,t)),
@@ -103,8 +103,10 @@ async function readActivity(client:ReturnType<typeof serverClient>,archived:Trad
     readAll<DecisionRow>((f,t)=>client.from('decisions')
       .select('decision_id,strategy_id,action,reason_code').gte('decided_at',since)
       .order('decision_id').range(f,t)),
+    readAll<StrategyRunState>((f,t)=>client.from('strategy_state')
+      .select('strategy_id,state,since,reason').order('strategy_id').range(f,t)),
   ]);
-  return deskActivity(accounts,mergeTradeRows(archived,trades),positions,strategies,decisions);
+  return deskActivity(accounts,mergeTradeRows(archived,trades),positions,strategies,decisions,states);
 }
 
 export async function GET(request:Request) {

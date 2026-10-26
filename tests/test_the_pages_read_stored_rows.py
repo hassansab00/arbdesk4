@@ -48,10 +48,16 @@ def test_the_pipelines_refresh_after_they_write():
     for wf in ("pipeline_intraday.yml", "pipeline_daily.yml"):
         doc = yaml.safe_load((ROOT / ".github/workflows" / wf).read_text())
         steps = next(iter(doc["jobs"].values()))["steps"]
-        assert steps[-1]["name"] == "Refresh the stored page rows", wf
-        assert 'rpc("refresh_page_cache", timeout=270)' in steps[-1]["run"]
-        assert steps[-1]["timeout-minutes"] == 5
-        assert 270 < steps[-1]["timeout-minutes"] * 60
+        if wf == "pipeline_intraday.yml":
+            assert steps[-1]["name"] == "Queue the stored page refresh"
+            assert 'receipt = request()' in steps[-1]["run"]
+            assert 'Acceptance is not completion' in steps[-1]["run"]
+            assert steps[-1]["timeout-minutes"] == 1
+        else:
+            assert steps[-1]["name"] == "Refresh the stored page rows", wf
+            assert 'rpc("refresh_page_cache", timeout=270)' in steps[-1]["run"]
+            assert steps[-1]["timeout-minutes"] == 5
+            assert 270 < steps[-1]["timeout-minutes"] * 60
 
 
 def test_no_vacuum_full_is_scheduled_for_the_middle_of_the_day():
