@@ -1,18 +1,6 @@
-/**
- * THE PAPER DESKS, COUNTED, AND WHAT EACH ONE IS DOING (WXPredict build, wave
- * P, steps P.3 and P.4; docs/WXPREDICT_BUILD.md R41 and R42).
- *
- * Pure functions only: the route reads the rows with the service key and hands
- * them here, the page and PaperDeskControl render what comes back, and
- * web/tests/paper-desks.test.cjs runs every one of them without a database.
- *
- * WHY THE PAGE NEEDED THIS (5 Oct, measured). The page picked the first "live"
- * desk - automatic and not paused - and all 15 shadow desks were live, so the
- * counts that would have broken the tie decided nothing. The first desk in the
- * route's answer was "Shadow: s8_two_bucket_cover": 0 trades, 0 orders, 0
- * plans. Nine desks shared one created_at, so which empty desk opened was not
- * even fixed. And every switched-on shadow desk read "Running on its own"
- * while making ~250 decisions a day and buying nothing.
+/** Pure calculations for paper-desk activity and execution state.
+ * Filled trades and strategy decisions remain separate. The route reads
+ * private state with its service client and supplies these calculations.
  */
 
 export type AccountRow = {
@@ -34,12 +22,13 @@ export type TradeRow = {
 };
 export type PositionRow = { account_id: string; shares: number | string };
 export type StrategyRow = { strategy_id: string; name?: string | null; enabled: boolean };
+export type StrategyRunState = { strategy_id: string; state: string; since: string | null; reason: string | null };
 export type DecisionRow = { strategy_id: string; action: string; reason_code: string | null };
 
 /** What a desk's strategy is doing. `since` is when a desk was retired or
     archived; a strategy switched on or off carries no date (strategies has
     no column for when it was switched). */
-export type StrategyState = "on" | "off" | "retired" | "archived" | "none";
+export type StrategyState = "on" | "off" | "suspended" | "retired" | "archived" | "none";
 
 export type Decisions24h = {
   n: number;
@@ -62,6 +51,7 @@ export type DeskActivity = {
   strategy_id: string | null;
   strategy_state: StrategyState;
   strategy_state_since: string | null;
+  strategy_state_reason: string | null;
   /** The strategy's decisions in the last 24 h; null for a desk with no strategy. */
   decisions_24h: Decisions24h | null;
 };
@@ -75,12 +65,15 @@ const ms = (t: string | null | undefined) => {
   return Number.isFinite(v) ? v : -Infinity;
 };
 
-export function strategyState(desk: AccountRow, strategies: Map<string, StrategyRow>):
+export function strategyState(desk: AccountRow, strategies: Map<string, StrategyRow>,
+                              states: Map<string, StrategyRunState> = new Map()):
     { state: StrategyState; since: string | null } {
   if (desk.status === "retired") return { state: "retired", since: desk.retired_at ?? null };
   if (desk.archived_at) return { state: "archived", since: desk.archived_at };
   const s = desk.strategy_id ? strategies.get(desk.strategy_id) : undefined;
   if (!s) return { state: "none", since: null };
+  const run = states.get(s.strategy_id);
+  if (!s.enabled && run?.state === "suspended") return { state: "suspended", since: run.since };
   return { state: s.enabled ? "on" : "off", since: null };
 }
 
@@ -118,8 +111,10 @@ export function mergeTradeRows(archived: TradeRow[], live: TradeRow[]): TradeRow
 
 /** One row per desk, every desk the accounts list holds, archived included. */
 export function deskActivity(accounts: AccountRow[], trades: TradeRow[], positions: PositionRow[],
-                             strategies: StrategyRow[], decisions: DecisionRow[]): DeskActivity[] {
+                             strategies: StrategyRow[], decisions: DecisionRow[],
+                             states: StrategyRunState[] = []): DeskActivity[] {
   const strat = new Map(strategies.map(s => [s.strategy_id, s]));
+  const runtime = new Map(states.map(s => [s.strategy_id, s]));
   const dec = decisionCounts(decisions);
   const t = new Map<string, { n: number; closed: number; net: number; last: string | null }>();
   for (const r of trades) {
@@ -134,7 +129,7 @@ export function deskActivity(accounts: AccountRow[], trades: TradeRow[], positio
   for (const p of positions) if (num(p.shares) > 0) open.set(p.account_id, (open.get(p.account_id) ?? 0) + 1);
   return accounts.map(a => {
     const e = t.get(a.account_id);
-    const st = strategyState(a, strat);
+    const st = strategyState(a, strat, runtime);
     return {
       account_id: a.account_id, name: a.name, status: a.status ?? null,
       trade_count: e?.n ?? 0, closed_count: e?.closed ?? 0,
@@ -143,6 +138,8 @@ export function deskActivity(accounts: AccountRow[], trades: TradeRow[], positio
       open_positions: open.get(a.account_id) ?? 0,
       strategy_id: a.strategy_id ?? null,
       strategy_state: st.state, strategy_state_since: st.since,
+      strategy_state_reason: st.state === "suspended" && a.strategy_id
+        ? runtime.get(a.strategy_id)?.reason ?? null : null,
       decisions_24h: a.strategy_id ? (dec.get(a.strategy_id) ?? { n: 0, buys: 0, reasons: [] }) : null,
     };
   });
@@ -194,13 +191,7 @@ export const REASON_WORDS: Record<string, string> = {
   no_signal: "no signal fired",
 };
 
-/** S10's own meaning of a shared code (WXPredict build, P.5). Its ladder is
-    S10's remaining-day model, which scripts/s10_shadow.py writes only at the
-    same-day checkpoints (CHECKPOINTS: morning to an hour after the peak, local
-    hours 7-17 fitted), so the tick's evening-before checkpoint (d1_eve) never
-    has one. Measured 29 Sep - 6 Oct: 320 of s10_winner's 334 no_ladder
-    decisions were d1_eve; 7 were Madrid's post-peak at 18:xx local (no fit for
-    hour 18) and 7 had too few station readings. */
+/** S10's meaning of the shared reason code, from its model input rules. */
 const S10_REASON_WORDS: Record<string, string> = {
   no_ladder: "no S10 ladder for that checkpoint (its model prices a day only from that morning, never the evening before)",
 };
@@ -258,6 +249,12 @@ export function deskState(desk: Desk, available: number, now: number = Date.now(
     key: "RETIRED", dot: "bg-muted", text: "text-muted",
     line: "Strategy switched off: this desk does not trade until the strategy is switched back on.",
   };
+  if (act?.strategy_state === "suspended") return {
+    key: "PAUSED", dot: "bg-warn", text: "text-warn",
+    line: `Strategy suspended on ${dayOf(act.strategy_state_since)}.`
+      + (act.strategy_state_reason ? ` ${act.strategy_state_reason}.` : "")
+      + " New entries are blocked; exits and settlement still run. BUY decisions are proposals, not filled trades.",
+  };
   const automated = desk.mode === "automatic" || desk.mode === "assisted";
   if (!automated) return {
     key: "MANUAL", dot: "bg-muted", text: "text-muted",
@@ -307,6 +304,7 @@ export function strategyPhrase(a: DeskActivity): string {
     case "archived": return `archived ${dayOf(a.strategy_state_since)}`;
     case "on": return "switched on";
     case "off": return "switched off";
+    case "suspended": return `suspended ${dayOf(a.strategy_state_since)}`;
     default: return a.status === "suspended" ? "no strategy · suspended" : "no strategy";
   }
 }

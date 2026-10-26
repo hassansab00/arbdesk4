@@ -114,5 +114,50 @@ def test_every_existing_refresh_caller_leaves_queue_and_execution_time():
     root=Path(__file__).resolve().parents[1]
     restore=(root/'tools/restore_edge_marks.py').read_text()
     assert "rpc('refresh_page_cache', {}, timeout=270)" in restore
-    for name in ('pipeline_daily.yml','pipeline_intraday.yml'):
-        assert 'rpc("refresh_page_cache", timeout=270)' in (root/'.github/workflows'/name).read_text()
+    assert 'rpc("refresh_page_cache", timeout=270)' in (root/'.github/workflows/pipeline_daily.yml').read_text()
+    intraday=(root/'.github/workflows/pipeline_intraday.yml').read_text()
+    assert 'from page_cache_refresh import request' in intraday
+    assert 'receipt = request()' in intraday
+    assert 'rpc("refresh_page_cache", timeout=270)' not in intraday
+
+
+@pytest.mark.parametrize('state',['queued','running','waiting'])
+def test_submission_returns_acceptance_without_polling_or_claiming_completion(monkeypatch,state):
+    clock(monkeypatch)
+    calls=[]
+    receipt={'request_id':'durable-id','status':state}
+    def rpc(name,params,timeout):
+        calls.append((name,params,timeout))
+        return receipt
+    assert refresh.request(request_id='durable-id',rpc_fn=rpc)==receipt
+    assert calls==[('request_page_cache_refresh',{'p_request_id':'durable-id'},15)]
+    assert refresh.time.monotonic()==0
+
+
+def test_submission_retry_reuses_the_id_after_ambiguous_transport_failure(monkeypatch):
+    clock(monkeypatch)
+    calls=[]
+    def rpc(name,params,timeout):
+        calls.append((name,params))
+        if len(calls)==1: raise refresh.requests.ReadTimeout('acknowledgement lost')
+        return {'request_id':'stable-id','status':'queued'}
+    assert refresh.request(request_id='stable-id',rpc_fn=rpc)['status']=='queued'
+    assert calls==[('request_page_cache_refresh',{'p_request_id':'stable-id'})]*2
+
+
+@pytest.mark.parametrize('receipt',[
+    None,{}, {'request_id':'different-id','status':'queued'},
+    {'request_id':'id','status':'error'}, {'request_id':'id','status':'missing'},
+    {'request_id':'id','status':'unknown'}, {'request_id':'id','status':'ok'},
+    {'request_id':'id','status':'ok','detail':{'ms':{'skipped':'busy'}}},
+])
+def test_unacknowledged_or_failed_submissions_still_fail(monkeypatch,receipt):
+    clock(monkeypatch)
+    with pytest.raises(RuntimeError):
+        refresh.request(request_id='id',rpc_fn=lambda *a,**k:receipt)
+
+
+def test_submission_can_report_a_previously_completed_id(monkeypatch):
+    clock(monkeypatch)
+    receipt={'request_id':'id','status':'ok','detail':{'ms':{'mv':12}}}
+    assert refresh.request(request_id='id',rpc_fn=lambda *a,**k:receipt)==receipt

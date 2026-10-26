@@ -49,7 +49,7 @@ export default function PaperDeskSummary({ desks, error, archiveError = null }: 
         const gone = d.strategy_state === "retired" || d.strategy_state === "archived";
         return <tr key={d.account_id} className={`border-t border-border ${gone ? "text-muted" : ""}`} data-desk={d.account_id}>
           <td className="p-2">{d.name}{gone && <span className="ml-2 rounded border border-border px-1 text-[10px] uppercase">{d.strategy_state}</span>}</td>
-          <td className="p-2">{strategyPhrase(d)}</td>
+          <td className="p-2" title={d.strategy_state_reason ?? undefined}>{strategyPhrase(d)}</td>
           <td className="p-2 font-mono">{d.trade_count.toLocaleString("en-US")}{d.open_positions ? <span className="text-muted"> · {d.open_positions} open</span> : null}</td>
           <td className={`p-2 font-mono ${d.closed_count ? pnlColor(d.net_pnl) : "text-muted"}`}>{d.closed_count ? fmtUsd(d.net_pnl, { signed: true }) : "—"}</td>
           <td className="p-2 text-muted">{d.last_trade_at ? fmtAge(d.last_trade_at) : "never"}</td>

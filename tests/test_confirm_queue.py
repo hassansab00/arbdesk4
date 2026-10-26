@@ -342,13 +342,12 @@ def test_a_dry_run_writes_nothing(world):
 
 
 def test_the_intraday_pipeline_asks_then_banks_then_refreshes():
-    """The queue, then databank's bands-only pass, then the page cache: a
-    ladder confirmed in this run reaches the page in this run. No new
-    schedule (Rule 7)."""
+    """Confirm, bank, then durably request the display refresh after writes.
+    The existing worker completes it without a new schedule (Rule 7)."""
     import pathlib
     wf = (pathlib.Path(__file__).resolve().parents[1] / ".github/workflows/pipeline_intraday.yml").read_text()
     q = wf.index("python scripts/confirm_queue.py")
     b = wf.index("python scripts/databank.py --bands-only")
-    r = wf.index('rpc("refresh_page_cache",')
+    r = wf.index('receipt = request()')
     assert q < b < r
     assert "schedule:" not in wf.split("on:")[1].split("concurrency:")[0]

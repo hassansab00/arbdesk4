@@ -106,7 +106,7 @@ def test_the_strategies_read_the_live_definition():
     assert "rest_all(BOARD, " in src
     steps = [s.get("name") for s in yaml.safe_load(
         (ROOT / ".github/workflows/pipeline_intraday.yml").read_text())["jobs"]["intraday"]["steps"]]
-    assert steps.index("Edges") < steps.index("Strategy signals") < steps.index("Refresh the stored page rows")
+    assert steps.index("Edges") < steps.index("Strategy signals") < steps.index("Queue the stored page refresh")
 
 
 def test_no_script_reads_the_stored_opportunities():

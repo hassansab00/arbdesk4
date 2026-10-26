@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
-    "test:routes": "tsc -p tests/tsconfig.routes.json && node tests/time.test.cjs && node tests/operator-auth.test.cjs && node tests/city-cards.test.cjs && node tests/ensemble.test.cjs && node tests/predictive.test.cjs && node tests/settlement-status.test.cjs && node tests/lineup.test.cjs && node tests/focus.test.cjs && node tests/paper-desks.test.cjs && node tests/kelly.test.cjs && node tests/day-review.test.cjs && node --test tests/city-validation.test.cjs && node tests/pipeline-health.test.cjs"
+    "test:routes": "tsc -p tests/tsconfig.routes.json && node tests/time.test.cjs && node tests/operator-auth.test.cjs && node tests/city-cards.test.cjs && node tests/ensemble.test.cjs && node tests/predictive.test.cjs && node tests/settlement-status.test.cjs && node tests/lineup.test.cjs && node tests/focus.test.cjs && node tests/paper-desks.test.cjs && node tests/paper-suspension.test.cjs && node tests/kelly.test.cjs && node tests/day-review.test.cjs && node --test tests/city-validation.test.cjs && node tests/pipeline-health.test.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.112.4",
