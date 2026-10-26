@@ -1,0 +1,864 @@
+{
+ "contract": "docs/SD_CORR_PREREG.md",
+ "scored_under": "fec-v1",
+ "bootstrap": {
+  "seed": 11,
+  "resamples": 1000
+ },
+ "sources": {
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-05-to-2026-10-06.csv.gz": "681786c3d1643ec31764e3fc63e2893892179f28218ad3403eb18c2ad2cf9e75",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-06-to-2026-10-07.csv.gz": "9f4e2eb542897ff890ccb258fe90dfd73440bdc49ec3d0c904023176e8729264",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-07-to-2026-10-08.csv.gz": "9525e219c5a18ba3be7fc77e23166272ca40e7f50e00cc2eebca75a9622d5aff",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-08-to-2026-10-09.csv.gz": "16e758fab8e7f01126de1eaf94eece7081afd805aeac3682ae7fa2f22148225d",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-09-to-2026-10-10.csv.gz": "3b7284f5852fccebe9eaa0a5f10d7d0381c28b11d36e8645527c0209a66ef880",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-10-to-2026-10-11.csv.gz": "91f92c77f117cd771e6faea6359a308915c7672046d272c223b3d5b4ad4d6025",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-11-to-2026-10-12.csv.gz": "c908910a8f0f35a2b2076c8ac84be27e74f7c02b9657b918353c7275c5f23cb2",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-12-to-2026-10-13.csv.gz": "80bfaf03d049eb7d985bc1de77b9490a1f33ed99064f7370da564eaa0f6bd83f",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-13-to-2026-10-14.csv.gz": "f241d547a3db7a5f796f0de7908276e42f2933fc825982e0ea90c5c25098753d",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-14-to-2026-10-15.csv.gz": "a801c75e8879dd99e9e9d2924ab23698feaef480007382086447d3eab4f05c0b",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-15-to-2026-10-16.csv.gz": "496a41cdc8ec4d1c6e81d1e3a8eb66d9b7c3bbb9d7ccdd26050bfab495ae6c9d",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-16-to-2026-10-17.csv.gz": "d15a7a99f279fcac576c62cfac03af9569dce0dca132d45dbe9d6dc5bf7b83f4",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-17-to-2026-10-18.csv.gz": "d8a6ff103f0fb3ec7383101ad94994733fcad1b6958bb00812c654d1c761ad6a",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-18-to-2026-10-19.csv.gz": "0c7f36fca0de6f00e9101f4db28a3126dacc3c9117423dd1457050d7dadb62ce",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-19-to-2026-10-20.csv.gz": "5ae26a3794172b9041669c26350b9e0e179ad5d10af16795406a83076332ea7a",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-20-to-2026-10-21.csv.gz": "13be6745eddd05fd585892393ae861d980205e0dc5eeff4b860480ae2513e9a5",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-21-to-2026-10-22.csv.gz": "e72e44d4e155f8ca6678c57ebcfc3ed51ea38dd5b841619d4cc672fa09b06a12",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-22-to-2026-10-23.csv.gz": "61eaeb8f40223ed66035107eb20288d048f32c8c3d7a9ee5e0ad859dd5d2265d",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-23-to-2026-10-24.csv.gz": "1a83586d4a847b8c60cea7660ed0b23cfc59ce88191e3bc6578f08e079f5766e",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-24-to-2026-10-25.csv.gz": "63490b1b047acdb1e5dd694ec731180ff83d55fe241dda0b47ec7a74407cb488",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-2026-10-25-to-2026-10-26.csv.gz": "c71d4220d8c6e4da11675754828c07718350d759f2bfb751ae2a6c023763ff21",
+  "data/mirror/variant_shadow_checkpoints/variant_shadow_checkpoints-start-to-2026-10-05.csv.gz": "738f98a950da8d8b2d700f3b0ade6e75de04477b90632f8e8456570c8f26f911",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-09-24-to-2026-09-25.csv.gz": "567b7dc171645fd35c0f2fad6bdeffca45afe277df7ccf2f5edbf4504c5c1350",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-09-25-to-2026-09-26.csv.gz": "dfba6f6bde5c2679ae33e8e97d0bd84187606a9dee776aa4940cc8309f8ea858",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-09-26-to-2026-09-27.csv.gz": "794a60aa954f35447ec3312d8b4efafe09c9f699c69de8012aad9c4de27d8f56",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-09-27-to-2026-09-28.csv.gz": "48aaf015e348771eddd603965593d21e3f3b953a4c06221cdcd4ccef16e50548",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-09-28-to-2026-09-29.csv.gz": "eb589932a8646e179ae529d7f7005cfb922fa08e65a149494d97f0ac4b297ba0",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-09-29-to-2026-09-30.csv.gz": "6fe7c74dd7ce7b4dbf8e46f17203ea08642e0ed41bac98978075c14ee2202d3a",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-09-30-to-2026-10-01.csv.gz": "2d24ca3300ecd85922a2efeda00581299b99cf8eb6d48804279d0123e2c0736a",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-01-to-2026-10-02.csv.gz": "48b045b73b5fa80bb9924fa7e8d2137bfd90a3c84624fcfe94f750885ce3b4bb",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-02-to-2026-10-03.csv.gz": "d7458bf0a09161e81e1f8ab61a1034b06fb7b64de6c04a0d1b190572014fc721",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-03-to-2026-10-04.csv.gz": "3fb4d3fb619ae1600e97344263ee1ba27812610c74006780a23adbfe1480bbe2",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-04-to-2026-10-05.csv.gz": "7e4f33df78ced6980efe25f1b37ffbfc843f4b7a852c901733a227f52b05e5e5",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-05-to-2026-10-06.csv.gz": "db3dc2b23b35edacc7594bfb327a9a5326a04ed3334af3118b3a67e44124943a",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-06-to-2026-10-07.csv.gz": "1e7b4f9e1d559c82daae457e9a127479b2c0d5230ecd18ff7f04748dec6aa462",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-07-to-2026-10-08.csv.gz": "d0d6096253cfd9f040126ed7622aee93fbd0911db3a584864b63d3ad7d76d1a1",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-08-to-2026-10-09.csv.gz": "6f445e7b8eadc3842a405b6e61aae9ec1787b3861a30ea1bcadb933e08234737",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-09-to-2026-10-10.csv.gz": "65cc727bdb9f7c7cd670bba901ea743121146fe140d7be501dadaa83f2f3b851",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-10-to-2026-10-11.csv.gz": "9a371c89cbafcd6a64d945433e7f26e2deca1f589eeb93681aa2a211ca9505f3",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-11-to-2026-10-12.csv.gz": "bc3f0b60dacdd22444b154904ed12184531e18dcbaa61519c0e783785d05d481",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-12-to-2026-10-13.csv.gz": "5260b1783e61eda15747090bf3de918dcea8de9ddd8ee2dc32187e8cd6e3ce62",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-13-to-2026-10-14.csv.gz": "f28d8f4ba68bca941cb9633f85b557876dcd19a7c3d549a01be479bdac8781e7",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-14-to-2026-10-15.csv.gz": "872634039435ffd8d22aae3a255feeec7d9d267e02061afba591246592c4b6e9",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-15-to-2026-10-16.csv.gz": "d6fce4b93ceec6e2d7704df12f713b9f6dfc6883627a0e42e936434a453144a4",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-16-to-2026-10-17.csv.gz": "2732b6be69c0eda1aea3edff42e46429140c485195105c2ef521dec50db25443",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-17-to-2026-10-18.csv.gz": "bdb77f62c1b138b9c54420bef001bc59fe386b5b67b01216915b32488c0bf3e3",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-18-to-2026-10-19.csv.gz": "15e52f83c82e6173d1f57d22a94fbcf051118f5601feab9a436b837cd469c535",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-19-to-2026-10-20.csv.gz": "1f0381072a357c6f5bdd3e76ba57d5f5de6fc711cef34b47a504361aafa6084b",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-20-to-2026-10-21.csv.gz": "fa9cc8d5f94e244a1c2ff94f7abc8e8f7a9092cf692c915c1cd0c6565825cc74",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-21-to-2026-10-22.csv.gz": "052e4954b9db264764e691a3d06744d9d6baf76975ff35959c3e1695e9ddb7f0",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-22-to-2026-10-23.csv.gz": "eb3c923999b180f903f8135c7e44f07c91b2e148bbb7470b4acdd28c0efe2bc9",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-23-to-2026-10-24.csv.gz": "a9f063150473daa18c83f46cd0895a2ef6770b351acd33523902872e58404e48",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-24-to-2026-10-25.csv.gz": "7bc665d6e45076104e55f3d08f6fbf02c026bebd9a66d7cc152339a62f4f59df",
+  "data/mirror/prediction_checkpoints/prediction_checkpoints-2026-10-25-to-2026-10-26.csv.gz": "b9a9c9e24b7293adb8460c97c6dda6a2e69420152f836c2dd5f2bc07bc980bad",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-09-25-to-2026-09-26.csv.gz": "7552dbeff2af79c51c928e2b44cf36ca0b87a5dba8c7b925263e4660357c7430",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-09-26-to-2026-09-27.csv.gz": "d2947e531f2851f0af799a7e43845d25f81018d2ed7f1776e3d6d5e91c8222f8",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-09-27-to-2026-09-28.csv.gz": "13dc4ff8e670bfd1781377fd58e98d522748f3a1b169066fb25f1a1930fe731b",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-09-28-to-2026-09-29.csv.gz": "e859ba82e7a9b46ef4570640d397e92dd3437ca94eaef396b4bb432113e74612",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-09-29-to-2026-09-30.csv.gz": "d2363dee52368df2e34a06a2d1bb4d79d334b99a024639a800487178e6ae7420",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-09-30-to-2026-10-01.csv.gz": "4e3c9d95488174ef49724ec80668f9973b97efa3897d3919b968c79796f50157",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-01-to-2026-10-02.csv.gz": "2d1d665edaf154b231aaaecf0f10edd314018211a9d2c2339835a77f1ade6e9f",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-02-to-2026-10-03.csv.gz": "dfccbdbb908b8e70f1113530d09444d26686e2f166bf28787029d7f9a3435dd2",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-03-to-2026-10-04.csv.gz": "a76453d78324f8b36b88a91d8018e5ff30dd78313b11c68bcf58159dffc7d31f",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-04-to-2026-10-05.csv.gz": "048c7cdbc146a10b571228c75737381a72ccf1d227f0a2c1a9c0eb0443a936d6",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-05-to-2026-10-06.csv.gz": "98f4e058aaadcc6a052c4e7f7134b0af98d1c91188d29c46da5ceb189fca2daf",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-06-to-2026-10-07.csv.gz": "98b08f82ecc6d6b0f72ce4793b2de8205c2ca54cb1bbfdbaa2a9f83fbbd6c810",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-07-to-2026-10-08.csv.gz": "0d65a89a4a533dd5a574de1e373f3fd37c13d27392a638ce74dcfa21ce598fdd",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-08-to-2026-10-09.csv.gz": "bd05020f349121b4c24f29f881d30ffcef46ce8b9620865f4ae719b834160b92",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-09-to-2026-10-10.csv.gz": "9a67f66adc2d50521ee8e3c63e51e4d5167dbc8cad2ebb142a5db5b87659fc49",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-10-to-2026-10-11.csv.gz": "83f1573f2b0777fe1e48f6eb890a00749f4931bef75e502c7118c64e2b34fa48",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-11-to-2026-10-12.csv.gz": "efdd1c2e43886348a7eef3a825f09ad6d8ff5d76cd60112d58359c4f31523fb8",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-12-to-2026-10-13.csv.gz": "e82fcd41335cc8cc170a1ca4f81566dba79cdab41b9b5cd05cdb0f9bef9810fc",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-13-to-2026-10-14.csv.gz": "2be9a70110d11f22c30b09c939084f9237f0e54f16b791df32adc934739be448",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-14-to-2026-10-15.csv.gz": "fec6d8dca23599a026004decb78f132c586886dc135e037701c167d2500d2acc",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-15-to-2026-10-16.csv.gz": "5a62f09e6278ccb6c5614ed7a94ce55f4b454b8a3d41e8c21037dc8ab27fdbfb",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-16-to-2026-10-17.csv.gz": "6c7a74ee36d91b2f45229380cd5cece7eb29215db063b5e31347939149e73a70",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-17-to-2026-10-18.csv.gz": "c38307a30a0768b6e1ed48995c8de7977980729a84888f2339da1986b9b419ba",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-18-to-2026-10-19.csv.gz": "ef2239341ce701bfbccdf60327fcbcbee89e9b53c0073a7464a6a71f66213e6d",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-19-to-2026-10-20.csv.gz": "a24d7b5007d3b4604ca8f763a4b235c531a71e40181e3b21b2d2b3b5d8013a83",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-20-to-2026-10-21.csv.gz": "441a571d07ca999922c1cc7599fb27b98c7b274475e862f8175ddaa2c70df844",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-21-to-2026-10-22.csv.gz": "1c5b0195e66ab7c25cd09ec02eb1a6832c47c9b70a891a10b8edcd9305a4d936",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-22-to-2026-10-23.csv.gz": "674bbd369aef69e38d703d38290095522d6fd5d77a969beca6f8bb58000833d0",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-23-to-2026-10-24.csv.gz": "30fb7e5c0ee95e147af1820809ecd876d043e8065da03fdc24a3b9ae2bb48bbe",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-24-to-2026-10-25.csv.gz": "77e72e7ca838f91be0d31d61778dd225e00c5e37cb583ae17d3fc2840daa8771",
+  "data/mirror/fact_checkpoint_outcome/fact_checkpoint_outcome-2026-10-25-to-2026-10-26.csv.gz": "415c4201236127141a777554fd2d13496b4bab571647ade5306bbb58e1ff8c87",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-09-28-to-2026-09-29.csv.gz": "f4f1f4fddb8d36705105fc67759c98e1a9e4ed0231300b6927e8f5bdfdded144",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-09-29-to-2026-09-30.csv.gz": "740e7810bec68827ffed0928c66f5eb477eb443cdc22e91a53c70785eb000f9f",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-09-30-to-2026-10-01.csv.gz": "680069a806ff4af4ffcbf64a1a8cee3fdf998ad75a0819b46ded79498d35171c",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-01-to-2026-10-02.csv.gz": "4b848a6d42b4cc710bfbac2b90e555c4aaf0c12198206e05f79c7917c4a964fe",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-02-to-2026-10-03.csv.gz": "f636c5aa6eff6307aab4dbbf28726e59cae8558006b08e8789ff0d40884be602",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-03-to-2026-10-04.csv.gz": "341d0562c894044a270216cf3e51ceed8bf2132de261ddce4d2ea2b21b842354",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-04-to-2026-10-05.csv.gz": "5965e09a94be3518a7eec6c45d3737c9295c0663109ab31bb12802fb80cabc20",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-05-to-2026-10-06.csv.gz": "561cf472663dcc371f8af369b44ef28fe16bdc318574f738ee0338ca82788a69",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-06-to-2026-10-07.csv.gz": "212294b8d1f86f9ed14cab78c26117d40a6b51b5ce1984f6b42dc1cb48cf581a",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-07-to-2026-10-08.csv.gz": "ca24e1aca4113fc8d9cd5e167d920d9d410fc4efe2a0066a7be324366aabdab8",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-08-to-2026-10-09.csv.gz": "2515b0af9e35785705f63e1cfb7082a5b73c982d01678e07de27d391f223a20b",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-09-to-2026-10-10.csv.gz": "67e830a8ec79d2445f397d124a9dbc4f338dd1df9242cf90a57a49777a629839",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-10-to-2026-10-11.csv.gz": "2d811ec1173e9f023c2c665e0bc6a410d22ee4fd6dcedb0ade55cd123c5c45c3",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-11-to-2026-10-12.csv.gz": "65f02f25020810ca7fafc17e89338dee315a29905473e264963d2197af873594",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-12-to-2026-10-13.csv.gz": "f6ac2b79e7b99fa924c24ca585f5363f9ca2ef1b40de3d85d371c7b9a4ef9ba1",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-13-to-2026-10-14.csv.gz": "b8e34aaa589b4052c67c15ae4d5bf67ea5af79cf998524b535ad3de4b3dec884",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-14-to-2026-10-15.csv.gz": "535b5614a1cab0142d45154bbad1d6cfa6d409a30a2b02a2cf8164f1d23c7b7f",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-15-to-2026-10-16.csv.gz": "00e1d034a14409b0ee66a9882a6d7a2e80d21164008fe109234c37f5004cdc45",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-16-to-2026-10-17.csv.gz": "1a39df0fb59e89e6954f29586e250d35114d0b6c767590efb268b4c3e20da95e",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-17-to-2026-10-18.csv.gz": "39f2c0d0955a0e8436e45c2638602a759bbafba25817c3da6d41a0636dd029ed",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-18-to-2026-10-19.csv.gz": "6b42af9978576e5a200cbda3e9f302d9d2cc70c067cff0b694596b3e3a66d75e",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-19-to-2026-10-20.csv.gz": "20a245f9c94fb521de568abfde79bac489b57eac823999b6e17043916126e03e",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-20-to-2026-10-21.csv.gz": "f73fbe325019693d3b4b1a400d5d8ea89c62b2e3478f8175c809349f1c56689c",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-21-to-2026-10-22.csv.gz": "71b861cd03c6c5dc6db2614ac66bd5137cd3ac88e6154b68acf12664f35c05ad",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-22-to-2026-10-23.csv.gz": "3f5bc190b3d4a25917a0f2d58254bec8b3d80a4c0c69d814c20d3d55301d6830",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-23-to-2026-10-24.csv.gz": "7c4d1c8c79938488aff706b28df3a1965595ecef452c70c61ecd138e161d21a2",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-24-to-2026-10-25.csv.gz": "f0d8add8af01fbaf5a703c6bc14f3b2c7f8fa15dd0b6725b5fe306c0011230d4",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-2026-10-25-to-2026-10-26.csv.gz": "9b8219dd79dceaef93d9fc194d5b224f557d6b6f653024b53c4af3d1c72aaf3d",
+  "data/mirror/s10_shadow_checkpoints/s10_shadow_checkpoints-start-to-2026-09-28.csv.gz": "89927bb1844a227dc4a2179bcf7c7c553594b95fe79942ca4a93d31ffab7e7e7"
+ },
+ "candidate_rows_newest_target_date": "2026-10-26",
+ "left_out": {
+  "no graded outcome yet": 109
+ },
+ "served": {
+  "engine_versions": 140,
+  "model_path": {
+   "forecast": 3302,
+   "wxpredict": 1354
+  }
+ },
+ "pooled": {
+  "rows": 4656,
+  "dates": 21,
+  "cities": 47,
+  "log_loss_gain_served_minus_sd_corr": {
+   "mean": 0.046,
+   "ci90": [
+    -0.0221,
+    0.1094
+   ],
+   "ci95": [
+    -0.0364,
+    0.1232
+   ],
+   "dates": 21,
+   "n": 4656
+  },
+  "brier_gain_served_minus_sd_corr": {
+   "mean": -0.0012,
+   "ci90": [
+    -0.0214,
+    0.0174
+   ],
+   "ci95": [
+    -0.0242,
+    0.0214
+   ],
+   "dates": 21,
+   "n": 4656
+  },
+  "top1_served": {
+   "k": 2421,
+   "rate": 0.52,
+   "wilson95": [
+    0.5056,
+    0.5343
+   ]
+  },
+  "top1_sd_corr": {
+   "k": 2297,
+   "rate": 0.4933,
+   "wilson95": [
+    0.479,
+    0.5077
+   ]
+  },
+  "da_floor_minus_sd_corr": {
+   "mean": 0.0595,
+   "ci90": [
+    0.0338,
+    0.0872
+   ],
+   "ci95": [
+    0.0289,
+    0.0925
+   ],
+   "dates": 21,
+   "n": 4656
+  },
+  "market_descriptive": {
+   "rows_book_whole": 4112,
+   "top1_market": 0.6595,
+   "log_loss_served_minus_market": {
+    "mean": 0.4861,
+    "ci90": [
+     0.4152,
+     0.564
+    ],
+    "ci95": [
+     0.4043,
+     0.5746
+    ],
+    "dates": 21,
+    "n": 4112
+   },
+   "log_loss_sd_corr_minus_market": {
+    "mean": 0.4436,
+    "ci90": [
+     0.3897,
+     0.5084
+    ],
+    "ci95": [
+     0.3771,
+     0.5194
+    ],
+    "dates": 21,
+    "n": 4112
+   }
+  },
+  "rd1_descriptive": {
+   "rows_with_rd1": 4540,
+   "top1_rd1": 0.515,
+   "log_loss_served_minus_rd1": {
+    "mean": 0.0824,
+    "ci90": [
+     0.0206,
+     0.1464
+    ],
+    "ci95": [
+     0.0068,
+     0.1582
+    ],
+    "dates": 21,
+    "n": 4540
+   },
+   "log_loss_sd_corr_minus_rd1": {
+    "mean": 0.0452,
+    "ci90": [
+     0.0015,
+     0.0899
+    ],
+    "ci95": [
+     -0.0063,
+     0.0983
+    ],
+    "dates": 21,
+    "n": 4540
+   }
+  }
+ },
+ "per_checkpoint": {
+  "morning": {
+   "rows": 927,
+   "dates": 21,
+   "cities": 47,
+   "log_loss_gain_served_minus_sd_corr": {
+    "mean": 0.2411,
+    "ci90": [
+     0.1771,
+     0.3058
+    ],
+    "ci95": [
+     0.1683,
+     0.3206
+    ],
+    "dates": 21,
+    "n": 927
+   },
+   "brier_gain_served_minus_sd_corr": {
+    "mean": 0.0528,
+    "ci90": [
+     0.037,
+     0.068
+    ],
+    "ci95": [
+     0.0325,
+     0.0717
+    ],
+    "dates": 21,
+    "n": 927
+   },
+   "top1_served": {
+    "k": 349,
+    "rate": 0.3765,
+    "wilson95": [
+     0.3459,
+     0.4081
+    ]
+   },
+   "top1_sd_corr": {
+    "k": 371,
+    "rate": 0.4002,
+    "wilson95": [
+     0.3692,
+     0.4321
+    ]
+   },
+   "da_floor_minus_sd_corr": {
+    "mean": 0.0686,
+    "ci90": [
+     0.0364,
+     0.104
+    ],
+    "ci95": [
+     0.0291,
+     0.1116
+    ],
+    "dates": 21,
+    "n": 927
+   },
+   "market_descriptive": {
+    "rows_book_whole": 819,
+    "top1_market": 0.5165,
+    "log_loss_served_minus_market": {
+     "mean": 0.6147,
+     "ci90": [
+      0.5472,
+      0.693
+     ],
+     "ci95": [
+      0.5384,
+      0.708
+     ],
+     "dates": 21,
+     "n": 819
+    },
+    "log_loss_sd_corr_minus_market": {
+     "mean": 0.3652,
+     "ci90": [
+      0.3079,
+      0.4364
+     ],
+     "ci95": [
+      0.2928,
+      0.4479
+     ],
+     "dates": 21,
+     "n": 819
+    }
+   },
+   "rd1_descriptive": {
+    "rows_with_rd1": 911,
+    "top1_rd1": 0.3546,
+    "log_loss_served_minus_rd1": {
+     "mean": 0.1489,
+     "ci90": [
+      0.0864,
+      0.2092
+     ],
+     "ci95": [
+      0.0771,
+      0.217
+     ],
+     "dates": 21,
+     "n": 911
+    },
+    "log_loss_sd_corr_minus_rd1": {
+     "mean": -0.0875,
+     "ci90": [
+      -0.1343,
+      -0.043
+     ],
+     "ci95": [
+      -0.1464,
+      -0.0314
+     ],
+     "dates": 21,
+     "n": 911
+    }
+   }
+  },
+  "noon": {
+   "rows": 931,
+   "dates": 21,
+   "cities": 47,
+   "log_loss_gain_served_minus_sd_corr": {
+    "mean": 0.0389,
+    "ci90": [
+     -0.0397,
+     0.1189
+    ],
+    "ci95": [
+     -0.0548,
+     0.1385
+    ],
+    "dates": 21,
+    "n": 931
+   },
+   "brier_gain_served_minus_sd_corr": {
+    "mean": -0.0066,
+    "ci90": [
+     -0.0291,
+     0.0152
+    ],
+    "ci95": [
+     -0.0328,
+     0.0193
+    ],
+    "dates": 21,
+    "n": 931
+   },
+   "top1_served": {
+    "k": 446,
+    "rate": 0.4791,
+    "wilson95": [
+     0.4471,
+     0.5112
+    ]
+   },
+   "top1_sd_corr": {
+    "k": 420,
+    "rate": 0.4511,
+    "wilson95": [
+     0.4194,
+     0.4832
+    ]
+   },
+   "da_floor_minus_sd_corr": {
+    "mean": 0.06,
+    "ci90": [
+     0.0324,
+     0.0895
+    ],
+    "ci95": [
+     0.0261,
+     0.0963
+    ],
+    "dates": 21,
+    "n": 931
+   },
+   "market_descriptive": {
+    "rows_book_whole": 827,
+    "top1_market": 0.63,
+    "log_loss_served_minus_market": {
+     "mean": 0.4882,
+     "ci90": [
+      0.4051,
+      0.5765
+     ],
+     "ci95": [
+      0.3826,
+      0.5935
+     ],
+     "dates": 21,
+     "n": 827
+    },
+    "log_loss_sd_corr_minus_market": {
+     "mean": 0.4563,
+     "ci90": [
+      0.3969,
+      0.5202
+     ],
+     "ci95": [
+      0.383,
+      0.5334
+     ],
+     "dates": 21,
+     "n": 827
+    }
+   },
+   "rd1_descriptive": {
+    "rows_with_rd1": 909,
+    "top1_rd1": 0.4961,
+    "log_loss_served_minus_rd1": {
+     "mean": 0.1183,
+     "ci90": [
+      0.0434,
+      0.2021
+     ],
+     "ci95": [
+      0.0309,
+      0.2179
+     ],
+     "dates": 21,
+     "n": 909
+    },
+    "log_loss_sd_corr_minus_rd1": {
+     "mean": 0.0922,
+     "ci90": [
+      0.0483,
+      0.1419
+     ],
+     "ci95": [
+      0.0414,
+      0.1522
+     ],
+     "dates": 21,
+     "n": 909
+    }
+   }
+  },
+  "prepeak_2h": {
+   "rows": 932,
+   "dates": 21,
+   "cities": 47,
+   "log_loss_gain_served_minus_sd_corr": {
+    "mean": 0.0063,
+    "ci90": [
+     -0.0816,
+     0.0916
+    ],
+    "ci95": [
+     -0.1011,
+     0.1085
+    ],
+    "dates": 21,
+    "n": 932
+   },
+   "brier_gain_served_minus_sd_corr": {
+    "mean": -0.0115,
+    "ci90": [
+     -0.0379,
+     0.0139
+    ],
+    "ci95": [
+     -0.0424,
+     0.0192
+    ],
+    "dates": 21,
+    "n": 932
+   },
+   "top1_served": {
+    "k": 412,
+    "rate": 0.4421,
+    "wilson95": [
+     0.4105,
+     0.4741
+    ]
+   },
+   "top1_sd_corr": {
+    "k": 377,
+    "rate": 0.4045,
+    "wilson95": [
+     0.3735,
+     0.4363
+    ]
+   },
+   "da_floor_minus_sd_corr": {
+    "mean": 0.0628,
+    "ci90": [
+     0.0336,
+     0.0952
+    ],
+    "ci95": [
+     0.0273,
+     0.1033
+    ],
+    "dates": 21,
+    "n": 932
+   },
+   "market_descriptive": {
+    "rows_book_whole": 826,
+    "top1_market": 0.586,
+    "log_loss_served_minus_market": {
+     "mean": 0.4547,
+     "ci90": [
+      0.3701,
+      0.5463
+     ],
+     "ci95": [
+      0.3547,
+      0.564
+     ],
+     "dates": 21,
+     "n": 826
+    },
+    "log_loss_sd_corr_minus_market": {
+     "mean": 0.4527,
+     "ci90": [
+      0.3896,
+      0.5186
+     ],
+     "ci95": [
+      0.38,
+      0.5325
+     ],
+     "dates": 21,
+     "n": 826
+    }
+   },
+   "rd1_descriptive": {
+    "rows_with_rd1": 912,
+    "top1_rd1": 0.4518,
+    "log_loss_served_minus_rd1": {
+     "mean": 0.0624,
+     "ci90": [
+      -0.0233,
+      0.1493
+     ],
+     "ci95": [
+      -0.0398,
+      0.1669
+     ],
+     "dates": 21,
+     "n": 912
+    },
+    "log_loss_sd_corr_minus_rd1": {
+     "mean": 0.0678,
+     "ci90": [
+      0.0076,
+      0.1273
+     ],
+     "ci95": [
+      -0.0071,
+      0.1417
+     ],
+     "dates": 21,
+     "n": 912
+    }
+   }
+  },
+  "prepeak_1h": {
+   "rows": 929,
+   "dates": 21,
+   "cities": 47,
+   "log_loss_gain_served_minus_sd_corr": {
+    "mean": 0.0124,
+    "ci90": [
+     -0.0628,
+     0.0827
+    ],
+    "ci95": [
+     -0.0749,
+     0.0933
+    ],
+    "dates": 21,
+    "n": 929
+   },
+   "brier_gain_served_minus_sd_corr": {
+    "mean": -0.0037,
+    "ci90": [
+     -0.03,
+     0.0213
+    ],
+    "ci95": [
+     -0.0359,
+     0.0269
+    ],
+    "dates": 21,
+    "n": 929
+   },
+   "top1_served": {
+    "k": 478,
+    "rate": 0.5145,
+    "wilson95": [
+     0.4824,
+     0.5465
+    ]
+   },
+   "top1_sd_corr": {
+    "k": 432,
+    "rate": 0.465,
+    "wilson95": [
+     0.4332,
+     0.4972
+    ]
+   },
+   "da_floor_minus_sd_corr": {
+    "mean": 0.053,
+    "ci90": [
+     0.0261,
+     0.0822
+    ],
+    "ci95": [
+     0.0215,
+     0.0878
+    ],
+    "dates": 21,
+    "n": 929
+   },
+   "market_descriptive": {
+    "rows_book_whole": 822,
+    "top1_market": 0.6715,
+    "log_loss_served_minus_market": {
+     "mean": 0.463,
+     "ci90": [
+      0.3776,
+      0.5549
+     ],
+     "ci95": [
+      0.356,
+      0.5733
+     ],
+     "dates": 21,
+     "n": 822
+    },
+    "log_loss_sd_corr_minus_market": {
+     "mean": 0.4517,
+     "ci90": [
+      0.3867,
+      0.5204
+     ],
+     "ci95": [
+      0.3761,
+      0.5355
+     ],
+     "dates": 21,
+     "n": 822
+    }
+   },
+   "rd1_descriptive": {
+    "rows_with_rd1": 912,
+    "top1_rd1": 0.5044,
+    "log_loss_served_minus_rd1": {
+     "mean": 0.0434,
+     "ci90": [
+      -0.0325,
+      0.1219
+     ],
+     "ci95": [
+      -0.0432,
+      0.1312
+     ],
+     "dates": 21,
+     "n": 912
+    },
+    "log_loss_sd_corr_minus_rd1": {
+     "mean": 0.0469,
+     "ci90": [
+      -0.0028,
+      0.0979
+     ],
+     "ci95": [
+      -0.011,
+      0.1065
+     ],
+     "dates": 21,
+     "n": 912
+    }
+   }
+  },
+  "postpeak_1h": {
+   "rows": 937,
+   "dates": 21,
+   "cities": 47,
+   "log_loss_gain_served_minus_sd_corr": {
+    "mean": -0.0672,
+    "ci90": [
+     -0.1444,
+     0.011
+    ],
+    "ci95": [
+     -0.1651,
+     0.0199
+    ],
+    "dates": 21,
+    "n": 937
+   },
+   "brier_gain_served_minus_sd_corr": {
+    "mean": -0.0366,
+    "ci90": [
+     -0.0632,
+     -0.0105
+    ],
+    "ci95": [
+     -0.0688,
+     -0.0059
+    ],
+    "dates": 21,
+    "n": 937
+   },
+   "top1_served": {
+    "k": 736,
+    "rate": 0.7855,
+    "wilson95": [
+     0.7581,
+     0.8106
+    ]
+   },
+   "top1_sd_corr": {
+    "k": 697,
+    "rate": 0.7439,
+    "wilson95": [
+     0.715,
+     0.7708
+    ]
+   },
+   "da_floor_minus_sd_corr": {
+    "mean": 0.0532,
+    "ci90": [
+     0.028,
+     0.0809
+    ],
+    "ci95": [
+     0.0238,
+     0.0851
+    ],
+    "dates": 21,
+    "n": 937
+   },
+   "market_descriptive": {
+    "rows_book_whole": 818,
+    "top1_market": 0.8949,
+    "log_loss_served_minus_market": {
+     "mean": 0.4099,
+     "ci90": [
+      0.3244,
+      0.5057
+     ],
+     "ci95": [
+      0.3093,
+      0.5256
+     ],
+     "dates": 21,
+     "n": 818
+    },
+    "log_loss_sd_corr_minus_market": {
+     "mean": 0.4917,
+     "ci90": [
+      0.4348,
+      0.5553
+     ],
+     "ci95": [
+      0.4261,
+      0.5731
+     ],
+     "dates": 21,
+     "n": 818
+    }
+   },
+   "rd1_descriptive": {
+    "rows_with_rd1": 896,
+    "top1_rd1": 0.7723,
+    "log_loss_served_minus_rd1": {
+     "mean": 0.0383,
+     "ci90": [
+      -0.0419,
+      0.1272
+     ],
+     "ci95": [
+      -0.057,
+      0.1421
+     ],
+     "dates": 21,
+     "n": 896
+    },
+    "log_loss_sd_corr_minus_rd1": {
+     "mean": 0.1076,
+     "ci90": [
+      0.0655,
+      0.1478
+     ],
+     "ci95": [
+      0.0585,
+      0.1521
+     ],
+     "dates": 21,
+     "n": 896
+    }
+   }
+  }
+ },
+ "rule": {
+  "1_pooled_ci90_above_0_over_20_dates": false,
+  "2_no_checkpoint_ci90_wholly_below_0": true,
+  "3_no_checkpoint_sd_corr_top1_below_served_wilson95": false,
+  "pooled_ci90_wholly_below_0": false,
+  "verdict": "insufficient evidence"
+ }
+}

@@ -3,6 +3,20 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## sd_corr:v1 first look — 26 Oct: insufficient evidence
+
+The pre-registered first look (`docs/SD_CORR_PREREG.md`) at 21 scored target
+dates (5-25 Oct, 4,656 rows; 109 left out with no graded outcome yet), run from
+the committed mirror by `tools/p11_sd_corr_look.py` (it names the 114 files
+read, with sha256). Pooled log-loss gain, served minus `sd_corr`, +0.0460 (90%
+-0.0221 to +0.1094); morning +0.2411 (+0.1771 to +0.3058); post-peak -0.0672
+(-0.1444 to +0.0110). Rule 1 fails, rule 2 holds, rule 3 fails at prepeak_2h,
+prepeak_1h and postpeak_1h (top-1 below the served Wilson lower end).
+**Insufficient evidence**; second and last look at 40 dates (about 13 Nov,
+`trig_01PFzq7b8YbCvk6WFf8UiB91`). Against `da_floor` on the same rows:
+`da_floor` minus `sd_corr` +0.0595 (+0.0338 to +0.0872). Nothing changes in
+serving.
+
 ## Handoff — 25 Oct ~11:15Z (session paused by Hassan)
 
 #434 merged (`e9c46e7`): the da_floor:v1 first look, the live_capture prune
@@ -20,9 +34,10 @@ order:
   served model (G5), and the model files' home (repository, about 80 MB a
   week, or Release assets) is his choice.
 - **Pre-registered looks already scheduled** (they wake this session and count
-  dates first): sd_corr:v1 26 Oct 10:30Z (`trig_014487X2FuvGvAtbTfgzBuhf`),
-  the P3.10 ensemble record test 29 Oct 10:30Z (`trig_01KbKRaWUvyM5rVwzkZLZvim`),
-  da_floor:v1 second look 14 Nov 10:30Z (`trig_01D6fCuEL6KDsHRe1EVPmMeq`).
+  dates first): the P3.10 ensemble record test 29 Oct 10:30Z
+  (`trig_01KbKRaWUvyM5rVwzkZLZvim`), da_floor:v1 second look 14 Nov 10:30Z
+  (`trig_01D6fCuEL6KDsHRe1EVPmMeq`), sd_corr:v1 second look 15 Nov 10:30Z
+  (`trig_01PFzq7b8YbCvk6WFf8UiB91`; the first look was 26 Oct, above).
 
 ## da_floor:v1 first look — 25 Oct: insufficient evidence
 
