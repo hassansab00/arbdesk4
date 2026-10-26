@@ -14,7 +14,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from common import get_cities, log_run, rest_all, upsert_replace
-from tick import CHECKPOINTS, decision_times
+from tick import CHECKPOINTS, PEAK_OFFSETS_H, decision_times
 import wx_city_calibration as cal
 import city_model_selection as selector
 import early_forecast_audit
@@ -107,6 +107,32 @@ def wilson(hits, n):
     return [max(0,mid-delta),min(1,mid+delta)]
 
 
+def saved_capture_plan(p, city):
+    """Validate the immutable city-local schedule, never today's peak table.
+
+    Fixed checkpoints still have exact clocks. A relative checkpoint retains
+    its original peak anchor in its saved schedule. Receipt/window/outcome
+    checks remain separate; legacy calls never gain a server receipt here.
+    """
+    try:
+        day = dt.date.fromisoformat(p['target_date'])
+        local = dt.datetime.fromisoformat(p['local_decision_time'])
+        if local.tzinfo is not None or local.second or local.microsecond:
+            return None
+        fixed = decision_times(p['target_date'], city['timezone'], None)
+        if p['checkpoint'] in fixed:
+            return fixed[p['checkpoint']] if local == fixed[p['checkpoint']][0] else None
+        offset = PEAK_OFFSETS_H.get(p['checkpoint'])
+        if offset is None:
+            return None
+        peak = local-dt.timedelta(hours=offset)
+        if peak.date() != day:
+            return None
+        return local, local.replace(tzinfo=ZoneInfo(city['timezone'])).astimezone(dt.timezone.utc)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def collect(checkpoints, outcomes, day_ahead, cities, peaks, now):
     """A later perfect replacement never wins selection over an original miss."""
     city_of = {c['city_key']:c for c in cities}
@@ -124,11 +150,10 @@ def collect(checkpoints, outcomes, day_ahead, cities, peaks, now):
         day = dt.date.fromisoformat(p['target_date'])
         end = dt.datetime.combine(day+dt.timedelta(days=1),dt.time(),ZoneInfo(c['timezone']))
         received = cal.timestamp(p.get('frozen_at') or p['decided_at'])
-        times = decision_times(p['target_date'],c['timezone'],peaks.get((p['city_key'],day.month)))
-        plan = times.get(p['checkpoint'])
+        # `peaks` is retained for callers' compatibility, not historical eligibility.
+        plan = saved_capture_plan(p,c)
         if (not plan or not plan[1] <= received <= plan[1]+dt.timedelta(minutes=75)
-            or received >= end or cal.timestamp(p['decided_at']) > received
-            or str(p['local_decision_time'])[:16] != plan[0].isoformat()[:16]):
+            or received >= end or received > now or cal.timestamp(p['decided_at']) > received):
             continue
         f = facts.get(p['checkpoint_id'])
         settled = (f and f.get('settled_at') and received < cal.timestamp(f['settled_at']) <= now
@@ -298,7 +323,7 @@ def reports(rows,cities,reviews,states,now,model_version=None,selections=(),earl
                     chosen=[r for r in group if r['checkpoint']==horizon]
                 report=summarize(chosen,horizon)
                 report.update(city=city,display_name=c.get('display_name') or city,timezone=c['timezone'],
-                    capture_timing=timing_report(chosen,horizon),
+                    capture_timing=timing_report(chosen,horizon),capture_schedule_policy='saved-city-clock-v1',
                     scope=scope,horizon=horizon,period_start=period_start,period_end=period_end,
                     why=diagnostic(chosen,[r for r in reviews if r['city_key']==city]),
                     paired_audit=paired_diagnostic(chosen),
@@ -325,8 +350,6 @@ def run(score_only=False, now=None):
     outcomes=rest_all('fact_checkpoint_outcome',[('select','checkpoint_id,winner_band_id,settled_at,banked_at'),('target_date','gte.'+first)],order='checkpoint_id.asc',page_size=1000)
     da=rest_all('v_day_ahead_frozen_validation',[('select','*'),('for_date','gte.'+first)],order='city_key.asc,for_date.asc',page_size=1000)
     reviews=rest_all('derived_day_review',[('select','*'),('target_date','gte.'+first)],order='city_key.asc,target_date.asc',page_size=1000)
-    peak_rows=rest_all('derived_weather_peak',[('select','city_key,month,peak_hour_local')],order='city_key.asc,month.asc',page_size=1000)
-    peaks={(r['city_key'],int(r['month'])):r['peak_hour_local'] for r in peak_rows}
     states=[r['state'] for r in rest_all('derived_wx_city_calibration',[('select','state')],order='model_version.asc,city_key.asc,phase.asc',page_size=1000)]
     prior_reports=rest_all('derived_city_prediction_validation',[('select','report'),('scope','eq.served')],order='city_key.asc,checkpoint.asc',page_size=1000)
     selections=[r['report']['model_selection'] for r in prior_reports if r.get('report',{}).get('model_selection')]
@@ -350,7 +373,7 @@ def run(score_only=False, now=None):
     for city,input_version in active_versions.items():
         version_cities.setdefault(input_version,[]).append(city)
     versions=tuple(sorted(version_cities))
-    detail={'score_only':score_only,'active_cities':len(cities)}
+    detail={'score_only':score_only,'active_cities':len(cities),'capture_schedule_policy':'saved-city-clock-v1'}
     if not score_only:
         learning=rest_all('v_city_predictor_pairs',[('select','*'),('target_date','gte.'+(now.date()-dt.timedelta(days=180)).isoformat())],order='city_key.asc,target_date.asc,checkpoint.asc',page_size=1000)
         fitted=[]
@@ -368,7 +391,7 @@ def run(score_only=False, now=None):
                       eligible_learning_calls=sum(len(cal.eligible_rows(learning,now.date(),v)) for v in versions),
                       input_versions=list(versions))
         detail.update(selection_cells=len(selections),selection_decisions=dict(Counter(s['decision'] for s in selections)))
-    data=reports(collect(p,outcomes,da,cities,peaks,now),cities,reviews,states,now,version,selections,early_states,
+    data=reports(collect(p,outcomes,da,cities,{},now),cities,reviews,states,now,version,selections,early_states,
                  model_versions=active_versions)
     n=upsert_replace('derived_city_prediction_validation',data,'city_key,checkpoint,scope')
     log_run(JOB,'ok',n,detail)

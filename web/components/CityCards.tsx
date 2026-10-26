@@ -16,21 +16,15 @@ import {
 import { cityEvidence, momentLabel, type CityEvidence, type HindsightRow } from "@/lib/focus";
 import { fmtDateTime, fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
 import CityPopup, { type HitSummaryRow, type ScoreRow } from "@/components/CityPopup";
+import FrozenCallPanel from "@/components/FrozenCallPanel";
+import { readFrozenCalls, selectedFrozenCall, type FrozenCall } from "@/lib/frozenCalls";
 
 /**
  * ONE CARD PER CITY: the call, at a glance, for the market you can still trade.
  *
- * Every number is read, none is recomputed. Four sources, all fast for the
- * browser role (timed as anon on 24 Sep):
- *
- *   v_prediction_ladder        stored rows (P6.5), 0.65 s for every city and day
- *   v_forecast_convergence_all stored rows (P6.5), 0.32 s
- *   v_model_disagreement       the desk's own model, 0.55 s
- *   live_weather               one row per city
- *
- * v_city_reasoning holds much of the same per city, but took 5.3 s for all
- * cities as anon - too close to the 8 s the browser roles are allowed, which
- * is how panels end up red. It stays the per-city deep dive.
+ * Stored ladder rows, public forecasts, the desk model and station readings
+ * build the live display. Existing public views supply original calls
+ * separately; selecting a frozen moment never relabels a live price.
  */
 
 const LADDER_MAX = 8000;
@@ -50,7 +44,7 @@ const STRIP = ["day_ahead", "noon", "prepeak_1h"] as const;
 
 /**
  * Props from the page's one selection (wave F): `cities` are the cards shown,
- * `moment` the frozen moment their record and status are read at, `hindsight`
+ * `moment` the frozen moment their original call, record and status are read at, `hindsight`
  * every frozen call (the page reads it once), `status` v_city_status. Without
  * them every active city is shown and no record or status is drawn.
  * `scorecard` (v_prediction_scorecard_all) and `summary` (v_city_hit_summary)
@@ -109,7 +103,7 @@ export default function CityCards({ onPick, onRefreshStatus, cities, moment = "d
   );
 
   const reload = () => {
-    citiesQ.refresh(); ladderQ.refresh(); forecastQ.refresh(); ownQ.refresh(); liveQ.refresh(); currentQ.refresh();
+    citiesQ.refresh(); ladderQ.refresh(); forecastQ.refresh(); ownQ.refresh(); liveQ.refresh(); currentQ.refresh(); frozenQ.refresh();
     onRefreshStatus?.();
   };
   const dates = useMemo(
@@ -122,6 +116,11 @@ export default function CityCards({ onPick, onRefreshStatus, cities, moment = "d
     return all.filter((c) => want.has(c.city_key));
   }, [citiesQ.data, ladderQ.data, forecastQ.data, ownQ.data, liveQ.data, pick, currentQ.data, cities]);
   const recordFrom = useMemo(() => isoDay(-EVIDENCE_DAYS), []);
+  const callDates = [...new Set(cards.map(c => c.for_date))].sort().join(',');
+  const frozenQ = useQuery<FrozenCall[]>(async () => {
+    if (!callDates) return {data:[],error:null};
+    return readFrozenCalls(supabase,moment,callDates.split(','));
+  }, [callDates,moment]);
   const openCard = open ? cards.find((c) => `${c.city_key}|${c.for_date}` === open) ?? null : null;
   // The side panels are extras: a card still shows its ladder if one fails,
   // and says which one did, rather than the whole section going red.
@@ -151,16 +150,15 @@ export default function CityCards({ onPick, onRefreshStatus, cities, moment = "d
         </div>
       </div>
       <p className="max-w-3xl text-xs leading-relaxed text-muted">
-        For each city, the market it can still trade. On top, the <b className="text-text">platform&rsquo;s
-        pick</b>: the one temperature it thinks the day will settle on (its most likely bucket), how likely
-        it says that is, and the <b className="text-text">market&rsquo;s pick</b> beside it. Below, the best
-        tradeable edge, and what the pick is built from: the forecast centre, the public forecasts and the
-        desk&rsquo;s own model. Trades that side with the market come first; a trade that bets on the engine against the
-        market&rsquo;s favourite is marked and sorted after them, because on settled days the market&rsquo;s
-        pick has won about twice as often when the two disagreed.{" "}
+        For each city, the market it can still trade. The <b className="text-text">frozen pick</b> follows
+        the selected moment and trade date; later forecasts do not replace it. Below it, the
+        <b className="text-text"> live forecast pick</b> can change as forecasts and observations arrive.
+        Its probability, the market&rsquo;s pick, tradeable edges and forecast inputs describe the live
+        pricing. Trades that side with the market come first; a trade against the market&rsquo;s favourite
+        is marked and sorted after them.{" "}
         <b className="text-text">Reload</b> re-reads the stored rows (refreshed at :12 and :42 and after
         each pipeline run). <b className="text-text">Reprice now</b> runs the Intraday pipeline on
-        GitHub Actions (about 2 billed minutes); press Reload once it has finished.
+        GitHub Actions; press Reload once it has finished.
       </p>
       {sideErrors.length > 0 && (
         <p className="text-[11px] text-bad">
@@ -179,6 +177,8 @@ export default function CityCards({ onPick, onRefreshStatus, cities, moment = "d
       >
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {cards.map((c) => <Card key={`${c.city_key}|${c.for_date}`} c={c} moment={moment}
+            frozen={selectedFrozenCall(frozenQ.data ?? [],c.city_key,c.for_date,moment)}
+            frozenLoading={frozenQ.loading} frozenError={frozenQ.error}
             onPick={(city) => { onPick?.(city); setOpen(`${c.city_key}|${c.for_date}`); }}
             st={statusFor(status, c.city_key, c.for_date, moment)}
             ev={cityEvidence(hindsight, c.city_key, moment, recordFrom)}
@@ -189,6 +189,8 @@ export default function CityCards({ onPick, onRefreshStatus, cities, moment = "d
       </DataState>
       {openCard && (
         <CityPopup c={openCard} moment={moment} onClose={() => setOpen(null)}
+          frozen={selectedFrozenCall(frozenQ.data ?? [],openCard.city_key,openCard.for_date,moment)}
+          frozenLoading={frozenQ.loading} frozenError={frozenQ.error}
           city={(citiesQ.data ?? []).find((x) => x.city_key === openCard.city_key) ?? { city_key: openCard.city_key }}
           ladder={(ladderQ.data ?? []).filter((r) => r.city_key === openCard.city_key && r.for_date === openCard.for_date)}
           current={(currentQ.data ?? []).filter((r) => r.city_key === openCard.city_key
@@ -209,9 +211,10 @@ const STATUS_TONE: Record<StatusRow["status"], string> = {
 const rateText = (e: CityEvidence) =>
   e.n ? `${e.hits}/${e.n} (${Math.round((e.hits / e.n) * 100)}%)` : "none settled";
 
-function Card({ c, onPick, moment, st, ev, strip, after, showRecord }: {
+function Card({ c, onPick, moment, st, ev, strip, after, showRecord, frozen, frozenLoading, frozenError }: {
   c: CityCard; onPick?: (city: string) => void; moment: string; st: StatusRow | null;
   ev: CityEvidence; strip: ReadonlyArray<readonly [string, CityEvidence]>; after: CityEvidence; showRecord: boolean;
+  frozen: FrozenCall | null; frozenLoading: boolean; frozenError: string | null;
 }) {
   const u = c.unit;
   const trusted = c.best && !c.best.against_market;
@@ -239,14 +242,10 @@ function Card({ c, onPick, moment, st, ev, strip, after, showRecord }: {
         </div>
       )}
 
-      {/* THE PICK. The one temperature the platform says the day will settle
-          on: its most likely bucket. Hassan, 26 Sep: the big number used to be
-          the forecast centre, labelled "predicted max", and three forecasts
-          below it - four temperatures and no answer. The centre is an input;
-          the pick is the answer, and the market's pick sits beside it because
-          when the two differ the market has been right about twice as often. */}
+      <FrozenCallPanel call={frozen} moment={moment} timezone={c.timezone} loading={frozenLoading} error={frozenError} />
+      {/* The operational ladder continues updating independently of the original call above. */}
       <div className="mt-2 rounded border border-border bg-panel2 px-2 py-1.5">
-        <div className="text-[10px] uppercase tracking-wide text-muted">Platform&rsquo;s pick - most likely winning temperature</div>
+        <div className="text-[10px] uppercase tracking-wide text-muted">Live forecast pick · updates as new data arrives</div>
         {c.top_band ? (
           <div className="flex flex-wrap items-baseline gap-x-2">
             <span className="text-2xl font-semibold tabular-nums">{c.top_band}</span>
