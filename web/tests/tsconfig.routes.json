@@ -15,6 +15,8 @@
   },
   "include": [],
   "files": [
+    "../lib/cityManualGuide.ts",
+    "../components/CityManualGuide.tsx",
     "../lib/frozenCalls.ts",
     "../components/FrozenCallPanel.tsx",
     "../lib/time.ts",
