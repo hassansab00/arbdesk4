@@ -2,6 +2,7 @@
 
 import CityLearning from "./CityLearning";
 import FrozenCallPanel from "./FrozenCallPanel";
+import CityManualGuide from "./CityManualGuide";
 import type { FrozenCall } from "@/lib/frozenCalls";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -221,6 +222,7 @@ export default function CityPopup({
         )}
 
         <FrozenCallPanel call={frozen} moment={moment} timezone={city.timezone} loading={frozenLoading} error={frozenError} />
+        <CityManualGuide card={c} moment={moment} history={hindsight} status={status} peak={peak} />
         <div className="mt-3 grid gap-3 lg:grid-cols-2">
           {/* THE CALL */}
           <section className="rounded border border-border bg-panel2 p-2">
