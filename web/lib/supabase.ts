@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { classifyKey, SECRET_KEY_MESSAGE } from "./keyGuard";
+import { createReadFetch } from "./readFetch";
 
 // Anon key only, never the service key (Revision A §6.3/§9). Every table
 // read through this client is behind an RLS policy from sql/ad4_rls.sql;
@@ -48,6 +49,7 @@ function getClient(): SupabaseClient {
     // (lib/operator.ts) and is sent only to this site's write routes.
     cached = createClient(url, key, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      global: { fetch: createReadFetch((input,init)=>fetch(input,init)) },
     });
   }
   return cached;
