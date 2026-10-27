@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { readAllRows } from "@/lib/readAll";
@@ -18,6 +18,8 @@ import { fmtDateTime, fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
 import CityPopup, { type HitSummaryRow, type ScoreRow } from "@/components/CityPopup";
 import FrozenCallPanel from "@/components/FrozenCallPanel";
 import { readFrozenCalls, selectedFrozenCall, type FrozenCall } from "@/lib/frozenCalls";
+import CityTimingBadge from "@/components/CityTimingBadge";
+import { checkpointReference, readCardTimingReports, type TimingReportRow } from "@/lib/cityManualGuide";
 
 /**
  * ONE CARD PER CITY: the call, at a glance, for the market you can still trade.
@@ -103,7 +105,7 @@ export default function CityCards({ onPick, onRefreshStatus, cities, moment = "d
   );
 
   const reload = () => {
-    citiesQ.refresh(); ladderQ.refresh(); forecastQ.refresh(); ownQ.refresh(); liveQ.refresh(); currentQ.refresh(); frozenQ.refresh();
+    citiesQ.refresh(); ladderQ.refresh(); forecastQ.refresh(); ownQ.refresh(); liveQ.refresh(); currentQ.refresh(); frozenQ.refresh(); timingQ.refresh();
     onRefreshStatus?.();
   };
   const dates = useMemo(
@@ -117,6 +119,13 @@ export default function CityCards({ onPick, onRefreshStatus, cities, moment = "d
   }, [citiesQ.data, ladderQ.data, forecastQ.data, ownQ.data, liveQ.data, pick, currentQ.data, cities]);
   const recordFrom = useMemo(() => isoDay(-EVIDENCE_DAYS), []);
   const callDates = [...new Set(cards.map(c => c.for_date))].sort().join(',');
+  const timingCities=[...new Set(cards.map(c=>c.city_key))].sort().join(',');
+  const timingQ=useQuery<TimingReportRow[]>(()=>readCardTimingReports(supabase,timingCities?timingCities.split(','):[]),[timingCities]);
+  const [timingNow,setTimingNow]=useState(()=>Date.now());
+  // Only local report-expiry checks tick; the compact read has no polling loop.
+  useEffect(()=>{const timer=setInterval(()=>setTimingNow(Date.now()),60000);return()=>clearInterval(timer);},[]);
+  const timingReferences=useMemo(()=>new Map(cards.map(c=>[c.city_key,
+    checkpointReference(timingQ.data ?? [],c.city_key,c.for_date,timingNow,hindsight)])),[cards,timingQ.data,timingNow,hindsight]);
   const frozenQ = useQuery<FrozenCall[]>(async () => {
     if (!callDates) return {data:[],error:null};
     return readFrozenCalls(supabase,moment,callDates.split(','));
@@ -184,6 +193,7 @@ export default function CityCards({ onPick, onRefreshStatus, cities, moment = "d
             ev={cityEvidence(hindsight, c.city_key, moment, recordFrom)}
             strip={STRIP.map((m) => [m, cityEvidence(hindsight, c.city_key, m, recordFrom)] as const)}
             after={cityEvidence(hindsight, c.city_key, "postpeak_1h", recordFrom)}
+            timing={timingReferences.get(c.city_key)!} timingLoading={timingQ.loading} timingError={timingQ.error}
             showRecord={hindsight.length > 0} />)}
         </div>
       </DataState>
@@ -211,10 +221,11 @@ const STATUS_TONE: Record<StatusRow["status"], string> = {
 const rateText = (e: CityEvidence) =>
   e.n ? `${e.hits}/${e.n} (${Math.round((e.hits / e.n) * 100)}%)` : "none settled";
 
-function Card({ c, onPick, moment, st, ev, strip, after, showRecord, frozen, frozenLoading, frozenError }: {
+function Card({ c, onPick, moment, st, ev, strip, after, showRecord, frozen, frozenLoading, frozenError, timing, timingLoading, timingError }: {
   c: CityCard; onPick?: (city: string) => void; moment: string; st: StatusRow | null;
   ev: CityEvidence; strip: ReadonlyArray<readonly [string, CityEvidence]>; after: CityEvidence; showRecord: boolean;
   frozen: FrozenCall | null; frozenLoading: boolean; frozenError: string | null;
+  timing:ReturnType<typeof checkpointReference>;timingLoading:boolean;timingError:string|null;
 }) {
   const u = c.unit;
   const trusted = c.best && !c.best.against_market;
@@ -243,6 +254,7 @@ function Card({ c, onPick, moment, st, ev, strip, after, showRecord, frozen, fro
       )}
 
       <FrozenCallPanel call={frozen} moment={moment} timezone={c.timezone} loading={frozenLoading} error={frozenError} />
+      <CityTimingBadge reference={timing} loading={timingLoading} error={timingError} />
       {/* The operational ladder continues updating independently of the original call above. */}
       <div className="mt-2 rounded border border-border bg-panel2 px-2 py-1.5">
         <div className="text-[10px] uppercase tracking-wide text-muted">Live forecast pick · updates as new data arrives</div>

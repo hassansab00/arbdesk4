@@ -17,13 +17,22 @@ const card={city_key:'fixture',name:'Fixture city',for_date:target,unit:'C',time
   priced_at:'2001-01-15T11:45:00Z',edges_at:'2001-01-15T11:45:00Z',best:{side:'YES',band:'Synthetic bucket',
     price:.4,edge:.03,depth:10},live:{source_kind:'station'},repriced:null,stale:null,disagrees:false};
 const status={city_key:'fixture',target_date:target,checkpoint:'morning',status:'candidate',reason:'Synthetic ready state'};
-const args={card,moment:'morning',rows,history:[],status,now};
+const originalHistory=rows.flatMap(r=>r.report.recent_dates.map(d=>({city_key:'fixture',for_date:d.date,
+  called_when:r.checkpoint,hit:!!d.hits,forecast_error_c:null,predicted_pct:50,market_hit:null})));
+const args={card,moment:'morning',rows,history:originalHistory,status,now};
 const preserved=JSON.stringify(args);
 let g=lib.buildManualGuide(args);
 assert.equal(g.state,'Review only');assert.deepEqual(g.reference.leaders,['prepeak_1h']);
 assert.equal(g.reference.table.length,3,'post-peak never competes for the forecast timing reference');
 assert.equal(g.reference.dates.length,12);assert.equal(JSON.stringify(args),preserved);
 assert.equal(g.reference.table[0].verifiedBeforePeak,12);
+const shortReports=rows.map(r=>({...r,report:{...r.report,recent_dates:r.report.recent_dates.slice(0,7)}}));
+assert(lib.checkpointReference(shortReports,'fixture',target,now,originalHistory).comparable,
+  'the report seven-day summary must not hide the full original-call history');
+assert.deepEqual(lib.checkpointReference(shortReports,'fixture',target,now,originalHistory),g.reference);
+assert(!lib.checkpointReference(shortReports,'fixture',target,now,[]).comparable,'no report fallback when loaded history is empty');
+assert.deepEqual(lib.checkpointReference(shortReports,'fixture',target,now,[...originalHistory,
+  ...originalHistory.map(r=>({...r,for_date:target,hit:true}))]),g.reference,'today cannot improve the reference');
 // Perfect predictions made today or later cannot improve the historical reference.
 const leaked=structuredClone(rows);leaked[0].report.recent_dates.push(...['2001-01-15','2001-01-16'].map(date=>({date,n:1,hits:1})));
 assert.deepEqual(lib.checkpointReference(leaked,'fixture',target,now),g.reference);
@@ -68,17 +77,62 @@ Module._resolveFilename=function(name,...rest){if(name.startsWith('@/'))name=req
 const {CityManualGuideView}=require('../.route-test/components/CityManualGuide.js');
 const render=(guide,extra={})=>renderToStaticMarkup(React.createElement(CityManualGuideView,{guide,card,moment:'morning',
   peak:{peak_hour_local:12,window_width_h:2,n_days:20},loading:false,error:null,...extra}));
-let html=render(lib.buildManualGuide({...args,history}));
+let html=render(lib.buildManualGuide({...args,history:[...originalHistory.filter(r=>r.called_when!=='morning'),...history]}));
 for(const phrase of ['Manual trading guide','Review only','1 h before peak','11:00','cold tendency','not an executable ask',
   'not validated on later unseen dates','server receipt before the saved expected peak']) assert(html.includes(phrase),phrase);
 assert(!html.includes('Buy now'));assert(!html.includes('Guaranteed'));
 assert(render(lib.buildManualGuide({...args,history:history.map(r=>({...r,forecast_error_c:-1}))})).includes('a warm tendency'));
-const dayReference=lib.buildManualGuide({...args,rows:[report('day_ahead',12),report('morning',2)]});
+const dayReference=lib.buildManualGuide({...args,rows:[report('day_ahead',12),report('morning',2)],
+  history:[...originalHistory,...dates.map(for_date=>({city_key:'fixture',for_date,called_when:'day_ahead',hit:true}))]});
 assert(render(dayReference).includes('start of the target day'),'day ahead ends at the beginning of the target day, not its end');
 assert(render(g,{error:'Synthetic failed read'}).includes('History unavailable'));
 assert(!render(g,{error:'Synthetic failed read'}).includes('Strongest recorded checkpoint'));
 assert(!render(g,{loading:true}).includes('Strongest recorded checkpoint'));
+const Badge=require('../.route-test/components/CityTimingBadge.js').default;
+const badge=(reference=g.reference,extra={})=>renderToStaticMarkup(React.createElement(Badge,{reference,loading:false,error:null,...extra}));
+html=badge();
+for(const text of ['Best recorded timing','1 h before peak','10/12 correct','83%','Historical only','entry not validated'])
+  assert(html.includes(text),text);
+assert(!html.includes('Buy now'));
+assert(badge(lib.checkpointReference(unequal,'fixture',target,now)).includes('Joint best recorded timing'));
+assert(badge(lib.checkpointReference(late,'fixture',target,now)).includes('Limited timing proof'));
+assert(badge(lib.checkpointReference([],'fixture',target,now)).includes('insufficient matched history'));
+for(const extra of [{loading:true},{error:'Synthetic read failed'}]) {
+  const text=badge(g.reference,extra);assert(!text.includes('Best recorded timing'));assert(!text.includes('83%'));
+}
 (async()=>{
+  // Test the real client's compact projection without teaching the generic fake
+  // the same projection implementation. These are synthetic server responses.
+  const projected=rows.filter(r=>r.checkpoint!=='postpeak_1h').map(r=>({
+    city_key:r.city_key,checkpoint:r.checkpoint,scope:r.scope,as_of:r.as_of,
+    report_city:r.report.city,report_scope:r.report.scope,report_horizon:r.report.horizon,
+    recent_dates:r.report.recent_dates,timing_policy:r.report.capture_timing.policy,
+    timing_calls:r.report.capture_timing.recent_calls,
+  }));
+  const requests=[];
+  const client=createClient('https://synthetic.supabase.co','synthetic-anon-key',{
+    auth:{persistSession:false,autoRefreshToken:false},global:{fetch:async(input,init)=>{
+      requests.push({url:new URL(String(input)),method:init?.method ?? 'GET'});
+      return new Response(JSON.stringify(projected),{status:200,headers:{'content-type':'application/json'}});
+    }}});
+  const batch=await lib.readCardTimingReports(client,['fixture','fixture']);
+  assert.equal(batch.error,null);assert.equal(requests.length,1);
+  assert.deepEqual(lib.checkpointReference(batch.data,'fixture',target,now),g.reference,'card and popup rankings agree');
+  const req=requests[0];assert.equal(req.method,'GET');assert.equal(req.url.pathname,'/rest/v1/v_city_prediction_validation');
+  assert.equal(req.url.searchParams.get('scope'),'eq.served');assert.equal(req.url.searchParams.get('city_key'),'in.(fixture)');
+  assert.equal(req.url.searchParams.get('limit'),'7');
+  const fields=req.url.searchParams.get('select');
+  assert(fields.includes('recent_dates:report->recent_dates'));
+  assert(fields.includes('timing_calls:report->capture_timing->recent_calls'));
+  assert(!fields.split(',').includes('report'),'full reports are not downloaded for every card');
+  assert(!req.url.searchParams.get('checkpoint').includes('postpeak_1h'));
+  assert.deepEqual(await lib.readCardTimingReports(client,[]),{data:[],error:null});
+  assert((await lib.readCardTimingReports(client,Array.from({length:167},(_,i)=>'city'+i))).error);
+  assert.equal(requests.length,1,'empty and oversized batches do not hit the database');
+  const ambiguous=createClient('https://synthetic.supabase.co','synthetic-anon-key',{
+    auth:{persistSession:false,autoRefreshToken:false},global:{fetch:async()=>new Response(JSON.stringify(
+      Array.from({length:7},()=>projected[0])),{status:200,headers:{'content-type':'application/json'}})}});
+  assert((await lib.readCardTimingReports(ambiguous,['fixture'])).error);
   for(const fail of [false,true]){
     const db=await fakePostgrest({tables:{v_city_prediction_validation:rows},fail:new Set(fail?['v_city_prediction_validation']:[])});
     try{const client=createClient(db.url,'synthetic-anon-key',{auth:{persistSession:false,autoRefreshToken:false}});

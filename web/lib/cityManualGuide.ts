@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CityCard, StatusRow } from './cityCards';
-import type { CityReport } from './cityValidation';
+import type { CityReport, CaptureCall } from './cityValidation';
 import type { HindsightRow } from './focus';
 import { cityDate } from './time';
 
@@ -11,7 +11,31 @@ export const MIN_REFERENCE_DATES = 10;
 export const MAX_REPORT_AGE_H = 36; // Existing validation-report freshness rule.
 export const MAX_MARK_AGE_H = 3; // Existing book freshness SLA; marks still are not executable asks.
 export type GuideReportRow = {city_key:string;checkpoint:string;scope:string;as_of:string;report:CityReport};
+export type TimingReportRow = Omit<GuideReportRow,'report'> & {report:Pick<CityReport,
+  'city'|'scope'|'horizon'|'recent_dates'> & {capture_timing?:Pick<NonNullable<CityReport['capture_timing']>,'policy'|'recent_calls'>}};
 export type ReferenceRow = {checkpoint:string;hits:number;n:number;rate:number;verifiedBeforePeak:number};
+
+/** One bounded, compact public read for the visible cards; no per-card polling. */
+export async function readCardTimingReports(client:SupabaseClient,cities:string[]) {
+  const wanted=[...new Set(cities)].sort();
+  if(!wanted.length) return {data:[] as TimingReportRow[],error:null};
+  const limit=wanted.length*GUIDE_CHECKPOINTS.length+1;
+  // Stay below the platform's 1,000-row ceiling; never rank a partial batch.
+  if(limit>=1000) return {data:null,error:'Too many cities for a complete timing read.'};
+  const result=await client.from('v_city_prediction_validation')
+    .select('city_key,checkpoint,scope,as_of,report_city:report->>city,report_scope:report->>scope,report_horizon:report->>horizon,recent_dates:report->recent_dates,timing_policy:report->capture_timing->>policy,timing_calls:report->capture_timing->recent_calls')
+    .in('city_key',wanted).eq('scope','served').in('checkpoint',[...GUIDE_CHECKPOINTS])
+    .order('city_key').order('checkpoint').limit(limit);
+  if(result.error) return {data:null,error:result.error};
+  if((result.data?.length ?? 0)>=limit) return {data:null,error:'The timing read contains ambiguous extra reports.'};
+  const data:TimingReportRow[]=(result.data ?? []).map(r=>({
+    city_key:r.city_key,checkpoint:r.checkpoint,scope:r.scope,as_of:r.as_of,
+    report:{city:r.report_city,scope:r.report_scope,horizon:r.report_horizon,
+      recent_dates:Array.isArray(r.recent_dates)?r.recent_dates as CityReport['recent_dates']:[],
+      capture_timing:{policy:r.timing_policy ?? '',recent_calls:Array.isArray(r.timing_calls)?r.timing_calls as CaptureCall[]:[]}},
+  }));
+  return {data,error:null};
+}
 
 export async function readGuideReports(client: SupabaseClient, city: string) {
   const result=await client.from('v_city_prediction_validation').select('city_key,checkpoint,scope,as_of,report')
@@ -32,17 +56,24 @@ const fresh = (at:string|null|undefined, maxH:number, now:number) => {
 };
 
 /** Descriptive timing on matched past dates. Never a fitted or validated trading rule. */
-export function checkpointReference(rows: GuideReportRow[], city:string, target:string, now:number) {
-  const unique=new Map<string,GuideReportRow|null>();
+export function checkpointReference(rows: TimingReportRow[], city:string, target:string, now:number, history?:HindsightRow[]) {
+  const unique=new Map<string,TimingReportRow|null>();
   for(const row of rows) {
     if(row.city_key!==city || row.scope!=='served' || row.report.city!==city || row.report.scope!=='served'
       || row.report.horizon!==row.checkpoint || !GUIDE_CHECKPOINTS.includes(row.checkpoint as typeof GUIDE_CHECKPOINTS[number])
       || !fresh(row.as_of,MAX_REPORT_AGE_H,now)) continue;
     unique.set(row.checkpoint,unique.has(row.checkpoint)?null:row);
   }
-  const candidates=[...unique.values()].filter((r):r is GuideReportRow=>!!r).map(row=>{
+  const candidates=[...unique.values()].filter((r):r is TimingReportRow=>!!r).map(row=>{
     const dates=new Map<string,number|null>();
-    for(const d of row.report.recent_dates ?? []) {
+    // Reports intentionally summarize seven recent dates. The page already has
+    // the full original-call record; use its last 30 target dates in both views.
+    const from=new Date(`${target}T00:00:00Z`);from.setUTCDate(from.getUTCDate()-30);
+    const cutoff=from.toISOString().slice(0,10);
+    const scoresToRead=history===undefined?row.report.recent_dates ?? []:history
+      .filter(r=>r.city_key===city&&r.called_when===row.checkpoint&&r.for_date>=cutoff&&typeof r.hit==='boolean')
+      .map(r=>({date:r.for_date,n:1,hits:r.hit?1:0}));
+    for(const d of scoresToRead) {
       if(d.date>=target || d.n!==1 || ![0,1].includes(d.hits)) continue;
       dates.set(d.date,dates.has(d.date)?null:d.hits);
     }
@@ -92,7 +123,7 @@ export function guideReviewTime(checkpoint:string, peak:number|null):{dayOffset:
 export function buildManualGuide({card,moment,rows,history,status,now}: {
   card:CityCard;moment:string;rows:GuideReportRow[];history:HindsightRow[];status:StatusRow|null;now:number;
 }) {
-  const reference=checkpointReference(rows,card.city_key,card.for_date,now);
+  const reference=checkpointReference(rows,card.city_key,card.for_date,now,history);
   const trend=selectedTrend(history,card.city_key,moment,card.for_date);
   const blockers:string[]=[],cautions:string[]=[];
   let localDate:string|null=null;
