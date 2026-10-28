@@ -77,13 +77,13 @@ export default function CityPredictionValidation({ cities, moment }: { cities: s
         <p className="mt-2 text-[11px] text-muted">A date can be partially settled. Missing city outcomes are excluded from accuracy; zero known pending calls does not prove complete coverage.</p>
       </div>}
       <div className="overflow-x-auto"><table className="w-full text-xs">
-        <thead className="text-muted"><tr>{['Rank / city','Correct / settled','Hit rate · 95% interval','Log loss / Brier','Confidence gap','Evidence / why'].map(h=><th key={h} className="px-2 py-2 text-left font-normal">{h}</th>)}</tr></thead>
+        <thead className="text-muted"><tr>{['Rank / city','Correct / settled','Hit rate · 95% interval','Log loss / Brier','Reliability error','Evidence / why'].map(h=><th key={h} className="px-2 py-2 text-left font-normal">{h}</th>)}</tr></thead>
         <tbody>{ranked.map((r,i)=><tr key={r.city} className="border-t border-border align-top">
           <td className="whitespace-nowrap px-2 py-2">{r.n ? i+1 : '—'}. {r.display_name}<span className="block text-[10px] text-muted">{r.timezone}</span></td>
           <td className="whitespace-nowrap px-2 py-2">{r.hits}/{r.n}<span className="block text-muted">{r.dates} dates · {r.pending == null ? "pending not measured" : `${r.pending} pending`}</span></td>
           <td className="whitespace-nowrap px-2 py-2">{pct(r.hit_rate)}<span className="block text-muted">{r.interval95 ? r.interval95.map(pct).join('–') : 'Not measured'}</span></td>
           <td className="whitespace-nowrap px-2 py-2">{num(r.metrics.log_loss)} / {num(r.metrics.brier)}</td>
-          <td className="px-2 py-2">{pct(r.calibration_gap)}</td>
+          <td className="px-2 py-2" title="Weighted absolute difference between stated confidence and hit rate, grouped by confidence; smaller is better. This is not the signed calibration gap on the cards.">{pct(r.calibration_gap)}</td>
           <td className="min-w-72 px-2 py-2"><p>{strict ? (r.n ? 'Timing-qualified subset · compare the same horizon and city' : 'Awaiting timing-qualified settled calls') : evidenceWords(r)}</p>
             {r.capture_timing && <p className="mt-1 text-muted">Timing: {r.capture_timing.eligible_calls}/{r.capture_timing.calls} calls qualify · {r.capture_timing.excluded_calls} excluded.
               {Object.entries(r.capture_timing.exclusions).map(([why,n])=>` ${timingReason(why)}: ${n}.`).join('')}</p>}

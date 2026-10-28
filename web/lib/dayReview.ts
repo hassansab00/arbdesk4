@@ -20,7 +20,7 @@ export const DAY_REVIEW_DAYS = 7;
 export type Who = "engine" | "wxrd" | "market";
 export const WHO: Array<{ key: Who; label: string; short: string }> = [
   { key: "engine", label: "Platform", short: "P" },
-  { key: "wxrd", label: "wxrd-v2 (shadow)", short: "W" },
+  { key: "wxrd", label: "WXPredict v2 (evaluation)", short: "W" },
   { key: "market", label: "Market", short: "M" },
 ];
 
