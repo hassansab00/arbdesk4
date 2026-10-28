@@ -236,6 +236,30 @@ export type DeskState = {
 
 const DAY_MS = 24 * 3600 * 1000;
 
+/** The plan's 14-day shadow re-test, checked by the daily lifecycle. */
+export function strategyRetestAt(since: string | null): string | null {
+  const start=Date.parse(since ?? '');
+  return Number.isFinite(start) ? new Date(start+14*DAY_MS).toISOString() : null;
+}
+
+export type PaperExecution = {
+  published?: number; queued?: number; fills?: Record<string,number>;
+  skipped?: Record<string,number>; blocked?: Record<string,number>; error?: string;
+};
+
+/** Missing execution receipts are unknown. An attempted BUY is never a fill. */
+export function paperExecutionText(execution: PaperExecution | null | undefined): string {
+  if (!execution) return 'No execution result recorded';
+  const parts:string[]=[];
+  if (execution.published!=null) parts.push(`${execution.published} plans published`);
+  if (execution.queued!=null) parts.push(`${execution.queued} plans queued`);
+  for (const [kind,values] of [['Fill results',execution.fills],['Skipped',execution.skipped],['Blocked',execution.blocked]] as const) {
+    if (values && Object.keys(values).length) parts.push(`${kind}: ${Object.entries(values).map(([reason,n])=>`${n} ${reason}`).join(', ')}`);
+  }
+  if (execution.error) parts.push(`Error: ${execution.error}`);
+  return parts.join(' · ') || 'No execution counts recorded';
+}
+
 /** The one sentence that explains what this desk is doing and why. */
 export function deskState(desk: Desk, available: number, now: number = Date.now()): DeskState {
   const act = desk.activity;

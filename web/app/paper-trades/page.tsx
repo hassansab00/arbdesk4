@@ -185,7 +185,7 @@ export default function PaperTradesPage() {
     {issue&&<div role="alert" className="rounded border border-bad p-3 text-sm text-bad">{issue}</div>}
     {notice&&<div role="status" className={`text-sm ${noticeWarning?'text-warn':'text-good'}`}>{notice}</div>}
     <div className="flex flex-wrap items-center gap-3"><select disabled={busy} aria-label="Paper account" className="input max-w-sm" value={account} onChange={e=>{setAccount(e.target.value);setCommand(null);}}>
-      <option value="">Paper desk</option>{accounts.data?.map(a=><option key={a.account_id} value={a.account_id}>{a.name} — {a.mode}{a.entries_paused?' · paused':''}{a.open_positions?` · ${a.open_positions} open`:''}{a.trade_count?` · ${a.trade_count} trades`:''}</option>)}
+      <option value="">Paper desk</option>{accounts.data?.map(a=><option key={a.account_id} value={a.account_id}>{a.name} — {a.mode}{a.activity?.strategy_state==='suspended'?' · strategy suspended':''}{a.entries_paused?' · paused':''}{a.open_positions?` · ${a.open_positions} open`:''}{a.trade_count?` · ${a.trade_count} trades`:''}</option>)}
       {!!accounts.data?.length&&<option value={ALL}>All desks — every trade, archived and retired desks included</option>}</select>
       {/* Several desks, so a setting can be tried without disturbing the one
           already running. Each carries its own cash, strategies and cities -

@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { runPaperWorker, describeWorker } from "@/lib/paperSupabase";
 import { fmtAge, fmtInt } from "@/lib/format";
+import { paperExecutionText, type PaperExecution } from "@/lib/paperDesks";
 
 /**
  * WHY IS THE DESK DOING NOTHING? - answered on the page instead of in a log.
@@ -31,9 +32,9 @@ const STEPS = [
     count: (d: Detail) => d.proposals,
     unit: "proposed",
     blank: "Signals fired but none became a plan. The Plans list below names the reason for each." },
-  { job: "paper_worker", label: "Fills",
+  { job: "paper_worker", label: "Order worker",
     count: (d: Detail) => d.orders_completed,
-    unit: "filled",
+    unit: "processed",
     blank: "No order was claimable. Orders expire five minutes after their plan, so a late worker finds nothing." },
   { job: "paper_settlement", label: "Settlement",
     count: (d: Detail) => d.evidence_captured ?? d.bands_checked,
@@ -47,6 +48,8 @@ const STEPS = [
 
 type Detail = Record<string, number | undefined>;
 type Run = { job: string; started_at: string; status: string; detail: Detail | null };
+type Tick = { started_at:string; status:string; actions:Record<string,number>|null;
+  orders:PaperExecution|null; model_orders:PaperExecution|null };
 
 // pipeline_intraday.yml, as the clock (public.clock_schedule) starts it: :36
 // past 02, 08, 14 and 20 UTC from 4 Oct (plan v2 P6.1, 20261004170000).
@@ -90,6 +93,11 @@ export default function PaperPipelineStatus({ refresh }: { refresh: () => void }
       .limit(500);
     return { data: r.data as Run[] | null, error: r.error };
   }, [], 30000, 500);
+  // Only the latest compact execution fields, not days of large input logs.
+  const tick = useQuery<Tick[]>(()=>supabase.from('ingest_log')
+    .select('started_at,status,actions:detail->engine->actions,orders:detail->engine->orders,model_orders:detail->engine->model_only_orders')
+    .eq('job','tick').order('started_at',{ascending:false}).limit(1).returns<Tick[]>(),[],30000);
+  const lastTick=tick.data?.[0];
 
   const latest = new Map<string, Run>();
   for (const run of runs.data ?? []) {
@@ -112,6 +120,17 @@ export default function PaperPipelineStatus({ refresh }: { refresh: () => void }
   }
 
   return <div className={`${card} space-y-3`}>
+    <section aria-label="Hourly paper execution" className="rounded border border-border p-3 text-xs">
+      <h2 className="font-semibold">Hourly engine · decisions and execution</h2>
+      {tick.loading ? <p>Reading the latest tick…</p>
+        : tick.error ? <p role="alert" className="text-warn">Hourly execution unavailable: {tick.error}</p>
+        : !lastTick ? <p>No hourly tick receipt recorded.</p>
+        : <><p className={lastTick.status==='ok'?'text-muted':'text-warn'}>Last recorded tick {fmtAge(lastTick.started_at)} · {lastTick.status}</p>
+          <p>{lastTick.actions ? Object.entries(lastTick.actions).map(([action,n])=>`${n} ${action}`).join(' · ')+' decisions' : 'Decision counts not recorded'}. BUY decisions are proposals, not fills.</p>
+          <p>Market-anchored execution: {paperExecutionText(lastTick.orders)}</p>
+          <p>Model-only execution: {paperExecutionText(lastTick.model_orders)}</p></>}
+      <p className="mt-1 text-muted">This receipt covers every engine shadow desk in that tick. Suspended strategies keep recording decisions but cannot open positions.</p>
+    </section>
     <div className="flex flex-wrap items-baseline justify-between gap-2">
       <h2 className="font-semibold">Automation · signal-based chain</h2>
       <div className="text-xs text-muted">

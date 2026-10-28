@@ -5,6 +5,7 @@ import { paperAction, runPaperWorker, describeWorker } from "@/lib/paperSupabase
 import { operatorFetch } from "@/lib/operator";
 import { fmtUsd, fmtAge } from "@/lib/format";
 import { nextCycle } from "@/components/PaperPipelineStatus";
+import { strategyRetestAt } from "@/lib/paperDesks";
 
 /**
  * IS THE DESK ON, AND CAN I TURN IT OFF - answered at the top, in one word,
@@ -110,6 +111,8 @@ export default function PaperDeskControl({ desk, exposure, openPositions, lastFi
   const fillNow = () => say(async () => describeWorker(await runPaperWorker()), "fill");
 
   const running = state.key === "ACTIVE" || state.key === "STALLED";
+  const suspended = desk.activity?.strategy_state === 'suspended';
+  const retestAt = suspended ? strategyRetestAt(desk.activity?.strategy_state_since ?? null) : null;
 
   return <div className="rounded border border-border bg-panel">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
@@ -125,7 +128,7 @@ export default function PaperDeskControl({ desk, exposure, openPositions, lastFi
           ? <button className={button} disabled={!!busy} onClick={() => setPaused(true)}>
               {busy === "stop" ? "Stopping…" : "Stop"}
             </button>
-          : state.key === "PAUSED"
+          : state.key === "PAUSED" && !suspended
             ? <button className={primary} disabled={!!busy} onClick={() => setPaused(false)}>
                 {busy === "start" ? "Starting…" : "Start"}
               </button>
@@ -158,6 +161,9 @@ export default function PaperDeskControl({ desk, exposure, openPositions, lastFi
     </div>
 
     <p className={`px-4 pt-3 text-sm ${state.key === "ACTIVE" ? "text-muted" : state.text}`}>{state.line}</p>
+    {suspended && <p className="px-4 pt-2 text-xs text-warn">Automatic shadow re-test {retestAt
+      ? <>eligible from {retestAt.slice(0,16).replace('T',' ')} UTC</>
+      : <>after 14 days</>}; checked by the daily lifecycle, so resumption may be later. Unpausing this desk cannot override its strategy&rsquo;s suspension.</p>}
 
     <div className="grid gap-4 p-4 sm:grid-cols-3 lg:grid-cols-5">
       <Stat label="Available cash" value={fmtUsd(available)}

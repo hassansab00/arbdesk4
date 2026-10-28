@@ -231,7 +231,12 @@ def cycle(budget_seconds=60, days_back=180, max_new_evidence=100, holdings_only=
     # about those alone; what is dropped is exactly what was dropped before.
     candidates=_candidate_bands(position_band_ids,days_back,frozenset(),holdings_only,unconfirmed_only)
     existing=_proven({str(b['condition_id']) for b in candidates if b.get('condition_id')})
-    candidates=[b for b in candidates if str(b.get('condition_id')) not in existing]
+    # A collected verdict is not a paid position. Another collector can prove
+    # the condition first, and its payload may already have been archived.
+    # Keep holdings until the idempotent inventory RPC actually clears them.
+    held=set(position_band_ids)
+    candidates=[b for b in candidates if str(b['band_id']) in held
+                or str(b.get('condition_id')) not in existing]
     # Seconds spent reading before the first venue call, out of the budget.
     prep_s=round(time.monotonic()-started,1)
     unreached=0
@@ -254,7 +259,7 @@ def cycle(budget_seconds=60, days_back=180, max_new_evidence=100, holdings_only=
             unreached=len(candidates)-index
             break
         band_id=str(band['band_id'])
-        if band_id in checked or str(band.get('condition_id')) in existing:
+        if band_id in checked or (band_id not in held and str(band.get('condition_id')) in existing):
             continue
         checked.add(band_id)
         if band.get('resolution_date'): days_checked.append(band['resolution_date'])
@@ -262,6 +267,20 @@ def cycle(budget_seconds=60, days_back=180, max_new_evidence=100, holdings_only=
             skip('no_identity',band)
             continue
         try:
+            if band_id in held and str(band['condition_id']) in existing:
+                proofs=rest_all('paper_resolution_evidence', {
+                    'select':'proof_id,winning_token,gamma,clob',
+                    'condition_id':'eq.'+band['condition_id'],
+                    'token_yes':'eq.'+band['token_yes'],'token_no':'eq.'+band['token_no'],
+                }, order='captured_at.desc,proof_id.asc')
+                if proofs:
+                    proof=proofs[0]
+                    if verify(band,proof['gamma'],proof['clob'])!=proof['winning_token']:
+                        raise ValueError('Stored proof is not a final matching venue resolution')
+                    settled+=rpc('settle_paper_inventory',{'p_band':band_id,'p_proof':proof['proof_id']})
+                    continue
+                # Its payload was archived: capture a new fully verified proof
+                # below. Never manufacture a payload from the compact verdict.
             gamma_url='https://gamma-api.polymarket.com/markets'
             # closed=true IS LOAD-BEARING, and its absence is why this job had
             # never once produced a proof.
