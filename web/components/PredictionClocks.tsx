@@ -22,6 +22,8 @@ export default function PredictionClocks({ cities }: { cities: City[] }) {
       midnight; evening before is 18:00 on the previous local day; morning is 09:00; noon is 12:00.
       Peak-relative checkpoints use that city’s measured <strong>typical peak for the month</strong>.
       Noon can therefore coincide with, or follow, a city’s typical peak.
+      These are scheduled times: the hourly worker captures the call afterwards, with up to 75 minutes allowed.
+      A “1 h before” schedule does not guarantee a full hour of lead at the actual freeze.
     </p>
     <p className="max-w-4xl text-xs text-muted">
       The typical peak is a timing reference, not a claim that today’s maximum is final.
@@ -36,7 +38,7 @@ export default function PredictionClocks({ cities }: { cities: City[] }) {
         <div className="mt-2 overflow-x-auto">
           <table className="w-full whitespace-nowrap text-xs">
             <thead className="text-muted"><tr>
-              {["City / timezone", "Typical peak", "2 h before", "1 h before", "1 h after", "Evidence"].map(h =>
+              {["City / timezone", "Typical peak", "2 h before · scheduled", "1 h before · scheduled", "1 h after · scheduled", "12:00 local vs peak", "Evidence"].map(h =>
                 <th key={h} className="px-2 py-1 text-left font-normal">{h}</th>)}
             </tr></thead>
             <tbody>{cities.map(c => {
@@ -46,6 +48,10 @@ export default function PredictionClocks({ cities }: { cities: City[] }) {
                 <td className="px-2 py-1">{c.display_name ?? c.city_key}<span className="block text-[10px] text-muted">{c.timezone ?? "timezone missing"}</span></td>
                 {[0, -2, -1, 1].map(off => <td key={off} className="px-2 py-1 font-mono">
                   {peak === null ? "not measured" : fmtCityHour(peak + off, c.timezone, viewerZone)}</td>)}
+                <td className={`px-2 py-1 ${peak !== null && peak <= 13.25 ? 'text-warn' : 'text-muted'}`}>
+                  {peak === null ? 'Unknown' : peak <= 12 ? 'Scheduled at / after typical peak'
+                    : peak <= 13.25 ? 'Capture window reaches typical peak' : 'Scheduled before typical peak'}
+                </td>
                 <td className="px-2 py-1 text-muted">{p?.n_days ?? 0} days · {p?.window_width_h ?? "—"} h spread
                   <span className="block text-[10px]">Updated {fmtDateTime(p?.computed_at)}</span></td>
               </tr>;

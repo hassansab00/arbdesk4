@@ -241,7 +241,7 @@ def _priced_from(reasons):
     return next((r[len("priced_from:"):] for r in reasons or [] if r.startswith("priced_from:")), None) or None
 
 
-def build_row(city, target, checkpoint, local_time, rows, reasons, books, reading, version, station=None, bands=None, unit=None):
+def build_row(city, target, checkpoint, local_time, rows, reasons, books, reading, version, station=None, bands=None, unit=None, timing_reference=None):
     """One prediction_checkpoints row, or (None, why) when it cannot be one.
 
     Checked here against the table's own constraints, because one row the
@@ -289,6 +289,11 @@ def build_row(city, target, checkpoint, local_time, rows, reasons, books, readin
     import predictive_primary
     lineage=predictive_primary.checkpoint_lineage(city, target, probs, checkpoint)
     row.update(lineage)
+    # Fixed-clock calls need the same immutable peak evidence as relative
+    # calls. This is reporting context, never an input to the probability fit.
+    if timing_reference:
+        row['predictive_context'] = dict(row.get('predictive_context') or {},
+                                         timing_reference=dict(timing_reference))
     if checkpoint == 'd1_eve':
         import early_forecast_audit
         comparison = early_forecast_audit.freeze(rows, bands, unit)
@@ -510,10 +515,13 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     markets = pe._upcoming_markets()
     import contract_inputs
     authority_inputs = contract_inputs.capture(markets, cities, dry_run=dry_run)
+    peak_rows = rest("derived_weather_peak",
+                     {"select": "city_key,month,peak_hour_local,n_days,computed_at"})
     peak_of = {(r["city_key"], int(r["month"])): r["peak_hour_local"]
-               for r in rest("derived_weather_peak",
-                             {"select": "city_key,month,peak_hour_local"})
-               if r.get("peak_hour_local") is not None}
+               for r in peak_rows if r.get("peak_hour_local") is not None}
+    peak_references = {(r['city_key'], int(r['month'])):
+        dict(r, timezone=tz_of.get(r['city_key']), source='derived_weather_peak')
+        for r in peak_rows if r.get('peak_hour_local') is not None}
 
     # S10 in shadow (plan v2 P7.4 part 1): the day-before inputs for the cities
     # whose 07:00-09:00 local window is open. Bounded, and never raises.
@@ -660,7 +668,8 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
         row, why = build_row(city, target, name, local, rows, reasons, books,
                              running.get(city), version, station=market_of[(city,target)].get('contract_station') or station_of.get(city),
                              bands=bands_by_market.get(market_of[(city, target)]['market_id']),
-                             unit=market_of[(city, target)].get('unit') or unit_of.get(city, 'C'))
+                             unit=market_of[(city, target)].get('unit') or unit_of.get(city, 'C'),
+                             timing_reference=peak_references.get((city, int(target[5:7]))))
         if row is None:
             failed.append(f"{city} {target} {name}: {why}")
             continue

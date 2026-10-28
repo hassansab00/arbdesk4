@@ -409,7 +409,9 @@ function Card({ c, onPick, moment, st, ev, strip, after, showRecord, frozen, fro
           </dt>
           <dd className="tabular-nums">
             {c.priced_from?.startsWith("wxrd3:")
-              ? <span>WXPredict v3 · direct bucket distribution</span>
+              ? <span>WXPredict v3 · direct bucket distribution
+                  <span className="block text-[10px] text-muted">Five seeded fits use station reports, weather-model forecasts and past station errors. The pick is the most probable bucket, not an average temperature or the market favourite.</span>
+                </span>
               : c.centre_c !== null ? fmtTemp(c.centre_c, u) : <span className="text-muted">not recorded for this price</span>}
             {c.sigma_c !== null && <span className="text-muted"> ± {fmtTempDelta(c.sigma_c, u).replace("+", "")}</span>}
             {c.confidence !== null && <span className="text-muted"> · confidence {fmtPct(c.confidence, 0)}</span>}

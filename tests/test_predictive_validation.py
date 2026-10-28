@@ -66,6 +66,51 @@ def test_strict_timing_city_clock_handles_dst_and_keeps_missing_evidence_unknown
     assert v.capture_timing(p,c)['reason']=='missing_saved_peak'
 
 
+def test_fixed_clock_uses_only_its_own_saved_monthly_peak():
+    import copy
+    ref=dict(city_key='city',timezone='Asia/Riyadh',source='derived_weather_peak',month=10,
+             peak_hour_local=11,computed_at='2026-10-16T04:00:00Z',n_days=25)
+    p=call(frozen_at='2026-10-16T09:37:00Z',decided_at='2026-10-16T09:37:00Z',
+           predictive_context={'timing_reference':ref})
+    c=dict(city_key='city',timezone='Asia/Riyadh')
+    original=copy.deepcopy(p)
+    t=v.capture_timing(p,c)
+    assert t['reason']=='at_or_after_expected_peak' and t['minutes_before_expected_peak']==-97
+    assert t['cutoff_local']=='2026-10-16T11:00:00+03:00'
+    assert p==original
+    for bad in [dict(ref,city_key='other'),dict(ref,timezone='UTC'),dict(ref,month=9),
+                dict(ref,source='live'),dict(ref,computed_at='2026-10-17T00:00:00Z'),
+                dict(ref,peak_hour_local=float('nan'))]:
+        assert v.capture_timing(dict(p,predictive_context={'timing_reference':bad}),c)['reason']=='missing_saved_peak'
+
+
+def test_reviewed_peak_split_preserves_scores_and_excludes_missing_or_mismatched_evidence():
+    import copy
+    p=call(frozen_at='2026-10-16T12:36:00Z',predictive_context={'clim_peak_hour':14})
+    rows=v.collect([p],[outcome()],[],CITIES,{},NOW)
+    original=copy.deepcopy(rows)
+    review=dict(city_key='city',target_date='2026-10-16',winner_band_id='b',
+                peak_local_hour=11,computed_at='2026-10-17T03:00:00Z')
+    def report(reviews):
+        return next(r['report'] for r in v.reports(rows,CITIES,reviews,[],NOW)
+                    if r['checkpoint']=='noon' and r['scope']=='served')
+    r=report([review]); split=r['observed_peak_timing']
+    assert r['hits']==0 and r['n']==1
+    assert split['at_or_after']['n']==1 and split['at_or_after']['hits']==0
+    assert split['before']['n']==0
+    recent=r['capture_timing']['recent_calls'][0]['observed_timing']
+    assert recent['minutes_before_peak']==-96 and recent['relation']=='at_or_after'
+    assert report([dict(review,peak_local_hour=15)])['observed_peak_timing']['before']['n']==1
+    for reviews in [[],[dict(review,winner_band_id='different')],
+                    [dict(review,computed_at='2026-10-18T00:00:00Z')],
+                    [dict(review,peak_local_hour=float('nan'))]]:
+        assert report(reviews)['observed_peak_timing']['unknown_calls']==1
+    assert rows==original, 'hindsight timing must not change original calls or fitting inputs'
+    legacy=dict(rows[0],verified=False)
+    assert v.observed_peak_timing(legacy,CITIES[0],review,NOW)['relation']=='unknown'
+    assert v.observed_peak_timing(dict(rows[0],settled=False),CITIES[0],review,NOW)['relation']=='pending'
+
+
 def test_strict_scores_expose_denominator_and_never_replace_an_original_miss():
     p=call(frozen_at='2026-10-16T12:36:00Z',predictive_context=dict(clim_peak_hour=14))
     late=call('later',decided_at='2026-10-16T12:55:00Z',frozen_at='2026-10-16T12:55:00Z',

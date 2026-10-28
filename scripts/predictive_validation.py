@@ -52,6 +52,19 @@ def capture_timing(p, city):
             hour = None
         if hour is not None and math.isfinite(hour) and 0 <= hour < 24:
             peaks.append((key, start+dt.timedelta(minutes=round(hour*60))))
+    reference = context.get('timing_reference') or {}
+    try:
+        hour = float(reference['peak_hour_local'])
+        fitted = cal.timestamp(reference['computed_at'])
+        if (reference.get('source') == 'derived_weather_peak'
+            and reference.get('city_key') == p['city_key']
+            and reference.get('timezone') == city['timezone']
+            and int(reference['month']) == start.month
+            and fitted is not None and fitted <= received
+            and math.isfinite(hour) and 0 <= hour < 24):
+            peaks.append(('saved monthly peak', start+dt.timedelta(minutes=round(hour*60))))
+    except (KeyError, TypeError, ValueError):
+        pass
     cutoff = min((stamp for _, stamp in peaks), default=None)
     if not frozen:
         reason = 'missing_server_receipt'
@@ -70,7 +83,45 @@ def capture_timing(p, city):
         received_local=received.astimezone(zone).isoformat(),
         delay_minutes=round((received-scheduled.astimezone(dt.timezone.utc)).total_seconds()/60, 2),
         cutoff_local=cutoff.isoformat() if cutoff else None,
+        minutes_before_expected_peak=round((cutoff-received).total_seconds()/60, 2) if cutoff else None,
         peak_sources=[name for name, _ in peaks], before_expected_peak=reason=='eligible', reason=reason)
+
+
+def observed_peak_timing(row, city, review, now):
+    """Retrospective timing only: never feeds calibration or model selection.
+
+    The reviewed station high is not a venue finality signal. Missing reviews,
+    mismatched winners and legacy calls remain unknown, not pre-peak successes.
+    """
+    if not row.get('settled'):
+        return dict(relation='pending')
+    receipt = (row.get('timing') or {}).get('frozen_at')
+    if not row.get('verified') or not receipt:
+        return dict(relation='unknown', reason='missing_server_receipt')
+    try:
+        if not review or not row.get('winner') or str(review.get('winner_band_id')) != row['winner']:
+            return dict(relation='unknown', reason='missing_matching_review')
+        computed = cal.timestamp(review.get('computed_at'))
+        hour = float(review['peak_local_hour'])
+        if (not computed or computed > now or not math.isfinite(hour) or not 0 <= hour < 24):
+            return dict(relation='unknown', reason='missing_reviewed_peak')
+        peak = dt.datetime.combine(dt.date.fromisoformat(row['target_date']), dt.time(),
+                                   ZoneInfo(city['timezone']))+dt.timedelta(minutes=round(hour*60))
+        frozen = cal.timestamp(receipt)
+        return dict(relation='before' if frozen < peak else 'at_or_after',
+                    peak_local=peak.isoformat(), source='derived_day_review',
+                    minutes_before_peak=round((peak-frozen).total_seconds()/60, 2))
+    except (KeyError, TypeError, ValueError):
+        return dict(relation='unknown', reason='missing_reviewed_peak')
+
+
+def observed_peak_report(rows, horizon):
+    groups = {key: [r for r in rows if (r.get('observed_timing') or {}).get('relation', 'unknown') == key]
+              for key in ('before', 'at_or_after', 'unknown', 'pending')}
+    return dict(policy='reviewed-station-peak-v1', calls=len(rows),
+                before=summarize(groups['before'], horizon),
+                at_or_after=summarize(groups['at_or_after'], horizon),
+                unknown_calls=len(groups['unknown']), pending_calls=len(groups['pending']))
 
 
 def timing_report(rows, horizon):
@@ -94,6 +145,7 @@ def timing_report(rows, horizon):
         strict=dict(summarize(eligible, horizon), recent_dates=daily_scores(eligible)),
         recent_calls=[dict(date=r['target_date'], checkpoint=r['checkpoint'],
             hit=r['metrics']['hit'] if r.get('settled') else None,
+            observed_timing=r.get('observed_timing'),
             **(r.get('timing') or dict(reason='missing_server_receipt', before_expected_peak=False)))
             for r in recent])
 
@@ -297,6 +349,11 @@ def reports(rows,cities,reviews,states,now,model_version=None,selections=(),earl
     period_start=(now.date()-dt.timedelta(days=29)).isoformat()
     period_end=now.date().isoformat()
     rows=[r for r in rows if period_start<=r['target_date']<=period_end]
+    city_of = {c['city_key']: c for c in cities}
+    review_of = {(r['city_key'], r['target_date']): r for r in reviews}
+    rows = [dict(r, observed_timing=observed_peak_timing(r, city_of[r['city_key']],
+                review_of.get((r['city_key'], r['target_date'])), now))
+            for r in rows if r['city_key'] in city_of]
     result=[]
     for c in cities:
         city=c['city_key']
@@ -324,6 +381,7 @@ def reports(rows,cities,reviews,states,now,model_version=None,selections=(),earl
                 report=summarize(chosen,horizon)
                 report.update(city=city,display_name=c.get('display_name') or city,timezone=c['timezone'],
                     capture_timing=timing_report(chosen,horizon),capture_schedule_policy='saved-city-clock-v1',
+                    observed_peak_timing=observed_peak_report(chosen,horizon),
                     scope=scope,horizon=horizon,period_start=period_start,period_end=period_end,
                     why=diagnostic(chosen,[r for r in reviews if r['city_key']==city]),
                     paired_audit=paired_diagnostic(chosen),
