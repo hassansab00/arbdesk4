@@ -3,6 +3,24 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Paper execution audit follow-up — 28 Oct
+
+P5.2 re-tests now count only trades opened after the latest recorded
+`suspended -> shadow` transition. Earlier and late-closing old trades still
+compound ledger equity, but cannot immediately repeat the old suspension;
+the existing minimum sample and loss bound remain unchanged. Promotion does
+not reset the re-test boundary. No historical trade is rewritten.
+
+The settlement sweep keeps held inventory eligible even when another collector
+already proved its condition. It reuses retained fully verified payloads, or
+recaptures Gamma/CLOB evidence after payload archival, before the existing
+idempotent payout RPC. Compact verdicts alone cannot authorize a payout.
+
+Paper Trades displays the latest hourly execution receipt separately from the
+legacy signal chain, labels suspended strategies in the desk selector, and
+shows their 14-day eligibility time without offering an ineffective Start.
+No portfolio allocation, risk limits, or workflow schedules change.
+
 ## sd_corr:v1 first look — 26 Oct: insufficient evidence
 
 The pre-registered first look (`docs/SD_CORR_PREREG.md`) at 21 scored target

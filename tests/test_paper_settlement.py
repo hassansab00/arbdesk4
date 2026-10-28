@@ -64,6 +64,53 @@ def test_closed_markets_build_evidence_without_an_open_position(monkeypatch):
     assert logs[0][1]=='ok'
 
 
+@pytest.mark.parametrize('retained', [True, False])
+def test_proven_condition_still_settles_held_inventory_after_archive(monkeypatch, retained):
+    band,gamma,clob=data(); band.update(band_id='held',market_id='market')
+    paid,asked,writes=[],[],[]
+    def rows(table,params=None,**kw):
+        if table=='paper_positions': return [] if paid else [dict(band_id='held',account_id='desk',side='NO')]
+        if table=='resolution_verdicts': return [dict(condition_id='condition')]
+        if table=='paper_resolution_evidence':
+            return [dict(proof_id='retained-proof',winning_token='no',gamma=gamma,clob=clob)] if retained else []
+        raise AssertionError(table)
+    monkeypatch.setattr(settlement,'rest_all',rows)
+    monkeypatch.setattr(settlement,'_candidate_bands',lambda *a,**kw:[band])
+    monkeypatch.setattr(settlement,'upsert',lambda table,rows,key:writes.extend(rows))
+    monkeypatch.setattr(settlement,'rpc',lambda fn,args:paid.append((fn,args)) or 1)
+    monkeypatch.setattr(settlement,'log_run',lambda *a:None)
+    monkeypatch.setattr(paper_worker,'public_json',lambda url,params:asked.append(url) or ([gamma] if 'gamma-api' in url else clob))
+    result=settlement.cycle(budget_seconds=30,holdings_only=True)
+    assert result['positions_settled']==1 and result['failed']==0
+    assert paid[0][0]=='settle_paper_inventory' and paid[0][1]['p_band']=='held'
+    assert len(asked)==(0 if retained else 2)
+    assert len(writes)==(0 if retained else 1)
+    assert result['evidence_captured']==(0 if retained else 1)
+    # The next sweep neither refetches an already-proven condition nor pays twice.
+    again=settlement.cycle(budget_seconds=30,holdings_only=True)
+    assert again['positions_settled']==0 and len(paid)==1
+
+
+@pytest.mark.parametrize('retained', [True, False])
+def test_disagreeing_proof_never_pays_a_proven_held_position(monkeypatch, retained):
+    band,gamma,clob=data(); band.update(band_id='held',market_id='market')
+    clob['tokens'][0]['winner']=True
+    def rows(table,params=None,**kw):
+        if table=='paper_positions': return [dict(band_id='held',account_id='desk',side='NO')]
+        if table=='resolution_verdicts': return [dict(condition_id='condition')]
+        if table=='paper_resolution_evidence':
+            return [dict(proof_id='bad-proof',winning_token='no',gamma=gamma,clob=clob)] if retained else []
+        raise AssertionError(table)
+    monkeypatch.setattr(settlement,'rest_all',rows)
+    monkeypatch.setattr(settlement,'_candidate_bands',lambda *a,**kw:[band])
+    monkeypatch.setattr(settlement,'upsert',lambda *a:pytest.fail('unverified evidence written'))
+    monkeypatch.setattr(settlement,'rpc',lambda *a:pytest.fail('unverified payout'))
+    monkeypatch.setattr(settlement,'log_run',lambda *a:None)
+    monkeypatch.setattr(paper_worker,'public_json',lambda url,params:[gamma] if 'gamma-api' in url else clob)
+    result=settlement.cycle(budget_seconds=30,holdings_only=True)
+    assert result['positions_settled']==0 and result['failed']==1
+
+
 # --------------------------------------------------------------------------
 # ARCHIVE TRAVERSAL
 #

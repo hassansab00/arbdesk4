@@ -64,3 +64,13 @@ const decision={strategy_id:strategy.strategy_id,action:'BUY',reason_code:'enter
   }
   console.log('PASS: synthetic paper suspension fixtures preserve fills, explain blocked proposals, read provenance and retain accounts on failure');
 })().catch(error=>{console.error(error);process.exit(1);});
+
+assert.equal(lib.strategyRetestAt('2001-01-02T00:00:00Z'),'2001-01-16T00:00:00.000Z');
+assert.equal(lib.strategyRetestAt(null),null);
+assert.equal(lib.strategyRetestAt('invalid'),null);
+assert.match(lib.paperExecutionText(null),/No execution result recorded/);
+assert.equal(lib.paperExecutionText({skipped:{'strategy not switched on':4}}),'Skipped: 4 strategy not switched on');
+assert.doesNotMatch(lib.paperExecutionText({skipped:{'strategy not switched on':4}}),/4.*filled/);
+assert.equal(lib.paperExecutionText({published:2,queued:1,fills:{filled:1,rejected:1},blocked:{rail:1}}),
+  '2 plans published · 1 plans queued · Fill results: 1 filled, 1 rejected · Blocked: 1 rail');
+assert.match(lib.paperExecutionText({error:'fixture failure'}),/Error: fixture failure/);
