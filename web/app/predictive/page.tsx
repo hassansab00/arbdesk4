@@ -6,6 +6,7 @@ import { useQuery } from "@/lib/useQuery";
 import { readAllRows } from "@/lib/readAll";
 import { DataState } from "@/components/DataState";
 import PredictiveSectionNav from "@/components/PredictiveSectionNav";
+import PredictiveAccuracyGuide from "@/components/PredictiveAccuracyGuide";
 import PredictionHindsight from "@/components/PredictionHindsight";
 import SettlementStatus from "@/components/SettlementStatus";
 import CheckpointScoreboard from "@/components/CheckpointScoreboard";
@@ -24,7 +25,7 @@ import { fmtAge, fmtInt, fmtPct, fmtPp, fmtPrice, fmtUsd, pnlColor } from "@/lib
 import { fmtTemp, fmtTempDelta, type Unit } from "@/lib/units";
 import { fmtResolutionDate } from "@/lib/time";
 import {
-  forwardRows, groupScorecard, pendingDays, largestLeans,
+  forwardRows, groupScorecard, pendingDays, largestLeans, forecastEvidence,
   type CheckpointScoreRow, type ForwardLadderRow, type MarketDay, type PendingDay,
 } from "@/lib/predictive";
 
@@ -92,6 +93,7 @@ interface LadderRow {
 }
 interface ScoreRow {
   city_key: string; model: string; lead_days: number; n_days: number;
+  n_verified?: number | null; fully_verified?: boolean | null;
   mae_c: number; bias_c: number; error_sd_c: number | null; worst_c: number;
   hit_rate_pct: number | null; within_1c_pct: number | null;
 }
@@ -352,7 +354,7 @@ export default function PredictivePage() {
     () => selected.length === 0 ? Promise.resolve({ data: [] as ScoreRow[], error: null }) :
       readAllRows<ScoreRow>((from, to) =>
       supabase.from("v_prediction_scorecard_all")
-        .select("city_key,model,lead_days,n_days,mae_c,bias_c,error_sd_c,worst_c,hit_rate_pct,within_1c_pct")
+        .select("city_key,model,lead_days,n_days,n_verified,fully_verified,mae_c,bias_c,error_sd_c,worst_c,hit_rate_pct,within_1c_pct")
         .in("city_key", selected)
         .order("city_key").order("model").order("lead_days")
         .range(from, to), SCORE_MAX),
@@ -608,6 +610,7 @@ export default function PredictivePage() {
         <div className="mt-3">
           <CalibrationStatus />
         </div>
+        <PredictiveAccuracyGuide />
       </div>
 
       {/* ======================================= THE SELECTION, FOR EVERY PANEL == */}
@@ -1135,7 +1138,7 @@ export default function PredictivePage() {
       <section id="predictive-decay" tabIndex={-1} className="scroll-mt-20 space-y-2">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className="text-sm font-semibold">How fast the forecast decays</h2>
-          <Freshness relation="v_prediction_scorecard" />
+          <Freshness relation="v_prediction_scorecard_all" />
         </div>
         <p className="max-w-3xl text-xs leading-relaxed text-muted">
           The same error, split by how far ahead the call was made. A model that is sharp tomorrow
@@ -1147,7 +1150,7 @@ export default function PredictivePage() {
           : evidenceQ.data?.[0]?.sampled_at && <p className="text-xs text-muted">Evidence counts sampled {fmtAge(evidenceQ.data[0].sampled_at)}; refreshed on the existing page cadence.</p>}
         {unverifiedNote}
         <DataState
-          relation="v_prediction_scorecard"
+          relation="v_prediction_scorecard_all"
           loading={scoreQ.loading || citiesQ.loading || cities.length === 0}
           error={scoreQ.error}
           isEmpty={errByLead.length === 0}
@@ -1189,13 +1192,14 @@ export default function PredictivePage() {
           every city. <strong className="text-text">Bias</strong> is kept separate from error on
           purpose: a model 1.5 °C hot every single day is fixable, one that is 1.5 °C off in random
           directions is not. <strong className="text-text">Same whole °C</strong> is whether the
-          forecast and the observed maximum share a whole degree Celsius. That is a Celsius
-          city&apos;s bucket, but <em>not</em> a Fahrenheit city&apos;s: those settle on 2 °F buckets,
-          so read the settlement-bucket record in <b>Hit and miss</b> above. A city needs at least 5
-          settled days per model and lead to get a row.
+          forecast and observed maximum fall in the same integer-degree Celsius interval (floor).
+          This is not the venue&apos;s winning-bucket hit rate: settlement follows its contract&apos;s units
+          and rounding. Use the original frozen-call record for that. Bias here is <b>forecast − actual</b>.
+          Verified actuals counts stored observations matching verified weather outcomes; an incomplete
+          count stays visible rather than being treated as fully verified. A row needs at least 5 recorded days.
         </p>
         <DataState
-          relation="v_prediction_scorecard"
+          relation="v_prediction_scorecard_all"
           truncated={scoreQ.truncated}
           loading={scoreQ.loading || citiesQ.loading || cities.length === 0}
           error={scoreQ.error} isEmpty={(scoreQ.data ?? []).length === 0}
@@ -1225,8 +1229,9 @@ export default function PredictivePage() {
                         <th className="px-2 py-1.5 text-left">Model</th>
                         <th className="px-2 py-1.5 text-right">Lead</th>
                         <th className="px-2 py-1.5 text-right">Days</th>
+                        <th className="px-2 py-1.5 text-right">Verified actuals</th>
                         <th className="px-2 py-1.5 text-right">MAE °C</th>
-                        <th className="px-2 py-1.5 text-right">Bias °C</th>
+                        <th className="px-2 py-1.5 text-right" title="Forecast minus actual; positive means a warm forecast bias">Bias °C</th>
                         <th className="px-2 py-1.5 text-right">Worst °C</th>
                         <th className="px-2 py-1.5 text-right">Same whole °C</th>
                         <th className="px-2 py-1.5 text-right">Within 1 °C</th>
@@ -1247,6 +1252,7 @@ export default function PredictivePage() {
                           <td className="px-2 py-1.5 text-muted">{r.model}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums">{r.lead_days}d</td>
                           <td className="px-2 py-1.5 text-right tabular-nums text-muted">{fmtInt(r.n_days)}</td>
+                          <td className={`px-2 py-1.5 text-right tabular-nums ${forecastEvidence(r).complete ? 'text-muted' : 'text-warn'}`}>{forecastEvidence(r).text}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums">{Number(r.mae_c).toFixed(2)}</td>
                           <td className={`px-2 py-1.5 text-right tabular-nums ${Math.abs(r.bias_c) > 0.5 ? "text-warn" : "text-muted"}`}>
                             {r.bias_c > 0 ? "+" : ""}{Number(r.bias_c).toFixed(2)}

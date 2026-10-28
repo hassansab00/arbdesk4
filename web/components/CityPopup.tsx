@@ -1,4 +1,5 @@
 "use client";
+import { forecastEvidence } from '@/lib/predictive';
 
 import CityLearning from "./CityLearning";
 import FrozenCallPanel from "./FrozenCallPanel";
@@ -46,6 +47,7 @@ import {
 
 export interface ScoreRow {
   city_key: string; model: string; lead_days: number; n_days: number;
+  n_verified?: number | null; fully_verified?: boolean | null;
   mae_c: number; bias_c: number; error_sd_c: number | null; worst_c: number;
   hit_rate_pct: number | null; within_1c_pct: number | null;
 }
@@ -310,7 +312,7 @@ export default function CityPopup({
                 )}
               </dd>
               <dt className="text-muted" title="The desk's own weather model. Until it is promoted it is measured beside the forecasts and does not move the pick.">
-                Desk model
+                Desk model · station comparison
               </dt>
               <dd className="tabular-nums">
                 {c.own?.predicted_max_c != null
@@ -416,7 +418,7 @@ export default function CityPopup({
               Day-ahead, {summary.days} settled days{summary.first_day ? <> ({fmtResolutionDate(summary.first_day)} to {fmtResolutionDate(summary.last_day)})</> : null}:
               {" "}the platform&rsquo;s pick won <b>{fmtPct(summary.model_hit_rate, 0)}</b>
               {summary.market_hit_rate !== null && <>, the market&rsquo;s {fmtPct(summary.market_hit_rate, 0)} on the {summary.h2h_days} days both priced</>}
-              {summary.centre_mae_c !== null && <>; the predicted maximum missed by {fmtTempDelta(summary.centre_mae_c, u).replace("+", "")} on average (bias {fmtTempDelta(summary.centre_bias_c ?? 0, u)}, {summary.centre_days} days)</>}
+              {summary.centre_mae_c !== null && <>; the predicted maximum missed by {fmtTempDelta(summary.centre_mae_c, u).replace("+", "")} on average (bias predicted − actual: {fmtTempDelta(summary.centre_bias_c ?? 0, u)}, {summary.centre_days} days)</>}
               {summary.mae_c !== null && <>, the raw public forecast by {fmtTempDelta(summary.mae_c, u).replace("+", "")}</>}
               . <span className="text-muted">{summary.verdict}</span>
             </p>
@@ -425,7 +427,7 @@ export default function CityPopup({
           <table className="mb-2 w-full tabular-nums">
             <thead className="text-left text-[10px] uppercase tracking-wide text-muted">
               <tr><th className="py-0.5 pr-2">Moment, last 30 days</th><th className="pr-2">Top pick right</th>
-                <th className="pr-2">Claimed</th><th className="pr-2">Mean miss</th><th>Market vs platform, same days</th></tr>
+                <th className="pr-2">Claimed</th><th className="pr-2" title="Mean absolute error; signed bias below is actual minus predicted">Mean miss</th><th>Market vs platform, same days</th></tr>
             </thead>
             <tbody>
               {MOMENTS.map((m) => {
@@ -447,7 +449,7 @@ export default function CityPopup({
             <table className="mb-2 w-full tabular-nums">
               <thead className="text-left text-[10px] uppercase tracking-wide text-muted">
                 <tr><th className="py-0.5 pr-2">Public forecast</th><th className="pr-2">Lead</th><th className="pr-2">Days</th>
-                  <th className="pr-2">Mean miss</th><th className="pr-2">Bias</th><th className="pr-2">Right bucket</th><th>Within 1°C</th></tr>
+                  <th className="pr-2">Verified actuals</th><th className="pr-2">Mean miss</th><th className="pr-2" title="Forecast minus actual">Bias</th><th className="pr-2" title="Same integer-degree Celsius interval, not the venue's winning bucket">Same whole °C</th><th>Within 1°C</th></tr>
               </thead>
               <tbody>
                 {scores.map((s) => (
@@ -455,6 +457,7 @@ export default function CityPopup({
                     <td className="py-0.5 pr-2">{MODEL_LABEL[s.model] ?? s.model}</td>
                     <td className="pr-2">{s.lead_days} d</td>
                     <td className="pr-2">{s.n_days}</td>
+                    <td className={`pr-2 ${forecastEvidence(s).complete ? 'text-muted' : 'text-warn'}`}>{forecastEvidence(s).text}</td>
                     <td className="pr-2">{fmtTempDelta(s.mae_c, u).replace("+", "")}</td>
                     <td className="pr-2">{fmtTempDelta(s.bias_c, u)}</td>
                     <td className="pr-2">{s.hit_rate_pct !== null ? `${Number(s.hit_rate_pct).toFixed(0)}%` : "—"}</td>
@@ -497,7 +500,7 @@ export default function CityPopup({
             : (
               <>
                 <p className="mb-1.5 tabular-nums">
-                  Last {review.length} settled day{review.length === 1 ? "" : "s"}, calls before the peak:{" "}
+                  Last {review.length} settled day{review.length === 1 ? "" : "s"}, scheduled calls excluding the explicit after-peak checkpoint:{" "}
                   {WHO.map((w, i) => {
                     const t = reviewTally[w.key];
                     return (
@@ -505,7 +508,7 @@ export default function CityPopup({
                         {t.n > 0 && <span className="text-muted"> ({fmtPct(t.hits / t.n, 0)})</span>}</span>
                     );
                   })}
-                  . <span className="text-muted">Each cell: P platform, W wxrd-v2 (shadow, not traded), M market; green won, red missed.</span>
+                  . <span className="text-muted">Each cell: P platform, W WXPredict v2 (evaluation), M saved market favourite; green won, red missed. Scheduled times do not prove capture before the actual peak; use City accuracy for verified timing.</span>
                 </p>
                 <table className="w-full tabular-nums">
                   <thead className="text-left text-[10px] uppercase tracking-wide text-muted">
@@ -558,8 +561,8 @@ export default function CityPopup({
                           <td>
                             {r.why ?? "—"}
                             {day.engine.n > 0 && (
-                              <span className="text-muted"> Before the peak: platform {day.engine.hits}/{day.engine.n}
-                                {day.wxrd.n > 0 && <>, wxrd-v2 {day.wxrd.hits}/{day.wxrd.n}</>}
+                              <span className="text-muted"> Scheduled calls: platform {day.engine.hits}/{day.engine.n}
+                                {day.wxrd.n > 0 && <>, WXPredict v2 {day.wxrd.hits}/{day.wxrd.n}</>}
                                 {day.market.n > 0 && <>, market {day.market.hits}/{day.market.n}</>}.</span>
                             )}
                           </td>

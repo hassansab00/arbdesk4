@@ -193,3 +193,13 @@ const SB = [
 console.log('predictive: every city reachable in the scorecard (47 + 1 named without rows), 96 of 96 forward rows, '
   + 'the peak bucket from the distribution, local-day pending states, the lean chart scoped, '
   + 'the checkpoint scoreboard in the order of the day with no market score made up and a short read named');
+
+// Missing weather verification must not turn into a claim of full verification.
+const {forecastEvidence}=require('../.route-test/lib/predictive.js');
+for(const row of [{n_days:12},{n_days:12,n_verified:null},{n_days:0,n_verified:0},
+  {n_days:12,n_verified:13},{n_days:12,n_verified:-1},{n_days:12,n_verified:1.5}]) {
+  assert.deepEqual(forecastEvidence(row),{text:'Not measured',complete:false});
+}
+assert.deepEqual(forecastEvidence({n_days:12,n_verified:12}),{text:'12/12',complete:true});
+assert.deepEqual(forecastEvidence({n_days:12,n_verified:0}),{text:'0/12',complete:false});
+assert.deepEqual(forecastEvidence({n_days:12,n_verified:9}),{text:'9/12',complete:false});

@@ -431,7 +431,7 @@ function Card({ c, onPick, moment, st, ev, strip, after, showRecord, frozen, fro
                 </span>))}
           </dd>
           <dt className="text-muted" title="The desk's own weather model. Until it is promoted it is measured beside the forecasts and does not move the pick.">
-            Desk model
+            Desk model · station comparison
           </dt>
           <dd className="tabular-nums">
             {c.own?.predicted_max_c != null

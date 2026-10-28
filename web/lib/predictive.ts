@@ -83,8 +83,17 @@ export function forwardRows(ladder: ForwardLadderRow[], today: string): ForwardR
 
 export interface ScorecardRow {
   city_key: string; model: string; lead_days: number; n_days: number;
+  n_verified?: number | null; fully_verified?: boolean | null;
   mae_c: number; bias_c: number; error_sd_c: number | null; worst_c: number;
   hit_rate_pct: number | null; within_1c_pct: number | null;
+}
+
+/** Missing verification is unknown, never silently treated as fully verified. */
+export function forecastEvidence(row:{n_days:number;n_verified?:number|null}) {
+  const n=Number(row.n_days),verified=row.n_verified;
+  if(!Number.isInteger(n)||n<=0||verified==null||!Number.isInteger(verified)||verified<0||verified>n)
+    return {text:'Not measured',complete:false};
+  return {text:`${verified}/${n}`,complete:verified===n};
 }
 
 export interface ScorecardGroup { city_key: string; rows: ScorecardRow[] }
