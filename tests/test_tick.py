@@ -167,6 +167,23 @@ def test_a_row_names_its_full_artifact_version_and_its_raw_forecast():
     assert bare["priced_from"] is None and bare["raw_forecast_c"] is None
 
 
+def test_every_checkpoint_keeps_peak_reference_without_changing_probability_lineage(monkeypatch):
+    import copy
+    import predictive_primary
+    context={'clim_peak_hour':12,'band_ids':['b1','b2']}
+    monkeypatch.setattr(predictive_primary,'checkpoint_lineage',lambda *a: {'predictive_context':context})
+    reference=dict(city_key='nyc',month=9,peak_hour_local=15.5,n_days=25,
+                   timezone='America/New_York',computed_at='2026-09-24T04:00:00Z',source='derived_weather_peak')
+    original=copy.deepcopy(context)
+    for checkpoint in tick.CHECKPOINTS:
+        row,why=tick.build_row('nyc','2026-09-25',checkpoint,LOCAL,_rows({'b1':.4,'b2':.6}),
+                              [],{},None,'v',timing_reference=reference)
+        assert why is None and row['probs']=={'b1':.4,'b2':.6}
+        assert row['predictive_context']['timing_reference']==reference
+        assert row['predictive_context']['clim_peak_hour']==12
+    assert context==original and 'timing_reference' not in context
+
+
 def test_a_row_carries_the_ladder_the_top_pick_and_the_market():
     rows = _rows({"b1": 0.2, "b2": 0.5, "b3": 0.3})
     books = {"b1": {"bid": 0.30, "ask": 0.34, "last": 0.3}, "b2": {"bid": 0.2, "ask": 0.24, "last": 0.2}}

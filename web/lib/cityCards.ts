@@ -176,7 +176,7 @@ const STANDING_RANK: Record<PickStanding, number> = { open: 0, one_below: 1, imp
  */
 export function pricedFromWords(label: string | null | undefined): string | null {
   if (!label) return null;
-  if (label.startsWith("wxrd3:")) return "WXPredict v3 · five-model seed ensemble, direct bucket probabilities";
+  if (label.startsWith("wxrd3:")) return "WXPredict v3 · five seeded fits, direct bucket probabilities";
   const parts: string[] = [];
   let rest = label;
   if (rest.startsWith("trajectory:")) {

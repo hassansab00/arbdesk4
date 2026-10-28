@@ -49,6 +49,7 @@ export default function CityPredictionValidation({ cities, moment }: { cities: s
       the earliest peak estimate saved with that call (or before the target day begins for an early call). It excludes explicit after-peak calls,
       missing receipts and unknown saved peaks. It never substitutes today&apos;s forecast or peak table.
       <strong> Expected peak is an estimate, not proof that today&apos;s final maximum was still ahead.</strong> This is a reporting filter; model fitting and promotion are unchanged.
+      New calls preserve the monthly city peak even when the baseline supplies the prediction. Older missing evidence stays unknown.
       {strict && horizon === 'overall' && ' Overall requires every common scheduled horizon on the date to pass this timing filter; incomplete dates remain excluded.'}
     </p>
     {strict && ranked.some(r=>!r.capture_timing) && <p className="text-xs text-warn">Some reports await the timing-aware scoring run. Their strict scores are unavailable; scheduled accuracy is not substituted.</p>}
@@ -76,6 +77,10 @@ export default function CityPredictionValidation({ cities, moment }: { cities: s
         </tr>)}</tbody></table>
         <p className="mt-2 text-[11px] text-muted">A date can be partially settled. Missing city outcomes are excluded from accuracy; zero known pending calls does not prove complete coverage.</p>
       </div>}
+      {!strict && <p className="max-w-5xl text-xs text-warn">
+        Scheduled accuracy includes late-information calls. The reviewed-high split below separates captures before the observed station high from those at or after it.
+        This is hindsight analysis of reviewed dates, not a real-time finality test or proof of tradeable skill. Missing reviews are unknown.
+      </p>}
       <div className="overflow-x-auto"><table className="w-full text-xs">
         <thead className="text-muted"><tr>{['Rank / city','Correct / settled','Hit rate · 95% interval','Log loss / Brier','Reliability error','Evidence / why'].map(h=><th key={h} className="px-2 py-2 text-left font-normal">{h}</th>)}</tr></thead>
         <tbody>{ranked.map((r,i)=><tr key={r.city} className="border-t border-border align-top">
@@ -85,6 +90,11 @@ export default function CityPredictionValidation({ cities, moment }: { cities: s
           <td className="whitespace-nowrap px-2 py-2">{num(r.metrics.log_loss)} / {num(r.metrics.brier)}</td>
           <td className="px-2 py-2" title="Weighted absolute difference between stated confidence and hit rate, grouped by confidence; smaller is better. This is not the signed calibration gap on the cards.">{pct(r.calibration_gap)}</td>
           <td className="min-w-72 px-2 py-2"><p>{strict ? (r.n ? 'Timing-qualified subset · compare the same horizon and city' : 'Awaiting timing-qualified settled calls') : evidenceWords(r)}</p>
+            {!strict && r.observed_peak_timing && <p className="mt-1 text-muted">
+              Before reviewed high: {r.observed_peak_timing.before.hits}/{r.observed_peak_timing.before.n} correct · {pct(r.observed_peak_timing.before.hit_rate)}.
+              {' '}At / after reviewed high: {r.observed_peak_timing.at_or_after.hits}/{r.observed_peak_timing.at_or_after.n} · {pct(r.observed_peak_timing.at_or_after.hit_rate)}.
+              {' '}{r.observed_peak_timing.unknown_calls} unknown timing · {r.observed_peak_timing.pending_calls} pending.
+            </p>}
             {r.capture_timing && <p className="mt-1 text-muted">Timing: {r.capture_timing.eligible_calls}/{r.capture_timing.calls} calls qualify · {r.capture_timing.excluded_calls} excluded.
               {Object.entries(r.capture_timing.exclusions).map(([why,n])=>` ${timingReason(why)}: ${n}.`).join('')}</p>}
             {!!r.recent_dates?.length && <p className="mt-1 text-muted">Recent target dates: {r.recent_dates.map(d=>`${d.date}: ${d.hits}/${d.n}${d.pending == null ? ' (pending not measured)' : d.pending ? `, ${d.pending} pending` : ''}`).join(' · ')}</p>}
@@ -93,13 +103,21 @@ export default function CityPredictionValidation({ cities, moment }: { cities: s
             <p className="mt-1">{r.period_start}–{r.period_end} · {r.verified} server-receipted / {r.legacy} legacy calls. Legacy timestamps are not new training evidence.</p>
             {!!r.capture_timing?.recent_calls.length && <div className="my-2 overflow-x-auto">
               <p>Recent original captures · city clock ({r.timezone}); includes calls excluded by the timing filter.</p>
-              <table className="mt-1 text-[11px]"><thead><tr>{['Target / checkpoint','Scheduled local','Actual freeze local','Delay','Eligibility cutoff local','Timing / result'].map(h=><th key={h} className="px-2 py-1 text-left font-normal">{h}</th>)}</tr></thead>
+              <table className="mt-1 text-[11px]"><thead><tr>{['Target / checkpoint','Scheduled local','Actual freeze local','Delay','Saved timing cutoff local','Reviewed station high local','Timing / result'].map(h=><th key={h} className="px-2 py-1 text-left font-normal">{h}</th>)}</tr></thead>
                 <tbody>{r.capture_timing.recent_calls.map(c=><tr key={`${c.date}-${c.checkpoint}`} className="border-t border-border">
                   <td className="whitespace-nowrap px-2 py-1">{c.date} · {HORIZONS.find(([k])=>k===c.checkpoint)?.[1] ?? c.checkpoint}</td>
                   <td className="whitespace-nowrap px-2 py-1">{c.scheduled_local ? fmtDateTime(c.scheduled_local,r.timezone) : 'Not recorded'}</td>
                   <td className="whitespace-nowrap px-2 py-1" title={c.frozen_at ?? ''}>{c.frozen_at ? fmtDateTime(c.frozen_at,r.timezone) : 'No server receipt'}</td>
                   <td className="whitespace-nowrap px-2 py-1">{c.delay_minutes == null ? '—' : `${c.delay_minutes.toFixed(1)} min`}</td>
-                  <td className="whitespace-nowrap px-2 py-1">{c.cutoff_local ? fmtDateTime(c.cutoff_local,r.timezone) : 'Unknown'}</td>
+                  <td className="whitespace-nowrap px-2 py-1">{c.cutoff_local ? fmtDateTime(c.cutoff_local,r.timezone) : 'Unknown'}
+                    {c.minutes_before_expected_peak != null && <span className="block text-muted">
+                      Frozen {Math.abs(c.minutes_before_expected_peak).toFixed(0)} min {c.minutes_before_expected_peak > 0 ? 'before' : 'at / after'} cutoff
+                    </span>}
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-1">{c.observed_timing?.peak_local ? <>
+                    {fmtDateTime(c.observed_timing.peak_local,r.timezone)}
+                    <span className="block text-muted">{c.observed_timing.relation === 'before' ? 'Frozen before high' : 'Frozen at / after high'}</span>
+                  </> : c.observed_timing?.relation === 'pending' ? 'Awaiting outcome' : 'Not measured'}</td>
                   <td className={`px-2 py-1 ${c.before_expected_peak ? '' : 'text-warn'}`}>{timingReason(c.reason)} · {c.hit == null ? 'pending' : c.hit ? 'hit' : 'miss'}</td>
                 </tr>)}</tbody></table>
             </div>}
@@ -109,7 +127,7 @@ export default function CityPredictionValidation({ cities, moment }: { cities: s
             {r.paired_audit && <p>Matched forward audit: {r.paired_audit.calls} calls across {r.paired_audit.dates} dates · baseline alone right {r.paired_audit.baseline_only_hits}, raw v3 alone right {r.paired_audit.raw_only_hits}, both missed {r.paired_audit.both_missed}. Raw misses warmer than settlement {r.paired_audit.raw_warmer_misses}, cooler {r.paired_audit.raw_cooler_misses}. Mean saved report age {r.paired_audit.mean_report_age_min?.toFixed(1) ?? '—'} min. These describe the frozen evidence, not a causal explanation.</p>}
             {r.model_selection && <p>Model selection: {r.model_selection.effective.reason}. Training {r.model_selection.train_dates} older dates / validation {r.model_selection.validation_dates} later dates. Fit {fmtDateTime(r.model_selection.fit_at)}, validated through {r.model_selection.validated_through ?? 'not yet'}. Version {r.model_selection.version}.</p>}
             <p>Reviewed-miss public forecast MAE {r.why.public_forecast_mae_c?.toFixed(2) ?? '—'} °C; bias {r.why.public_forecast_bias_c?.toFixed(2) ?? '—'} °C. Associations are not causal explanations of the model.</p>
-            {r.learning.map(s=><p key={s.phase} className="mt-1">{s.phase.replaceAll('_',' ')}: {s.active ? 'active' : 'raw prediction'} · {s.decision} · {s.reason}. Training {s.train_dates} dates / validation {s.validation_dates} dates. T={s.effective_params.temperature.toFixed(3)}, tilt={s.effective_params.tilt.toFixed(3)}. Fit {s.as_of}, validated through {s.validated_through ?? 'not yet'}. Version {s.version}.</p>)}
+            {r.learning.map(s=><p key={s.phase} className="mt-1">{s.phase.replaceAll('_',' ')}: {s.active ? 'calibration active' : 'calibration held · neutral adjustment'} · {s.decision} · {s.reason}. Training {s.train_dates} dates / validation {s.validation_dates} dates. T={s.effective_params.temperature.toFixed(3)}, tilt={s.effective_params.tilt.toFixed(3)}. Fit {s.as_of}, validated through {s.validated_through ?? 'not yet'}. Version {s.version}.</p>)}
             <p className="mt-1">Predictors: {Object.entries(r.versions).map(([v,n])=>`${v}: ${n}`).join('; ') || 'Awaiting settled calls'}</p>
           </details></td>
         </tr>)}</tbody>

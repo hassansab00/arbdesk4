@@ -19,11 +19,12 @@ test('diagnostic says sample limits and reviewed denominators',()=>{
  assert.ok(HORIZONS.find(([h])=>h==='postpeak_1h'));
 });
 test('strict timing view never falls back to scheduled scores or leaks full-cohort diagnostics',()=>{
- const row={city:'a',n:2,hits:2,hit_rate:1,paired_audit:{calls:2},early_comparison:{calls:2},
+ const row={city:'a',n:2,hits:2,hit_rate:1,paired_audit:{calls:2},early_comparison:{calls:2},observed_peak_timing:{calls:2},
    capture_timing:{calls:2,eligible_calls:1,excluded_calls:1,strict:{n:1,hits:0,hit_rate:0,recent_dates:[{date:'2026-10-24',n:1,hits:0,pending:0}]}}};
  const before=JSON.stringify(row),strict=timingView(row,true);
  assert.equal(strict.n,1);assert.equal(strict.hits,0);assert.equal(strict.hit_rate,0);
  assert.equal(strict.paired_audit,undefined);assert.equal(strict.early_comparison,undefined);
+ assert.equal(strict.observed_peak_timing,undefined);
  assert.equal(timingView({...row,capture_timing:undefined},true).hit_rate,null);
  assert.equal(timingView({...row,capture_timing:undefined},true).n,0);
  assert.equal(recentCityScores([strict])[0].hit_rate,0);

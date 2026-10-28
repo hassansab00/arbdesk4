@@ -1,7 +1,7 @@
 import { cityInstant } from './time';
 
 export const HORIZONS = [
-  ['day_ahead','Day ahead'], ['d1_eve','Evening before'], ['morning','Morning'], ['noon','Noon'],
+  ['day_ahead','Day ahead'], ['d1_eve','Evening before · 18:00 local'], ['morning','Morning · 09:00 local'], ['noon','12:00 local · scheduled'],
   ['prepeak_2h','2 h before typical peak'], ['prepeak_1h','1 h before typical peak'],
   ['postpeak_1h','1 h after typical peak'], ['overall','Overall · common scheduled calls'],
 ] as const;
@@ -18,7 +18,9 @@ export type DailyScore = { date: string; n: number; hits: number; hit_rate: numb
   pending: number | null; claimed: number | null; early_comparison: EarlyComparison };
 export type CaptureCall = { date: string; checkpoint: string; hit: number | null;
   scheduled_local?: string; received_at?: string; received_local?: string; frozen_at?: string | null;
-  delay_minutes?: number; cutoff_local?: string | null; before_expected_peak: boolean; reason: string };
+  delay_minutes?: number; cutoff_local?: string | null; before_expected_peak: boolean; reason: string;
+  minutes_before_expected_peak?: number | null;
+  observed_timing?: { relation: string; peak_local?: string; minutes_before_peak?: number } | null };
 export type CaptureTiming = { policy: string; calls: number; eligible_calls: number; excluded_calls: number;
   exclusions: Record<string, number>; strict: Pick<CityReport, 'n' | 'hits' | 'hit_rate' | 'interval95' |
     'dates' | 'pending' | 'verified' | 'legacy' | 'metrics' | 'baseline' | 'raw' | 'calibration_gap' | 'versions' | 'recent_dates'>;
@@ -28,6 +30,9 @@ export type CityReport = { city: string; display_name: string; timezone: string;
   pending: number | null; verified: number; legacy: number; calibration_gap: number | null;
   period_start: string; period_end: string;
   capture_timing?: CaptureTiming;
+  observed_peak_timing?: { policy: string; calls: number; unknown_calls: number; pending_calls: number;
+    before: { n: number; hits: number; hit_rate: number | null };
+    at_or_after: { n: number; hits: number; hit_rate: number | null } };
   metrics: { log_loss: number | null; brier: number | null };
   baseline: { n: number; hit: number | null; log_loss: number | null };
   raw: { n: number; hit: number | null; log_loss: number | null };
@@ -55,7 +60,7 @@ export function timingView(row: CityReport, strict: boolean): CityReport {
     // These diagnostics describe the complete scheduled cohort, not the subset.
     why: { missed_dates: 0, reviewed_dates: 0, weather: {}, mean_peak_shift_h: null,
       public_forecast_mae_c: null, public_forecast_bias_c: null },
-    paired_audit: undefined, early_comparison: undefined };
+    paired_audit: undefined, early_comparison: undefined, observed_peak_timing: undefined };
 }
 export function timingReason(reason: string): string {
   return ({ eligible: 'Before expected peak', missing_server_receipt: 'No server freeze receipt',

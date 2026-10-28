@@ -78,7 +78,7 @@ export const MOMENT: Record<string, string> = {
   day_ahead: "Day ahead",
   d1_eve: "Evening before",
   morning: "Morning",
-  noon: "Noon",
+  noon: "12:00 local · scheduled",
   prepeak_2h: "2 h before typical peak",
   prepeak_1h: "1 h before typical peak",
   postpeak_1h: "1 h after typical peak",
