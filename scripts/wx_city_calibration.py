@@ -74,6 +74,21 @@ def pool_version(model_version):
     return match[1] if match else model_version
 
 
+def readiness(train_dates, validation_dates, priors=PRIORS, pool_rows=None, pool_dates=None):
+    """Counts, not a promised date or permission to weaken a validation gate."""
+    requirements = [('older training dates', train_dates, priors['min_train_dates']),
+                    ('later validation dates', validation_dates, priors['min_validation_dates'])]
+    if pool_rows is not None:
+        requirements.append(('compatible older pooled rows', pool_rows, priors['min_pool_rows']))
+    if pool_dates is not None:
+        requirements.append(('compatible older pooled dates', pool_dates, priors['min_pool_dates']))
+    return dict(validation_window_days=priors['validation_days'],
+                counts=[dict(name=name, available=n, required=needed, missing=max(0, needed-n))
+                        for name,n,needed in requirements],
+                sample_ready=all(n >= needed for _,n,needed in requirements),
+                policy='same weights and observation contract; chronological dates; validation still required')
+
+
 def eligible_rows(rows, as_of, model_version, *, pooled=False):
     cutoff = dt.datetime.combine(as_of, dt.time(), dt.timezone.utc)
     first = as_of-dt.timedelta(days=PRIORS['window_days'])
@@ -186,6 +201,8 @@ def fit(rows, cities, model_version, as_of, previous=()):
                          decision='held', reason='insufficient independent training/validation dates')
             state['input_digest'] = hashlib.sha256(json.dumps([(r['city_key'],r['target_date'],r['input_sha256'],r['winning_band_id'])
                 for r in pool_rows if r['phase'] == ph], separators=(',',':')).encode()).hexdigest()
+            state['readiness'] = readiness(nt, nv, pool_rows=len(pool),
+                                          pool_dates=len({r['target_date'] for r in pool}))
             if (nt >= PRIORS['min_train_dates'] and nv >= PRIORS['min_validation_dates']
                 and len(pool) >= PRIORS['min_pool_rows'] and len({r['target_date'] for r in pool}) >= PRIORS['min_pool_dates']):
                 grid = [dict(temperature=t, tilt=b) for t in (.8,1.,1.2,1.5) for b in (-.2,0.,.2)]

@@ -135,7 +135,7 @@ def load_model(meta, model_json=MODEL_JSON):
     joined = hashlib.sha256("".join(m["sha256"] for m in meta["models"]).encode()).hexdigest()
     if joined != meta["model_sha256"]:
         raise SystemExit(f"{meta['version']}'s models do not make its id {meta['model_sha256']}: refusing to predict")
-    return [one(m["file"], m["sha256"]) for m in meta["models"]]
+    return [one(m["file"], m["sha256"], m.get('asset_url')) for m in meta["models"]]
 
 
 def run(now=None, dry_run=False, variant=VARIANT, deadline=None):

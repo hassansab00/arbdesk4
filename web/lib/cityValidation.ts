@@ -7,23 +7,27 @@ export const HORIZONS = [
 ] as const;
 export type Learning = { phase: string; as_of: string; decision: string; reason: string;
   train_dates: number; validation_dates: number; version: string; validated_through: string | null;
-  active: boolean; effective_params: { temperature: number; tilt: number } };
+  active: boolean; effective_params: { temperature: number; tilt: number }; readiness?: Readiness };
+export type Readiness = { sample_ready: boolean; validation_window_days: number; policy: string;
+  counts: Array<{ name: string; available: number; required: number; missing: number }> };
 export type ModelSelection = { selected: string; decision: string; reason: string; fit_at: string;
   train_dates: number; validation_dates: number; validated_through: string | null; version: string;
-  effective: { selected: string; active: boolean; reason: string } };
+  effective: { selected: string; active: boolean; reason: string }; readiness?: Readiness };
 export type EarlyComparison = { calls: number; dates: number; raw_centre_hits: number;
   corrected_hits: number; correction_helped: number; correction_hurt: number;
   mean_log_loss_gain: number | null };
 export type DailyScore = { date: string; n: number; hits: number; hit_rate: number | null;
   pending: number | null; claimed: number | null; early_comparison: EarlyComparison };
 export type CaptureCall = { date: string; checkpoint: string; hit: number | null;
+  forecast_input?: { source_model?: string; run_at?: string; raw_max_c?: number; sigma_c?: number;
+    uncertainty?: { applied: boolean; policy: string; reason: string; advance_lead_days?: number } | null } | null;
   scheduled_local?: string; received_at?: string; received_local?: string; frozen_at?: string | null;
   delay_minutes?: number; cutoff_local?: string | null; before_expected_peak: boolean; reason: string;
   minutes_before_expected_peak?: number | null;
   observed_timing?: { relation: string; peak_local?: string; minutes_before_peak?: number } | null };
 export type CaptureTiming = { policy: string; calls: number; eligible_calls: number; excluded_calls: number;
   exclusions: Record<string, number>; strict: Pick<CityReport, 'n' | 'hits' | 'hit_rate' | 'interval95' |
-    'dates' | 'pending' | 'verified' | 'legacy' | 'metrics' | 'baseline' | 'raw' | 'calibration_gap' | 'versions' | 'recent_dates'>;
+    'dates' | 'pending' | 'verified' | 'legacy' | 'metrics' | 'baseline' | 'raw' | 'calibration_gap' | 'versions' | 'recent_dates' | 'market_comparison'>;
   recent_calls: CaptureCall[] };
 export type CityReport = { city: string; display_name: string; timezone: string; scope: string; horizon: string;
   n: number; hits: number; hit_rate: number | null; interval95: number[] | null; dates: number;
@@ -32,7 +36,12 @@ export type CityReport = { city: string; display_name: string; timezone: string;
   capture_timing?: CaptureTiming;
   observed_peak_timing?: { policy: string; calls: number; unknown_calls: number; pending_calls: number;
     before: { n: number; hits: number; hit_rate: number | null };
+    before_60m?: { n: number; hits: number; hit_rate: number | null };
+    before_120m?: { n: number; hits: number; hit_rate: number | null };
     at_or_after: { n: number; hits: number; hit_rate: number | null } };
+  market_comparison?: { n: number; dates: number;
+    model: { hit: number | null; log_loss: number | null; brier: number | null };
+    market: { hit: number | null; log_loss: number | null; brier: number | null } };
   metrics: { log_loss: number | null; brier: number | null };
   baseline: { n: number; hit: number | null; log_loss: number | null };
   raw: { n: number; hit: number | null; log_loss: number | null };
@@ -60,7 +69,14 @@ export function timingView(row: CityReport, strict: boolean): CityReport {
     // These diagnostics describe the complete scheduled cohort, not the subset.
     why: { missed_dates: 0, reviewed_dates: 0, weather: {}, mean_peak_shift_h: null,
       public_forecast_mae_c: null, public_forecast_bias_c: null },
-    paired_audit: undefined, early_comparison: undefined, observed_peak_timing: undefined };
+    paired_audit: undefined, early_comparison: undefined, observed_peak_timing: undefined,
+    market_comparison: score?.market_comparison };
+}
+export function readinessWords(r?: Readiness) {
+  if (!r) return 'Readiness counts awaiting the updated scoring run.';
+  return r.counts.map(c=>`${c.name}: ${c.available}/${c.required}${c.missing ? ` (${c.missing} missing)` : ''}`).join(' · ')
+    + (r.sample_ready ? '. Sample ready; validation must still pass.' : '. Comparable independent dates still required.')
+    + ` Latest ${r.validation_window_days} days are held for validation; source/weight versions stay separate.`;
 }
 export function timingReason(reason: string): string {
   return ({ eligible: 'Before expected peak', missing_server_receipt: 'No server freeze receipt',

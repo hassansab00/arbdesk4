@@ -50,11 +50,16 @@ def eligible(target, timezone, now, checkpoints=()):
 def input_problem(row):
     if row is None or row.get("rmax_c") is None:
         return "no same-day running maximum"
-    age = row.get("obs_age_min")
-    if age is None or not math.isfinite(float(age)) or not 0 <= float(age) <= MAX_OBS_AGE_MIN:
-        return "station report stale or missing"
-    if int(row.get("fc_models_n") or 0) < 4 or int(row.get("fch_n_known") or 0) < 20:
-        return "incomplete weather-model inputs"
+    try:
+        age = float(row['obs_age_min'])
+        if not math.isfinite(age) or not 0 <= age <= MAX_OBS_AGE_MIN:
+            return "station report stale or missing"
+        if not math.isfinite(float(row['rmax_c'])):
+            return "invalid same-day running maximum"
+        if int(row.get("fc_models_n") or 0) < 4 or int(row.get("fch_n_known") or 0) < 20:
+            return "incomplete weather-model inputs"
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return "invalid weather-model inputs"
     return None
 
 
@@ -297,6 +302,10 @@ def apply(city, target, result, checkpoint=None):
             state, served = None, primary["raw_probs"]
     baseline_probs = {str(r["band_id"]): float(r["calibrated_prob"]) for r in rows}
     context=dict(primary.get('predictive_context') or {},raw_model_version=primary['version'],model_selection=choice)
+    import probability_engine
+    forecast_input=probability_engine.forecast_context(city,target,rows)
+    if forecast_input:
+        context['forecast_input']=forecast_input
     if choice['selected']=='baseline':
         if primary.get('input_key'):
             _lineage[(*key,checkpoint)] = dict(input_as_of=primary['as_of'],input_key=primary['input_key'],
@@ -317,7 +326,8 @@ def apply(city, target, result, checkpoint=None):
         out.append(r)
     # Remove provenance for corrections that did NOT price this distribution.
     keep = [r for r in reasons if not r.startswith(("priced_from:", "calibrated:", "station_width:",
-        "station_correction:", "measurement_layer:", "trajectory:", "postprocessed:"))]
+        "station_correction:", "measurement_layer:", "trajectory:", "postprocessed:",
+        "same-day-advance-width-prior-v1:"))]
     keep.extend([f"primary_policy:{POLICY}", f"primary_inputs:{primary['input_sha256']}",
                  f"priced_from:{primary['version']}",f"model_choice:{choice['version']}:wxrd3:{horizon}"])
     if primary.get("input_key"):

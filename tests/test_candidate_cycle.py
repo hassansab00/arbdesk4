@@ -146,9 +146,11 @@ def test_the_real_fit_and_arrival_inference_pipeline_runs_without_promoting_ties
     p = cycle.plan(dt.date(2026, 10, 29), {"fit_last": "2026-10-11"})
     result, meta, weight = cycle.fit_and_evaluate(p, "unused", {"fit_last": "2026-10-11", "model_sha256": "baseline"}, str(tmp_path))
     assert result["decision"] == "reject" and "no positive date-clustered log-loss gain" in result["reasons"]
-    assert result["maximum_bucket_change"] == 0 and result["all"]["n"] == len(eval_rows)
+    assert result["maximum_bucket_change"] == pytest.approx(0,abs=1e-12) and result["all"]["n"] == len(eval_rows)
     assert meta["fit_last"] < p["evaluation_first"]
-    assert model_artifacts.validate_blob(pathlib.Path(weight).read_bytes(), meta["model_sha256"])
+    assert len(weight)==len(meta['models'])==5
+    for path,entry in zip(weight,meta['models']):
+        assert model_artifacts.validate_blob(pathlib.Path(path).read_bytes(),entry['sha256'])
 
 
 def test_failed_artifact_publication_cannot_change_the_registry(tmp_path, monkeypatch):

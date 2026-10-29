@@ -199,7 +199,7 @@ def test_repeat_runs_replace_derived_answers_and_preserve_original_calls(tmp_pat
     modes=[]
     def read(table,*a,**kw):
         if table=='prediction_checkpoints': return [original]
-        if table=='fact_checkpoint_outcome': return list(facts)
+        if table=='v_checkpoint_outcome': return list(facts)
         if table=='derived_wx_city_calibration':
             return list(saved.get(table,{}).values())
         if table=='derived_city_prediction_validation':
