@@ -139,6 +139,7 @@ def fit(rows, cities, version, now, previous=()):
                 train_dates=len(train),validation_dates=len(val),
                 train_through=max((r['target_date'] for r in train),default=None),
                 validation_from=min((r['target_date'] for r in val),default=None),validated_through=None)
+            state['readiness'] = cal.readiness(len(train), len(val), PRIORS)
             if horizon not in SUPPORTED:
                 state['reason'] = 'raw v3 is not authorized for this horizon; baseline retained'
             elif len(train) >= PRIORS['min_train_dates'] and len(val) >= PRIORS['min_validation_dates']:

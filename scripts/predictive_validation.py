@@ -120,6 +120,10 @@ def observed_peak_report(rows, horizon):
               for key in ('before', 'at_or_after', 'unknown', 'pending')}
     return dict(policy='reviewed-station-peak-v1', calls=len(rows),
                 before=summarize(groups['before'], horizon),
+                before_60m=summarize([r for r in groups['before']
+                    if r['observed_timing']['minutes_before_peak'] >= 60], horizon),
+                before_120m=summarize([r for r in groups['before']
+                    if r['observed_timing']['minutes_before_peak'] >= 120], horizon),
                 at_or_after=summarize(groups['at_or_after'], horizon),
                 unknown_calls=len(groups['unknown']), pending_calls=len(groups['pending']))
 
@@ -146,6 +150,7 @@ def timing_report(rows, horizon):
         recent_calls=[dict(date=r['target_date'], checkpoint=r['checkpoint'],
             hit=r['metrics']['hit'] if r.get('settled') else None,
             observed_timing=r.get('observed_timing'),
+            forecast_input=(r.get('paired_context') or {}).get('forecast_input'),
             **(r.get('timing') or dict(reason='missing_server_receipt', before_expected_peak=False)))
             for r in recent])
 
@@ -218,6 +223,9 @@ def collect(checkpoints, outcomes, day_ahead, cities, peaks, now):
                  top_prob=float(probs[top]),verified=p.get('frozen_at') is not None,
                  metrics=cal.metrics(probs,winner) if settled else None,
                  baseline=None,raw=None,
+                 market_metrics=({'hit': int(f['market_hit']), 'log_loss': f.get('log_loss_market'),
+                                  'brier': f.get('brier_market')}
+                                 if settled and f.get('market_complete') and f.get('market_hit') is not None else None),
                  raw_model_version=(p.get('predictive_context') or {}).get('raw_model_version') or p.get('priced_from'),
                  timing=capture_timing(p,c),
                  paired_context=p.get('predictive_context') or {},probs=probs,
@@ -316,12 +324,17 @@ def summarize(rows, horizon):
             bins.append(dict(lo=lo/100,n=len(bucket),stated=statistics.fmean(r['top_prob'] for r in bucket),
                              actual=statistics.fmean(r['metrics']['hit'] for r in bucket)))
     gap=sum(b['n']*abs(b['stated']-b['actual']) for b in bins)/n if n else None
+    paired = [r for r in settled if r.get('market_metrics')]
+    market_comparison = dict(n=len(paired), dates=len({r['target_date'] for r in paired}),
+                             model=average_metrics(paired),
+                             market=average_metrics(paired,'market_metrics'),
+                             policy='same original call; saved complete market; no executable-return claim')
     return dict(n=n,hits=hits,hit_rate=hits/n if n else None,interval95=interval,
                 dates=len({r['target_date'] for r in settled}),pending=None if horizon in ('day_ahead','overall') else sum(not r['settled'] for r in rows),
                 verified=sum(r['verified'] for r in settled),legacy=sum(not r['verified'] for r in settled),
                 metrics=average_metrics(settled),baseline=average_metrics(settled,'baseline'),
                 raw=average_metrics(settled,'raw'),calibration_gap=gap,reliability=bins,
-                versions=dict(Counter(r['version'] for r in settled)))
+                versions=dict(Counter(r['version'] for r in settled)),market_comparison=market_comparison)
 
 
 def diagnostic(rows,reviews):
@@ -389,13 +402,18 @@ def reports(rows,cities,reviews,states,now,model_version=None,selections=(),earl
                     early_comparison=early_forecast_audit.summarize(chosen),
                     active_model_version=active_version,
                     learning=[dict(s,active=cal.usable(s,local_target,active_version),
+                                   readiness=(cal.readiness(s['train_dates'],s['validation_dates'],
+                                       s.get('priors') or cal.PRIORS,s.get('pool_rows'),s.get('pool_dates'))
+                                       if 'train_dates' in s and 'validation_dates' in s else None),
                                    effective_params=s['params'] if cal.usable(s,local_target,active_version) else cal.IDENTITY)
                               for s in states if s['city_key']==city and s['model_version']==active_version
                               and horizon in (*selector.SUPPORTED, 'overall')],
                     early_learning=[s for s in early_states if s['city_key']==city]
                         if scope=='served' and horizon in ('day_ahead','d1_eve') else [])
                 state=next((s for s in selections if s['city_key']==city and s['checkpoint']==horizon and s['model_version']==active_version),None)
-                report['model_selection']=dict(state,effective=selector.choose(state,city,horizon,active_version,local_target,now)) if state else None
+                report['model_selection']=dict(state,
+                    readiness=cal.readiness(state['train_dates'],state['validation_dates'],state.get('priors') or selector.PRIORS),
+                    effective=selector.choose(state,city,horizon,active_version,local_target,now)) if state else None
                 result.append(dict(city_key=city,checkpoint=horizon,scope=scope,as_of=now.isoformat(),report=report))
     return result
 
@@ -405,7 +423,7 @@ def run(score_only=False, now=None):
     first=(now.date()-dt.timedelta(days=30)).isoformat()
     cities=get_cities(require_coords=False,extra=('display_name',))
     p=rest_all('prediction_checkpoints',[('select','*'),('target_date','gte.'+first)],order='checkpoint_id.asc',page_size=1000)
-    outcomes=rest_all('fact_checkpoint_outcome',[('select','checkpoint_id,winner_band_id,settled_at,banked_at'),('target_date','gte.'+first)],order='checkpoint_id.asc',page_size=1000)
+    outcomes=rest_all('v_checkpoint_outcome',[('select','checkpoint_id,winner_band_id,settled_at,banked_at,market_complete,market_hit,log_loss_market,brier_market'),('target_date','gte.'+first)],order='checkpoint_id.asc',page_size=1000)
     da=rest_all('v_day_ahead_frozen_validation',[('select','*'),('for_date','gte.'+first)],order='city_key.asc,for_date.asc',page_size=1000)
     reviews=rest_all('derived_day_review',[('select','*'),('target_date','gte.'+first)],order='city_key.asc,target_date.asc',page_size=1000)
     states=[r['state'] for r in rest_all('derived_wx_city_calibration',[('select','state')],order='model_version.asc,city_key.asc,phase.asc',page_size=1000)]

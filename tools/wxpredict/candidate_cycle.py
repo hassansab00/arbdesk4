@@ -25,6 +25,9 @@ MIN_TRAIN_ROWS = 50000
 MIN_COVERAGE = 0.80
 MAX_BUCKET_CHANGE = 0.10
 SEED, ROUNDS = 20261011, 250
+SEEDS = tuple(SEED+k for k in range(5))  # the serving v3's five-seed recipe
+REFIT_INTERVAL_DAYS = 7  # reuse the nightly planner; no additional dispatches
+VALIDATION_POLICY = 'remaining-five-seed-proper-scores-v2'
 CHECKPOINTS = ("morning", "noon", "prepeak_2h", "prepeak_1h", "postpeak_1h")
 REMAINING_CHECKPOINTS = ("noon", "prepeak_2h", "prepeak_1h", "postpeak_1h")
 PREPEAK_CHECKPOINTS = ("noon", "prepeak_2h", "prepeak_1h")
@@ -45,7 +48,51 @@ def plan(today, incumbent, paused=False):
                        "improvement_checkpoints":list(PREPEAK_CHECKPOINTS),
                        "holdout_dates": HOLDOUT_DATES, "minimum_cities_per_date": MIN_CITIES_PER_DATE,
                        "minimum_training_rows": MIN_TRAIN_ROWS, "minimum_coverage": MIN_COVERAGE,
-                       "maximum_validation_bucket_change": MAX_BUCKET_CHANGE, "seed": SEED, "rounds": ROUNDS}}
+                       "maximum_validation_bucket_change": MAX_BUCKET_CHANGE, "seed": SEED, "seeds": list(SEEDS),
+                       "refit_interval_days": REFIT_INTERVAL_DAYS,
+                       "validation_policy": VALIDATION_POLICY, "rounds": ROUNDS}}
+
+
+def refit_due(history, night):
+    """Waiting for evidence costs no fit; a fitted rejection also earns cooldown."""
+    dates = [dt.date.fromisoformat(r['night']) for r in history
+             if r.get('action') == 'cycle' and r.get('fitted')]
+    return not dates or (dt.date.fromisoformat(night)-max(dates)).days >= REFIT_INTERVAL_DAYS
+
+
+def probability_quality(scores):
+    """Reject proper-score regressions, including a well-sampled city/horizon.
+
+    This only tightens a new challenger gate. It never revises an old report
+    or changes the outcome of a pre-registered blinded experiment.
+    """
+    groups = collections.defaultdict(list)
+    for r in scores:
+        if any(not math.isfinite(r[k]) or r[k] < 0 for k in ('candidate_brier','incumbent_brier')):
+            raise ValueError('invalid candidate Brier score')
+        groups[(r['city'],r['checkpoint'])].append(r)
+    local, reasons = [], []
+    for (city,cp), rs in sorted(groups.items()):
+        dates = len({r['date'] for r in rs})
+        losses = {k:statistics_mean([r[k] for r in rs]) for k in
+                  ('candidate_brier','incumbent_brier','candidate_nll','incumbent_nll')}
+        protected = dates >= 10
+        worse = (losses['candidate_brier'] > losses['incumbent_brier']+1e-12
+                 or losses['candidate_nll'] > losses['incumbent_nll']+1e-12
+                 or sum(r['candidate_hit'] for r in rs) < sum(r['incumbent_hit'] for r in rs))
+        local.append(dict(city=city,checkpoint=cp,dates=dates,protected=protected,
+                          regressed=worse,**losses))
+    if any(r['protected'] and r['regressed'] for r in local):
+        reasons.append('city/horizon proper-score or hit-rate regression')
+    for cp in {r['checkpoint'] for r in scores}:
+        group=[r for r in scores if r['checkpoint']==cp]
+        if sum(r['candidate_brier']-r['incumbent_brier'] for r in group)>1e-12:
+            reasons.append('checkpoint Brier regression: '+cp)
+    return dict(validation_policy=VALIDATION_POLICY, city_horizons=local, quality_reasons=reasons)
+
+
+def statistics_mean(values):
+    return sum(values)/len(values)
 
 
 def assess(rows, expected, first, last, checkpoints=CHECKPOINTS, improvement_checkpoints=None):
@@ -92,7 +139,7 @@ def assess(rows, expected, first, last, checkpoints=CHECKPOINTS, improvement_che
     if coverage < MIN_COVERAGE: reasons.append("insufficient common-call coverage")
     if regressed: reasons.append("checkpoint regression")
     if jump > MAX_BUCKET_CHANGE: reasons.append("prediction change exceeds its bound")
-    if interval is None or interval[0] <= 0: reasons.append("no positive date-clustered log-loss gain")
+    if interval is None or interval[0] <= 1e-12: reasons.append("no positive date-clustered log-loss gain")
     return {"decision": "reject" if reasons else "accept shadow", "reasons": reasons, "all": aggregate(rows),
             "objective":aggregate(objective_rows),"improvement_checkpoints":list(objective),
             "checkpoints": groups, "regressed_checkpoints": regressed, "sparse_checkpoint_dates": sparse,
@@ -121,7 +168,7 @@ def fit_and_evaluate(p, model_path, meta, work):
     if len(train) < MIN_TRAIN_ROWS or train.date.max() >= p["evaluation_first"] or meta["fit_last"] >= p["evaluation_first"]:
         raise ValueError("insufficient training data or training/evaluation overlap")
     x = remaining.features(train, wf.features(train))
-    model = remaining.fit(x, remaining.target(train), SEED, ROUNDS)
+    models = [remaining.fit(x, remaining.target(train), seed, ROUNDS) for seed in SEEDS]
     training_rows = len(train)
     del train, x
     through = dt.datetime.fromisoformat(p["night"]).replace(tzinfo=common.UTC).timestamp()
@@ -138,7 +185,7 @@ def fit_and_evaluate(p, model_path, meta, work):
     tx = remaining.features(test, wf.features(test))
     def predict(m):
         return remaining.bucket_probs(m.predict(tx[m.feature_name()]), test.unit.values, test.rmax_unit.values, lo, hi, mask)
-    candidate = predict(model)
+    candidate = np.mean([predict(model) for model in models], axis=0)
     base = wxrd_live.load_model(meta, model_path)
     base = base if isinstance(base, list) else [base]
     old = np.mean([predict(m) for m in base], axis=0)
@@ -148,27 +195,39 @@ def fit_and_evaluate(p, model_path, meta, work):
         scores.append({"city": r["city_key"], "date": r["date"], "checkpoint": r["checkpoint"],
                        "candidate_hit": bool(candidate[i].argmax() == win[i]), "incumbent_hit": bool(old[i].argmax() == win[i]),
                        "market_hit": bool(q[i].argmax() == win[i]), "candidate_nll": float(cn[i]),
-                       "incumbent_nll": float(bn[i]), "market_nll": float(mn[i]), "jump": float(np.max(np.abs(candidate[i] - old[i])))})
+                       "incumbent_nll": float(bn[i]), "market_nll": float(mn[i]), "jump": float(np.max(np.abs(candidate[i] - old[i]))),
+                       "candidate_brier": float(np.sum((candidate[i]-np.eye(len(candidate[i]))[win[i]])**2)),
+                       "incumbent_brier": float(np.sum((old[i]-np.eye(len(old[i]))[win[i]])**2))})
     result = {**p, **assess(scores, coverage["first_calls"], p["evaluation_first"], p["evaluation_last"],
                          checkpoints=REMAINING_CHECKPOINTS,improvement_checkpoints=PREPEAK_CHECKPOINTS),
               "input_coverage": coverage, "training_rows": training_rows,
               "table_content_sha256": built["sha256"], "table_sources": built["sources"],
-              "incumbent_model_sha256": meta["model_sha256"], "recipe": "remaining-v2; fixed parameters; one seed; recorded first-call validation"}
+              "incumbent_model_sha256": meta["model_sha256"], "recipe": "remaining-v2; fixed parameters; five seeds; recorded first-call validation"}
+    result.update(probability_quality(scores))
+    if result['quality_reasons']:
+        result['decision']='reject'
+        result['reasons'].extend(result['quality_reasons'])
     result["evaluation_gzip_sha256"] = hashlib.sha256(open(evaluation_path, "rb").read()).hexdigest()
     result["code_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=common.ROOT, text=True).strip()
-    raw = model.model_to_string().encode()
-    sha = hashlib.sha256(raw).hexdigest()
+    raws = [model.model_to_string().encode() for model in models]
+    hashes = [hashlib.sha256(raw).hexdigest() for raw in raws]
+    sha = hashlib.sha256(''.join(hashes).encode()).hexdigest()
     result["candidate_model_sha256"] = sha
     result["table_gzip_sha256"] = hashlib.sha256(open(table, "rb").read()).hexdigest()
     model_id = "wxrd-auto-" + p["night"].replace("-", "") + "-" + sha[:12]
-    fitted = {"version": model_id, "model_sha256": sha, "model_file": model_id + ".txt.gz",
-              "fit_last": p["fit_last"], "report_lag_s": 480, "features": model.feature_name(),
-              "rows": training_rows, "recipe": result["recipe"], "seed": SEED, "rounds": ROUNDS,
+    fitted = {"version": model_id, "model_sha256": sha,
+              "fit_last": p["fit_last"], "report_lag_s": 480, "features": models[0].feature_name(),
+              "models": [dict(seed=seed, file=f'{model_id}_s{seed}.txt.gz',sha256=digest)
+                         for seed,digest in zip(SEEDS,hashes)],
+              "rows": training_rows, "recipe": result["recipe"], "seeds": list(SEEDS), "rounds": ROUNDS,
               "parameters": remaining.PARAMS, "evaluation_report": "data/eval/wxpredict/cycles/" + p["night"] + ".json"}
-    weight = os.path.join(work, fitted["model_file"])
-    with open(weight, "wb") as fh:
-        fh.write(gzip.compress(raw, compresslevel=9, mtime=0))
-    return result, fitted, weight
+    weights=[]
+    for entry,raw in zip(fitted['models'],raws):
+        weight=os.path.join(work,entry['file'])
+        with open(weight,'wb') as fh:
+            fh.write(gzip.compress(raw,compresslevel=9,mtime=0))
+        weights.append(weight)
+    return result, fitted, weights
 
 
 def main(argv=None):
@@ -190,7 +249,32 @@ def main(argv=None):
     state = registry.registry()
     p = plan(dt.datetime.now(common.UTC).date(), meta, state["paused"])
     recorded = next((r for r in state["history"] if r.get("action") == "cycle" and r["night"] == p["night"]), None)
-    ready = p["decision"] == "ready" and recorded is None
+    # A fixed candidate keeps its complete future evaluation window. Do this
+    # before legacy feature preflight or any ML work, including --plan.
+    if recorded:
+        if os.environ.get('GITHUB_OUTPUT'):
+            with open(os.environ['GITHUB_OUTPUT'],'a') as fh:
+                fh.write('fit=false\n')
+        print(json.dumps(registry.read(os.path.join(common.ROOT, recorded["report"]))))
+        return 0
+    if not state['paused'] and state.get('current') and not state.get('forward_validated'):
+        from wxpredict import candidate_forward
+        available=state['current'].get('available_at')
+        if available:
+            _candidate_path,candidate_meta=registry.selected()
+            p=candidate_forward.review(candidate_meta,available,p['night'])
+        else:
+            p.update(decision='wait forward',reason='legacy shadow has no availability receipt; no automatic validation')
+        if os.environ.get('GITHUB_OUTPUT'):
+            with open(os.environ['GITHUB_OUTPUT'],'a') as fh:
+                fh.write('fit=false\n')
+        registry.record(p)
+        print(json.dumps(p,indent=1))
+        return 0
+    ready = p["decision"] == "ready"
+    if ready and not refit_due(state['history'],p['night']):
+        p.update(decision='wait',reason='weekly refit cooldown; latest accepted shadow remains fixed')
+        ready=False
     if ready:
         from wxpredict import arrival_dataset
         through = dt.datetime.fromisoformat(p["night"]).replace(tzinfo=common.UTC).timestamp()
@@ -203,9 +287,6 @@ def main(argv=None):
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
             fh.write("fit=" + str(ready).lower() + "\n")
-    if recorded:
-        print(json.dumps(registry.read(os.path.join(common.ROOT, recorded["report"]))))
-        return 0
     if args.plan and ready:
         print(json.dumps(p)); return 0
     fitted = None
@@ -215,7 +296,12 @@ def main(argv=None):
         os.makedirs(work, exist_ok=True)
         p, fitted, weight = fit_and_evaluate(p, model_path, meta, work)
         if p["decision"] == "accept shadow":
-            fitted["asset_url"] = model_artifacts.publish(weight, fitted["version"], fitted["model_sha256"])
+            if 'models' in fitted:
+                for entry,path in zip(fitted['models'],weight):
+                    asset_id='wxrd-auto-'+p['night'].replace('-','')+'-'+entry['sha256'][:12]
+                    entry['asset_url']=model_artifacts.publish(path,asset_id,entry['sha256'])
+            else:  # older single-model research lineages remain readable
+                fitted["asset_url"] = model_artifacts.publish(weight, fitted["version"], fitted["model_sha256"])
         else:
             fitted = None
     registry.record(p, fitted)

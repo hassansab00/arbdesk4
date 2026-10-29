@@ -289,6 +289,11 @@ def build_row(city, target, checkpoint, local_time, rows, reasons, books, readin
     import predictive_primary
     lineage=predictive_primary.checkpoint_lineage(city, target, probs, checkpoint)
     row.update(lineage)
+    import probability_engine
+    forecast_input = probability_engine.forecast_context(city, target, rows)
+    if forecast_input:
+        row['predictive_context'] = dict(row.get('predictive_context') or {},
+                                         forecast_input=forecast_input)
     # Fixed-clock calls need the same immutable peak evidence as relative
     # calls. This is reporting context, never an input to the probability fit.
     if timing_reference:

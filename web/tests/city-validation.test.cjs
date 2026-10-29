@@ -1,5 +1,5 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');
-const {rankCities,recentCityScores,evidenceWords,HORIZONS,timingView,captureDelay,timingReason}=require('../.route-test/lib/cityValidation');
+const {rankCities,recentCityScores,evidenceWords,HORIZONS,timingView,captureDelay,timingReason,readinessWords}=require('../.route-test/lib/cityValidation');
 test('ranking retains missing evidence and does not mutate source',()=>{
  const rows=[{display_name:'empty',n:0,hit_rate:null},{display_name:'b',n:20,hit_rate:.5},{display_name:'a',n:30,hit_rate:.5},{display_name:'top',n:2,hit_rate:1}];
  assert.deepEqual(rankCities(rows).map(r=>r.display_name),['top','a','b','empty']);assert.equal(rows[0].display_name,'empty');
@@ -38,4 +38,16 @@ test('capture delay uses the city date and DST rather than the viewer timezone',
  assert.equal(captureDelay('2026-10-25 12:00:00','invalid','UTC'),null);
  assert.equal(captureDelay('2026-10-25 12:00:00','2026-10-25T12:37:00Z'),null);
  assert.equal(timingReason('at_or_after_expected_peak'),'At / after expected peak');
+});
+test('strict market comparison cannot retain a full-cohort win',()=>{
+ const row={market_comparison:{n:10,model:{hit:1}},capture_timing:{strict:{n:2,hits:0,hit_rate:0,market_comparison:{n:1,model:{hit:0}}}}};
+ assert.equal(timingView(row,true).market_comparison.n,1);
+ assert.equal(timingView(row,true).market_comparison.model.hit,0);
+ assert.equal(timingView({...row,capture_timing:undefined},true).market_comparison,undefined);
+});
+test('readiness distinguishes sample requirements from passed validation',()=>{
+ assert.match(readinessWords(undefined),/awaiting/);
+ const thin={sample_ready:false,validation_window_days:14,counts:[{name:'older training dates',available:0,required:20,missing:20}]};
+ assert.match(readinessWords(thin),/0\/20 \(20 missing\)/);
+ assert.match(readinessWords({...thin,sample_ready:true}),/validation must still pass/);
 });

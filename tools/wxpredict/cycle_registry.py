@@ -60,6 +60,7 @@ def record(report, meta=None, root=None):
     if any(r["night"] == report["night"] and r["action"] == "cycle" for r in state["history"]):
         raise ValueError("this night's candidate cycle is already recorded")
     entry = {"night": report["night"], "action": "cycle", "decision": report["decision"],
+             "fitted": bool(report.get('training_rows')),
              "report": "data/eval/wxpredict/cycles/" + report["night"] + ".json"}
     if meta is not None:
         if report["decision"] != "accept shadow" or state["paused"]:
@@ -77,6 +78,14 @@ def record(report, meta=None, root=None):
                      model_sha256=meta["model_sha256"])
         state["current"] = {"schema": 1, "variant": "wxrd_auto", **{
             k: entry[k] for k in ("metadata", "metadata_sha256", "model_sha256")}}
+        state['current']['available_at']=dt.datetime.now(common.UTC).isoformat()
+        state.pop('forward_validated',None)
+    if report['decision']=='forward validated':
+        state['forward_validated']=dict(model_sha256=report['model_sha256'],
+            report=entry['report'],forward_last=report['forward_last'])
+    if report['decision']=='forward rejected':
+        entry['retired_candidate']=state.pop('current',None)
+        state.pop('forward_validated',None)
     write(os.path.join(root, entry["report"]), report)
     state["history"].append(entry)
     write(os.path.join(root, REGISTRY), state)
@@ -107,7 +116,10 @@ def rollback(model_id, root=None):
     if hashlib.sha256(raw).hexdigest() != entry["metadata_sha256"]:
         raise ValueError("rollback metadata hash mismatch")
     from wxpredict import model_artifacts
-    model_artifacts.ensure(json.loads(raw), root)
+    meta=json.loads(raw)
+    for model in meta.get('models') or [meta]:
+        model_artifacts.ensure(dict(asset_url=model['asset_url'],
+                                    model_sha256=model.get('sha256') or model['model_sha256']),root)
     state["paused"] = True
     state["current"] = pointer
     state["history"].append({"action": "rollback", "night": dt.datetime.now(common.UTC).isoformat(), "model_id": model_id})

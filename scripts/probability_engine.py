@@ -38,6 +38,17 @@ from collections import defaultdict
 from common import rest, rest_all, insert, get_cities, log_run, model_version_id
 import regime
 import venue as _venue
+import forecast_uncertainty
+
+# In-memory lineage is copied into a new checkpoint's JSON context. It is
+# never sent as an unknown column to band_probabilities or used to rebuild one.
+_forecast_context = {}
+
+
+def forecast_context(city, target, rows):
+    import copy
+    stamp=rows[0].get('computed_at') if rows else None
+    return copy.deepcopy(_forecast_context.get((city, str(target),stamp)))
 
 MAE_TO_SIGMA = 1.2533          # sourced: sigma = MAE * sqrt(pi/2) for a normal distribution
 CALIBRATION_VERSION = "v0_normal_lattice_no_calibration"
@@ -637,7 +648,7 @@ def _forecast_for(city_key, for_date, as_of=None):
     exist yet.
     """
     params = [
-        ("select", "for_date,lead_days,forecast_max_c,model,run_at"),
+        ("select", "for_date,lead_days,forecast_max_c,model,run_at,source"),
         ("city_key", f"eq.{city_key}"),
         ("for_date", f"eq.{for_date}"),
         ("order", "lead_days.asc,run_at.desc"),
@@ -799,7 +810,9 @@ def _fresh(reading_at, now=None):
     except ValueError:
         return False
     now = now or dt.datetime.now(dt.timezone.utc)
-    return (now - t).total_seconds() / 60.0 <= TRAJECTORY_MAX_READING_AGE_MIN
+    if t.tzinfo is None:
+        return False
+    return 0 <= (now - t).total_seconds() / 60.0 <= TRAJECTORY_MAX_READING_AGE_MIN
 
 
 _postprocess_cache = None
@@ -1523,6 +1536,21 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
             sigma = station_width_c
 
     forecast_sigma_c = sigma
+    uncertainty = None
+    if int(lead_days) == 0 and not model_priced and pp is None:
+        # Skill at lead zero is measured on the newest run of each date;
+        # that run can be issued after the high. It is not a morning error
+        # distribution. Borrow only an independently measured advance width,
+        # with no borrowed bias and no second multiplicative correction.
+        advance = next((s for lead in range(1, 8)
+                        if (s := _skill_for(city_key, lead, forecast.get('model')))
+                        and s.get('verified') is True and s.get('mae_c') is not None
+                        and (s.get('n_days') or 0) >= forecast_uncertainty.MIN_ADVANCE_DATES), None)
+        sigma, uncertainty = forecast_uncertainty.guard(sigma, 0, advance, MAE_TO_SIGMA)
+        forecast_sigma_c = sigma
+        if uncertainty['applied']:
+            reasons.append(f"{forecast_uncertainty.POLICY}:lead{uncertainty['advance_lead_days']}:"
+                           f"sigma{uncertainty['original_sigma_c']:.3f}->{sigma:.3f}C")
     traj_centre, traj_sigma, traj_row = _trajectory_for(city_key, for_date)
     if traj_centre is None and traj_row and traj_row.get("skipped"):
         reasons.append(f"trajectory_skipped:{traj_row['skipped']}")
@@ -1562,6 +1590,17 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     forecast_label, forecast_config = forecast_provenance(
         model_priced, mrow, forecast, traj_row if traj_centre is not None else None, srow,
         width_version=srow.get("width_version") if width_priced else None)
+    if uncertainty and uncertainty['applied'] and traj_centre is None:
+        forecast_label += ':' + forecast_uncertainty.POLICY
+        forecast_config = dict(forecast_config, uncertainty_policy=forecast_uncertainty.POLICY)
+    _forecast_context[(city_key, str(for_date),computed_at)] = dict(
+        policy='forecast-input-lineage-v1', city_key=city_key, target_date=str(for_date),
+        source_model=forecast.get('model'), source=forecast.get('source'),
+        run_at=forecast.get('run_at'), lead_days=lead_days,
+        raw_max_c=forecast.get('forecast_max_c'), priced_from=forecast_label,
+        centre_c=centre_corrected, sigma_c=sigma,
+        skill_lead_days=skill_lead_days, skill_source=skill_source,
+        uncertainty=uncertainty, observed_floor_c=observed_floor_c)
     forecast_version = model_version_id(
         "forecast", forecast_label, config=forecast_config, structural=False)
     # The readable label too, for a caller that records the path (the tick's
@@ -1648,6 +1687,7 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
 
 def _warm_caches():
     """Load every lazily-filled module cache once (see main)."""
+    _forecast_context.clear()
     _calibration_map()
     _measurement_layer_for(None)
     _calibration_for(None)
