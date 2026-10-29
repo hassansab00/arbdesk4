@@ -46,16 +46,18 @@ WHAT THE PLAN LEFT OPEN, FIXED HERE ON 29 OCT BEFORE ANY SCORE WAS COMPUTED
    checkpoint; a second stage "goes to shadow" only if its gain over the
    market does. Either is a proposal to Hassan, never a switch (Rule 6/11).
 
-THE LOOKS (added 29 Oct after the first run, which scored no fold of either
-kind and so showed no score; nothing above changed)
+THE LOOKS (added 29 Oct before any score was computed; nothing above changed)
 --------------------------------------------------------------------------
-The first run had 898 city-days at d0_00 and 921 at d0_08, settled to 22 Oct,
-fewer than MIN_TRAIN behind any fold. The tool is re-run unchanged, the
-venue's record refreshed first: the first look when (b) has at least 20
-scored dates at both cutoffs; the second and last when (a)'s November fold
-holds every November date the record has settled, the month's verdict.
+On 29 Oct the record had 1,172 settled city-days at d0_00 and 1,192 at d0_08
+(29 Sep - 28 Oct): no month with MIN_TRAIN behind it, and (b) would score
+2 and 3 dates (`--count`, which fits and scores nothing). The tool is re-run
+unchanged, the venue's record refreshed first: the first look when (b) has
+at least 20 scored dates at both cutoffs; the second and last when (a)'s
+November fold holds every November date the record has settled, the month's
+verdict. Until a look, only `--count` runs.
 
-    python tools/p310_ensemble_test.py --out data/eval/p310/ensemble_test_2026-10-29
+    python tools/p310_ensemble_test.py --count --out data/eval/p310/ensemble_test_2026-10-29
+    python tools/p310_ensemble_test.py --out data/eval/p310/ensemble_test_first_look_<date>
 """
 import argparse
 import csv
@@ -167,6 +169,20 @@ def by_day(rs):
     return scored, fits
 
 
+def countable(rs):
+    """The dates (b) would score, without fitting or scoring anything: each
+    date with MIN_TRAIN rows on dates GAP_DAYS or more before it."""
+    n = defaultdict(int)
+    for r in rs:
+        n[r["date"]] += 1
+    out = []
+    for d in sorted(n):
+        edge = (dt.date.fromisoformat(d) - dt.timedelta(days=GAP_DAYS - 1)).isoformat()
+        if sum(v for x, v in n.items() if x < edge) >= M.MIN_TRAIN:
+            out.append(d)
+    return out
+
+
 def iv(t):
     return {"mean": round(t[0], 4), "ci90": [round(t[1], 4), round(t[2], 4)]}
 
@@ -208,6 +224,8 @@ def sha256(path):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
+    ap.add_argument("--count", action="store_true",
+                    help="count the rows and the dates each fold would score; fit and score nothing")
     args = ap.parse_args(argv)
     tz = json.load(open(M.RI + "tz.json"))
     cities, cities_path = M.load_cities()
@@ -221,6 +239,24 @@ def main(argv=None):
            "constants": {"MIN_TRAIN": M.MIN_TRAIN, "BOOT": M.BOOT, "SEED": M.SEED, "MAX_AGE_H": M.MAX_AGE_H,
                          "A_BOUNDS": M.A_BOUNDS, "B_BOUNDS": M.B_BOUNDS, "WINDOW": WINDOW, "GAP_DAYS": GAP_DAYS},
            "events_left_out": left_events, "monthly_as_written": {}, "by_day": {}}
+    if args.count:
+        for k in M.CUTOFFS:
+            rs = rows[k]
+            months = sorted({r["month"] for r in rs})
+            out["monthly_as_written"][k] = {
+                "rows": len(rs), "left_out": dict(left[k]),
+                "months": {m: sum(r["month"] == m for r in rs) for m in months},
+                "months_with_min_train_behind": [m for m in months if sum(r["month"] < m for r in rs) >= M.MIN_TRAIN],
+                "last_settled_date": max(r["date"] for r in rs)}
+            out["by_day"][k] = {"dates_it_would_score": countable(rs)}
+        out["counted_only"] = "no fit, no score"
+        os.makedirs(args.out, exist_ok=True)
+        with open(os.path.join(args.out, "counts.json"), "w") as fh:
+            fh.write(json.dumps(out, indent=1) + "\n")
+        print(json.dumps({k: {"rows": out["monthly_as_written"][k]["rows"],
+                              "by_day_dates": len(out["by_day"][k]["dates_it_would_score"])}
+                          for k in M.CUTOFFS}))
+        return out
     for k in M.CUTOFFS:
         rs = rows[k]
         out["monthly_as_written"][k] = {"rows": len(rs), "left_out": dict(left[k]),

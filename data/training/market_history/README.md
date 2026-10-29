@@ -63,6 +63,10 @@ buckets in 733 s. Checked against the record before it: all 10,619 events,
 are the 143 events that closed since (`closed` 0 -> 1) and 1,573 buckets'
 `winner` ('' -> 0/1); no price point changed. Now 11,498 events (2025-12-30 to
 2026-10-31), 125,572 buckets, 7,270,319 price points.
+From 23 Oct the venue's settlement page is Aviation Weather's METAR API
+(`https://aviationweather.gov/api/data/metar?ids=EHAM&...`, 424 events 23-31
+Oct); `station_icao` now reads its `ids` (Codex on #448). Rewritten from the
+same cache, only those 424 events' `station_icao` changed (it was empty).
 
 ## Files
 

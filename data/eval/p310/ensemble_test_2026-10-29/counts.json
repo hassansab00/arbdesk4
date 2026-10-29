@@ -2,7 +2,7 @@
  "contract": "tools/p310_ensemble_test.py docstring (plan v2 P2.10 part 1, P3.10 Q3; R23)",
  "sources": {
   "data/training/ensembles/ensemble_daily.csv.gz": "d396a8b335fcf05adfc100cba47b2f606be38f82282e9b58d44289b3ab177384",
-  "data/training/market_history/events.csv.gz": "9e38ba9950307da0396f239a631c372407e46c4c069122fcfd827acacabdeba4",
+  "data/training/market_history/events.csv.gz": "52c32c029cd3140417e742c1168bd50c9b9c443069c7779b3bcefcd144e714ca",
   "data/training/market_history/bands.csv.gz": "a5f5ce379f3bd06b1d0e426b149a5f2f1cfaadd38f00ac36be91215bd0d0a35c",
   "data/training/market_history/prices.csv.gz": "d39eeb89d2879f12c24c4a690952f922dc699c4ba516159465b1c6bb4e54dd22",
   "data/replay/inputs_2026-09-26/tz.json": "cb82626e502e37fc1bb896fe0eae9e077b4f561d4c57fa1a03d46ff93e52b862",
@@ -25,7 +25,7 @@
   "GAP_DAYS": 2
  },
  "events_left_out": {
-  "other settlement station": 346,
+  "other settlement station": 70,
   "city not active": 601,
   "arch twin of a main listing": 46,
   "not closed": 133,
@@ -33,60 +33,46 @@
  },
  "monthly_as_written": {
   "d0_00": {
-   "rows": 898,
+   "rows": 1172,
    "left_out": {
     "no ensemble of both models by the cutoff": 227,
-    "no whole market ladder": 6
+    "no whole market ladder": 8
    },
    "months": {
     "2026-09": 33,
-    "2026-10": 865
+    "2026-10": 1139
    },
-   "scored": {
-    "rows": 0
-   },
-   "fits": []
+   "months_with_min_train_behind": [],
+   "last_settled_date": "2026-10-28"
   },
   "d0_08": {
-   "rows": 921,
+   "rows": 1192,
    "left_out": {
     "no ensemble of both models by the cutoff": 208,
-    "no whole market ladder": 2
+    "no whole market ladder": 7
    },
    "months": {
     "2026-09": 42,
-    "2026-10": 879
+    "2026-10": 1150
    },
-   "scored": {
-    "rows": 0
-   },
-   "fits": []
+   "months_with_min_train_behind": [],
+   "last_settled_date": "2026-10-28"
   }
  },
  "by_day": {
   "d0_00": {
-   "scored": {
-    "rows": 0
-   },
-   "fits": []
+   "dates_it_would_score": [
+    "2026-10-27",
+    "2026-10-28"
+   ]
   },
   "d0_08": {
-   "scored": {
-    "rows": 0
-   },
-   "fits": []
+   "dates_it_would_score": [
+    "2026-10-26",
+    "2026-10-27",
+    "2026-10-28"
+   ]
   }
  },
- "rule_monthly_as_written": {
-  "scored_cutoffs": [],
-  "ensemble_adds_to_the_price": false,
-  "a_second_stage_beats_the_market": false,
-  "verdict": "no fold scored"
- },
- "rule_by_day": {
-  "scored_cutoffs": [],
-  "ensemble_adds_to_the_price": false,
-  "a_second_stage_beats_the_market": false,
-  "verdict": "no fold scored"
- }
+ "counted_only": "no fit, no score"
 }

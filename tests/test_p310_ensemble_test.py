@@ -1,6 +1,6 @@
 """The P3.10 ensemble record test (tools/p310_ensemble_test.py): the ensemble
 known at a cutoff is only what was fetched by then, the 82 members' summary is
-exact, and the committed first run says what it found."""
+exact, and the 29 Oct count is what the record held."""
 import json
 import math
 import os
@@ -11,7 +11,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 import p310_ensemble_test as T  # noqa: E402
 
-FIRST = os.path.join(ROOT, "data", "eval", "p310", "ensemble_test_2026-10-29", "result.json")
+COUNTS = os.path.join(ROOT, "data", "eval", "p310", "ensemble_test_2026-10-29", "counts.json")
 
 
 def test_the_mixture_is_the_members_together():
@@ -38,10 +38,17 @@ def test_a_fold_scores_only_with_min_train_behind_it():
     assert scored == [] and fits == []
 
 
-def test_the_first_run_scored_no_fold():
-    rec = json.load(open(FIRST))
-    assert rec["rule_monthly_as_written"]["verdict"] == "no fold scored"
-    assert rec["rule_by_day"]["verdict"] == "no fold scored"
-    for k in ("d0_00", "d0_08"):
-        assert rec["monthly_as_written"][k]["rows"] < rec["constants"]["MIN_TRAIN"]
-    assert rec["monthly_as_written"]["d0_00"]["rows"] == 898 and rec["monthly_as_written"]["d0_08"]["rows"] == 921
+def test_count_names_the_dates_a_fold_would_score_without_scoring():
+    rows = [{"date": f"2026-10-{d:02d}"} for d in range(1, 11) for _ in range(T.M.MIN_TRAIN // 4)]
+    # 250 a date: 1,000 behind a date once four dates lie two or more days before it
+    assert T.countable(rows) == ["2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-10"]
+
+
+def test_the_29_oct_count_is_below_the_first_look():
+    """29 Oct: counted only, no fit and no score; under 20 dates the first look waits."""
+    rec = json.load(open(COUNTS))
+    assert rec["counted_only"] == "no fit, no score"
+    assert {k: v["rows"] for k, v in rec["monthly_as_written"].items()} == {"d0_00": 1172, "d0_08": 1192}
+    assert all(not v["months_with_min_train_behind"] for v in rec["monthly_as_written"].values())
+    assert {k: len(v["dates_it_would_score"]) for k, v in rec["by_day"].items()} == {"d0_00": 2, "d0_08": 3}
+    assert not os.path.exists(os.path.join(os.path.dirname(COUNTS), "result.json"))
