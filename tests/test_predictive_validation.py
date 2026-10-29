@@ -6,6 +6,34 @@ NOW=dt.datetime(2026,10,17,12,tzinfo=dt.timezone.utc)
 CITIES=[dict(city_key='city',timezone='UTC',display_name='City')]
 
 
+def test_report_writes_keep_all_evidence_and_bound_actual_encoded_requests(monkeypatch):
+    import copy
+    import json
+    rows=[dict(city_key=str(i),checkpoint='noon',scope='served',
+               report={'nested':{'evidence':'\u00e9'*11000,'id':i}}) for i in range(75)]
+    original=copy.deepcopy(rows)
+    batches=[]
+    def write(table,batch,key,chunk):
+        assert table=='derived_city_prediction_validation' and key=='city_key,checkpoint,scope'
+        assert chunk==len(batch)<=v.REPORT_BATCH_ROWS
+        assert len(json.dumps(batch).encode('utf-8'))<=v.REPORT_BATCH_BYTES
+        batches.append(copy.deepcopy(batch))
+        return len(batch)
+    monkeypatch.setattr(v,'upsert_replace',write)
+    assert v.publish_reports(rows)==len(rows)
+    assert [row for batch in batches for row in batch]==original==rows
+    assert len(batches)>3, 'the byte bound must apply before the row-count bound'
+    assert v.publish_reports([])==0
+
+
+def test_oversized_report_fails_before_any_write_instead_of_dropping_evidence(monkeypatch):
+    writes=[]
+    monkeypatch.setattr(v,'upsert_replace',lambda *a,**kw:writes.append(a))
+    with pytest.raises(ValueError,match='byte budget'):
+        v.publish_reports([{'report':'small'},{'report':'x'*v.REPORT_BATCH_BYTES}])
+    assert not writes
+
+
 def call(id='first',**kw):
     return dict(dict(checkpoint_id=id,city_key='city',target_date='2026-10-16',checkpoint='noon',
         local_decision_time='2026-10-16T12:00:00',decided_at='2026-10-16T12:36:00Z',

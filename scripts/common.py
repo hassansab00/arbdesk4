@@ -262,7 +262,7 @@ def by_shape(rows):
 # will fail identically four more times: 400 PGRST102 (mismatched keys), 401,
 # 403 (42501 permission denied), 404 (no such table), 409 (a conflict with no
 # on_conflict target). Retrying those costs ~35s per batch and changes nothing.
-TRANSIENT_WRITE_STATUS = {429, 500, 502, 503, 504, 408, 522, 524}
+TRANSIENT_WRITE_STATUS = {429, 500, 502, 503, 504, 408, 520, 521, 522, 524}
 
 def _retry_after(resp):
     try:

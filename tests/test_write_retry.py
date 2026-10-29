@@ -69,7 +69,7 @@ OK = FakeResponse(201)
 # --------------------------------------------------------------------------
 # the actual fix
 # --------------------------------------------------------------------------
-@pytest.mark.parametrize("status", [500, 502, 503, 504, 429, 408])
+@pytest.mark.parametrize("status", [500, 502, 503, 504, 520, 521, 429, 408])
 def test_a_transient_failure_is_retried_and_the_rows_still_land(status, poster, no_sleep):
     calls = poster([FakeResponse(status, "gateway timeout"), OK])
     written = common.insert("observations", [{"station": "KAUS", "temp_c": 31.0}])

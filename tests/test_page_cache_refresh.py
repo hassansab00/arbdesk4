@@ -145,6 +145,32 @@ def test_submission_retry_reuses_the_id_after_ambiguous_transport_failure(monkey
     assert calls==[('request_page_cache_refresh',{'p_request_id':'stable-id'})]*2
 
 
+@pytest.mark.parametrize('status',[520,521])
+def test_gateway_restart_retry_preserves_the_same_durable_request(monkeypatch,status):
+    from types import SimpleNamespace
+    clock(monkeypatch)
+    calls=[]
+    def rpc(name,params,timeout):
+        calls.append((name,params.copy()))
+        if len(calls)==1:
+            raise refresh.requests.HTTPError('gateway unavailable',response=SimpleNamespace(status_code=status))
+        return {'request_id':'stable-id','status':'queued'}
+    assert refresh.request(request_id='stable-id',rpc_fn=rpc)['status']=='queued'
+    assert calls==[('request_page_cache_refresh',{'p_request_id':'stable-id'})]*2
+
+
+def test_persistent_gateway_failure_stays_a_failure_after_bounded_retries(monkeypatch):
+    from types import SimpleNamespace
+    clock(monkeypatch)
+    calls=[]
+    def rpc(name,params,timeout):
+        calls.append(params.copy())
+        raise refresh.requests.HTTPError('gateway unavailable',response=SimpleNamespace(status_code=521))
+    with pytest.raises(RuntimeError,match='transport failed'):
+        refresh.request(request_id='stable-id',rpc_fn=rpc)
+    assert calls==[{'p_request_id':'stable-id'}]*3
+
+
 @pytest.mark.parametrize('receipt',[
     None,{}, {'request_id':'different-id','status':'queued'},
     {'request_id':'id','status':'error'}, {'request_id':'id','status':'missing'},

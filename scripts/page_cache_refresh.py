@@ -7,6 +7,7 @@ Errors and an unacknowledged deadline remain failures, never synthetic success.
 import time
 import uuid
 import requests
+from common import TRANSIENT_WRITE_STATUS
 
 
 def _call(name, request_id, deadline, rpc_fn):
@@ -19,7 +20,7 @@ def _call(name, request_id, deadline, rpc_fn):
         except requests.RequestException as exc:
             response = getattr(exc,'response',None)
             status = response.status_code if response is not None else None
-            if attempt==2 or status is not None and status not in (408,429,500,502,503,504):
+            if attempt==2 or status is not None and status not in TRANSIENT_WRITE_STATUS:
                 raise RuntimeError(f"page cache refresh {request_id}: transport failed: {exc}") from exc
             time.sleep(min(2**attempt,max(0,deadline-time.monotonic())))
 
