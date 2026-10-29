@@ -83,6 +83,12 @@
    "decision": "wait",
    "night": "2026-10-28",
    "report": "data/eval/wxpredict/cycles/2026-10-28.json"
+  },
+  {
+   "action": "cycle",
+   "decision": "wait",
+   "night": "2026-10-29",
+   "report": "data/eval/wxpredict/cycles/2026-10-29.json"
   }
  ],
  "paused": false,
