@@ -24,6 +24,32 @@ HORIZONS = ('day_ahead', *CHECKPOINTS)
 OVERALL = tuple(h for h in HORIZONS if h != 'postpeak_1h')
 SCOPES = ('served', 'wxrd3', 'wxrd3_raw')
 ROOT = Path(__file__).resolve().parents[1]
+REPORT_BATCH_BYTES = 512 * 1024  # request-memory bound, not a statistical parameter
+REPORT_BATCH_ROWS = 25
+
+
+def publish_reports(rows):
+    """Keep every derived report; bound each idempotent write by UTF-8 bytes.
+
+    A report holds nested evidence, so a row-count-only batch can send many
+    megabytes in one request. Reject an oversized single report explicitly;
+    never truncate its evidence or apply this writer to original facts.
+    """
+    batches, batch, size = [], [], 2
+    for row in rows:
+        row_size = len(json.dumps(row).encode('utf-8'))
+        if row_size + 2 > REPORT_BATCH_BYTES:
+            raise ValueError('city validation report exceeds its request byte budget')
+        added = row_size + (2 if batch else 0)
+        if batch and (len(batch) >= REPORT_BATCH_ROWS or size + added > REPORT_BATCH_BYTES):
+            batches.append(batch)
+            batch, size, added = [], 2, row_size
+        batch.append(row)
+        size += added
+    if batch:
+        batches.append(batch)
+    return sum(upsert_replace('derived_city_prediction_validation', batch,
+               'city_key,checkpoint,scope', chunk=len(batch)) for batch in batches)
 
 
 def capture_timing(p, city):
@@ -469,7 +495,7 @@ def run(score_only=False, now=None):
         detail.update(selection_cells=len(selections),selection_decisions=dict(Counter(s['decision'] for s in selections)))
     data=reports(collect(p,outcomes,da,cities,{},now),cities,reviews,states,now,version,selections,early_states,
                  model_versions=active_versions)
-    n=upsert_replace('derived_city_prediction_validation',data,'city_key,checkpoint,scope')
+    n=publish_reports(data)
     log_run(JOB,'ok',n,detail)
     print(json.dumps(dict(rows=n,**detail)),flush=True)
     return detail
