@@ -46,6 +46,15 @@ WHAT THE PLAN LEFT OPEN, FIXED HERE ON 29 OCT BEFORE ANY SCORE WAS COMPUTED
    checkpoint; a second stage "goes to shadow" only if its gain over the
    market does. Either is a proposal to Hassan, never a switch (Rule 6/11).
 
+THE LOOKS (added 29 Oct after the first run, which scored no fold of either
+kind and so showed no score; nothing above changed)
+--------------------------------------------------------------------------
+The first run had 898 city-days at d0_00 and 921 at d0_08, settled to 22 Oct,
+fewer than MIN_TRAIN behind any fold. The tool is re-run unchanged, the
+venue's record refreshed first: the first look when (b) has at least 20
+scored dates at both cutoffs; the second and last when (a)'s November fold
+holds every November date the record has settled, the month's verdict.
+
     python tools/p310_ensemble_test.py --out data/eval/p310/ensemble_test_2026-10-29
 """
 import argparse
