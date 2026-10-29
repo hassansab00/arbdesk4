@@ -39,6 +39,10 @@ def test_the_settlement_station_is_read_from_the_page_or_the_rules():
     assert mh.station_icao("https://www.wunderground.com/history/daily/gb/london/EGLC") == "EGLC"
     assert mh.station_icao("https://www.hko.gov.hk/en/cis/dailyExtract.htm") == ""
     assert mh.station_icao("") == ""
+    # the venue's settlement page from 23 Oct 2026; one station, never a list
+    assert mh.station_icao("https://aviationweather.gov/api/data/metar?ids=EHAM&format=raw"
+                           "&date=2026-10-23T22:00:00Z&hours=27") == "EHAM"
+    assert mh.station_icao("https://aviationweather.gov/api/data/metar?ids=EHAM,EGLC") == ""
     assert mh.station_text("highest temperature recorded by NOAA at the Ben Gurion International Airport "
                            "in degrees Celsius on 23 Mar") == "Ben Gurion International Airport"
     assert mh.station_text("the highest temperature recorded at the London City Airport Station in degrees") \

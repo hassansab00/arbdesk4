@@ -174,13 +174,17 @@ def description_url(description):
 
 
 def station_icao(url):
-    """The ICAO a settlement URL names: `...timeseries?site=eham` or a
-    wunderground path ending in the ICAO. '' when it names none."""
+    """The ICAO a settlement URL names: `...timeseries?site=eham`, Aviation
+    Weather's `.../api/data/metar?ids=EHAM` (the venue's source from 23 Oct
+    2026), or a wunderground path ending in the ICAO. '' when it names none."""
     if not url:
         return ""
     q = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
     if q.get("site"):
         return q["site"][0].upper()
+    ids = q.get("ids", [""])[0]
+    if re.fullmatch(r"[A-Za-z]{4}", ids):
+        return ids.upper()
     last = urllib.parse.urlparse(url).path.rstrip("/").rsplit("/", 1)[-1]
     return last.upper() if re.fullmatch(r"[A-Za-z]{4}", last) else ""
 

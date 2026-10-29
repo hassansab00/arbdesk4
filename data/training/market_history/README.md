@@ -55,6 +55,19 @@ buckets and 6,473,670 price points are still there; the only changes are the
 ('' -> 0/1); no price point changed. Now 10,619 events (2025-12-30 to
 2026-10-13), 115,903 buckets, 6,679,510 price points.
 
+**Refreshed 29 Oct 2026** (the P3.10 ensemble record test, R23) the same way:
+`seed` put the committed finished series into the cache (106,112 buckets),
+`index` re-read Gamma (11,504 events) and `prices` fetched the other 17,931
+buckets in 733 s. Checked against the record before it: all 10,619 events,
+115,903 buckets and 6,679,510 price points are still there; the only changes
+are the 143 events that closed since (`closed` 0 -> 1) and 1,573 buckets'
+`winner` ('' -> 0/1); no price point changed. Now 11,498 events (2025-12-30 to
+2026-10-31), 125,572 buckets, 7,270,319 price points.
+From 23 Oct the venue's settlement page is Aviation Weather's METAR API
+(`https://aviationweather.gov/api/data/metar?ids=EHAM&...`, 424 events 23-31
+Oct); `station_icao` now reads its `ids` (Codex on #448). Rewritten from the
+same cache, only those 424 events' `station_icao` changed (it was empty).
+
 ## Files
 
 | file | rows | one row per |
