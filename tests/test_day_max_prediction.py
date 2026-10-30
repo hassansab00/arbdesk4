@@ -62,3 +62,33 @@ def test_day_ahead_uses_original_pre_midnight_input_not_current_forecast():
         assert not original_calls([bad],config,cities,now)[0]
     config['selection_changed_at']='2026-10-30T00:38:00Z'
     assert not original_calls([p],config,cities,now)[0]
+
+
+def test_new_server_day_ahead_receipt_is_eligible_in_the_same_worker_run(monkeypatch):
+    import day_max_prediction as worker
+    real_datetime=dt.datetime
+    before=real_datetime(2026,10,30,0,37,tzinfo=dt.timezone.utc)
+    after=before+dt.timedelta(seconds=2)
+    ticks=iter([before,after])
+    class Clock(real_datetime):
+        @classmethod
+        def now(cls,tz=None):return next(ticks)
+    config,p,cities=fixture();config['cities'][0]['checkpoint']='day_ahead'
+    p.update(checkpoint='day_ahead',local_decision_time='2026-10-30T00:00:00',
+        decided_at='2026-10-30T00:37:01Z',frozen_at='2026-10-30T00:37:01Z',forecast_issued_at='2026-10-29T18:00:00Z')
+    p['predictive_context'].update(source_kind='day_max_day_ahead_calls',source_computed_at='2026-10-29T23:00:00Z',cutoff_at='2026-10-30T00:00:00Z')
+    def read(table,params):
+        if table=='strategies':return [dict(enabled=True,extra=dict(day_max=config))]
+        if table=='day_max_prediction_entries':return []
+        if table=='paper_accounts':return [dict(mode='automatic',entries_paused=True)]
+        raise AssertionError(table)
+    captures=[]
+    monkeypatch.setattr(worker.dt,'datetime',Clock)
+    monkeypatch.setattr(worker,'get_cities',lambda **kw:[dict(city_key='city',timezone='UTC')])
+    monkeypatch.setattr(worker,'rest',read)
+    monkeypatch.setattr(worker,'rest_all',lambda *a,**kw:[p])
+    monkeypatch.setattr(worker,'rpc',lambda name,body:captures.append(name) or dict(captured=True))
+    monkeypatch.setattr(worker,'log_run',lambda *a:None)
+    result=worker.run()
+    assert captures==['capture_day_max_day_ahead']
+    assert result['candidates']==1 and not result['skipped']

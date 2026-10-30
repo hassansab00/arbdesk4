@@ -131,6 +131,10 @@ def run(dry_run=False):
                 'checkpoint':'in.('+','.join(sorted({c['checkpoint'] for c in selected.values()}))+')',
                 'target_date':'gte.'+(now.date()-dt.timedelta(days=1)).isoformat(),
                 'city_key':'in.('+','.join(selected)+')'}, order='checkpoint_id')
+            # Capture RPCs stamp receipts on the server after the first clock read.
+            # Validate against the clock after reading them, so a new receipt can
+            # execute this run rather than appearing to be from the future.
+            now = dt.datetime.now(dt.timezone.utc)
             candidates, detail['skipped'] = original_calls(rows, config, cities, now)
             allocated = rest('day_max_prediction_entries', {'select':'city_key,target_date',
                 'target_date':'gte.'+(now.date()-dt.timedelta(days=1)).isoformat(), 'limit':'100'})
