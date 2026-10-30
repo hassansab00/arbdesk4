@@ -144,7 +144,9 @@ cutoff. Market quotes cannot postdate receipt or exceed the specified age.
 If several forecasts share a model/event/slot, the earliest `issued_at` is
 chosen **before** eligibility filtering. A later successful, correct or
 better-documented revision cannot replace an earlier original. Duplicate
-forecast IDs are rejected. Malformed chronology cannot be used to pick the
+forecast IDs are rejected. Equal earliest issue times with distinct receipts
+are ambiguous: the entire model/event/slot group is held, not ordered by an
+opaque forecast ID or a more favorable outcome. Malformed chronology cannot be used to pick the
 more favorable row.
 
 **The evaluator checks supplied assertions. It cannot independently prove
@@ -196,6 +198,11 @@ within date, and resamples contiguous calendar-date blocks. A resampled day
 retains the cities and slots together; repeated predictions and correlated
 cities do not become independent weather-day trials. Missing calendar dates
 are not bridged into a fictitious contiguous block.
+If any evaluated date cannot participate in a full contiguous block, its
+point result is retained but uncertainty/readiness is held. An interval may
+never silently omit isolated losses while reporting the full sample's gains.
+Observed gains must also meet the directional requirements independently of
+their bootstrap intervals.
 
 The registered candidate must have an eligible original for every planned
 case. Each fixed comparator must meet its paired coverage, date and city-date

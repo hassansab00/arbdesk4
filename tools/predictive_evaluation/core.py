@@ -153,13 +153,19 @@ def block_intervals(pairs, block_days, samples, seed, alpha):
         series.append({k: statistics.fmean(v[k] for v in city_means) for k in ('hit', 'brier', 'log_loss')})
     if not days:
         return dict(dates=0, full_blocks=0, gains=None, intervals=None)
-    blocks = []
+    blocks, covered = [], set()
     for i in range(len(days) - block_days + 1):
         if (dt.date.fromisoformat(days[i + block_days - 1]) - dt.date.fromisoformat(days[i])).days == block_days - 1:
             blocks.append(series[i:i + block_days])
+            covered.update(range(i, i + block_days))
     gains = {k: statistics.fmean(v[k] for v in series) for k in ('hit', 'brier', 'log_loss')}
-    if not blocks:
-        return dict(dates=len(days), full_blocks=0, gains=gains, intervals=None)
+    uncovered = [day for i, day in enumerate(days) if i not in covered]
+    if uncovered:
+        # Never compute an interval on a favorable subset while reporting
+        # point gains and sample sizes from the entire evaluated population.
+        return dict(dates=len(days), full_blocks=len(blocks), gains=gains,
+                    intervals=None, uncovered_dates=uncovered,
+                    reason='Some evaluated dates cannot enter a full contiguous calendar block.')
     rng = random.Random(seed)
     draws = {k: [] for k in gains}
     for _ in range(samples):
@@ -176,6 +182,7 @@ def block_intervals(pairs, block_days, samples, seed, alpha):
         intervals[k] = [values[int(alpha / 2 * (samples - 1))],
                         values[math.ceil((1 - alpha / 2) * (samples - 1))]]
     return dict(dates=len(days), full_blocks=len(blocks), gains=gains, intervals=intervals,
+                uncovered_dates=[],
                 block_days=block_days, samples=samples, seed=seed,
                 interval_alpha=alpha, weighting='equal cities within target date, equal target dates')
 
@@ -332,7 +339,7 @@ def _reasons(f, model, outcome, planned, spec):
 
 def evaluate(packet):
     spec, models, outcomes, plan = _manifest(packet)
-    forecast_ids, original = set(), {}
+    forecast_ids, original, first_receipts = set(), {}, {}
     for f in packet['forecasts']:
         if f['forecast_id'] in forecast_ids:
             raise ValueError('duplicate forecast ID')
@@ -342,11 +349,21 @@ def evaluate(packet):
         key = (f['model_id'], *_key(f))
         # Pick the FIRST original before testing eligibility. A later valid
         # revision cannot replace an earlier failed or losing prediction.
-        order = stamp(f['issued_at']), f['forecast_id']
-        if key not in original or order < (stamp(original[key]['issued_at']), original[key]['forecast_id']):
+        issued = stamp(f['issued_at'])
+        if key not in original or issued < stamp(original[key]['issued_at']):
             original[key] = f
+            first_receipts[key] = [f]
+        elif issued == stamp(original[key]['issued_at']):
+            first_receipts[key].append(f)
     accepted, excluded, reasons = {}, [], collections.Counter()
     for key, f in original.items():
+        if len(first_receipts[key]) > 1:
+            for receipt in first_receipts[key]:
+                excluded.append(dict(forecast_id=receipt['forecast_id'], model_id=receipt['model_id'],
+                    event_id=receipt['event_id'], checkpoint=receipt['checkpoint'],
+                    reasons=['ambiguous_original_issue_time']))
+                reasons['ambiguous_original_issue_time'] += 1
+            continue
         o, p, m = outcomes.get(f['event_id']), plan.get(_key(f)), models[f['model_id']]
         problems = _reasons(f, m, o, p, spec)
         if problems:
@@ -423,7 +440,12 @@ def evaluate(packet):
             holds.append(bid + ':insufficient_evaluation_dates')
         if interval['full_blocks'] < 2 or interval['intervals'] is None:
             holds.append(bid + ':insufficient_contiguous_date_blocks')
-        elif not (interval['intervals']['hit'][0] > 0 and interval['intervals']['brier'][0] >= 0
+        if interval.get('uncovered_dates'):
+            holds.append(bid + ':bootstrap_population_does_not_cover_all_evaluated_dates')
+        if (interval['gains'] is not None and not
+                (interval['gains']['hit'] > 0 and interval['gains']['brier'] >= 0 and interval['gains']['log_loss'] >= 0)):
+            holds.append(bid + ':observed_accuracy_or_probability_gain_is_not_positive')
+        if interval['intervals'] is not None and not (interval['intervals']['hit'][0] > 0 and interval['intervals']['brier'][0] >= 0
                   and interval['intervals']['log_loss'][0] >= 0):
             holds.append(bid + ':accuracy_improvement_and_probability_nonregression_not_established')
     city_tests = [c['exploratory_pair_test'] for comparison in comparisons.values()
@@ -436,7 +458,9 @@ def evaluate(packet):
         readiness=dict(status='hold' if holds else 'ready_for_independent_review', reasons=sorted(set(holds)),
                        automatic_promotion=False, evidence='exporter receipt assertions; upstream proof still requires review'),
         spec=spec, models=models, scored=model_reports, comparisons=comparisons,
-        exclusions=dict(original_rows=len(original), later_revisions_ignored=len(packet['forecasts']) - len(original),
+        exclusions=dict(original_rows=len(original),
+                        later_revisions_ignored=len(packet['forecasts']) - sum(map(len, first_receipts.values())),
+                        ambiguous_original_groups=sum(len(v) > 1 for v in first_receipts.values()),
                         scored_rows=len(accepted), rows=excluded, counts_by_reason=dict(reasons)),
         limitations=['No real-money P/L or executable fill claim.',
                      'Actual-high categories use hindsight for diagnostics only, never readiness or entry selection.',

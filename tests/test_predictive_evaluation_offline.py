@@ -111,6 +111,53 @@ def test_first_losing_original_is_not_replaced_by_a_later_winner():
     assert r['scored']['shared']['overall']['hit_rate'] == pytest.approx(23 / 24)
 
 
+@pytest.mark.parametrize('revision_id', ['aaa-later-revision', 'zzz-later-revision'])
+def test_equal_issue_time_receipts_are_ambiguous_regardless_of_opaque_id(revision_id):
+    p = packet(); first = p['forecasts'][0]; first['receipt_id'] = None
+    later = dict(first, forecast_id=revision_id, frozen_at='2026-01-05T09:02:00Z', receipt_id='later-receipt')
+    p['forecasts'].append(later)
+    r = evaluate(p)
+    assert r['readiness']['status'] == 'hold'
+    assert r['exclusions']['counts_by_reason']['ambiguous_original_issue_time'] == 2
+    assert r['exclusions']['ambiguous_original_groups'] == 1
+    assert r['exclusions']['later_revisions_ignored'] == 0
+
+
+def test_ties_only_between_later_revisions_do_not_replace_the_unique_first_call():
+    p = packet(); original = p['forecasts'][0]
+    for fid in ['revision-a', 'revision-b']:
+        p['forecasts'].append(dict(original, forecast_id=fid, issued_at='2026-01-05T09:02:00Z',
+                                  frozen_at='2026-01-05T09:03:00Z'))
+    r = evaluate(p)
+    assert r['exclusions']['later_revisions_ignored'] == 2
+    assert r['exclusions']['ambiguous_original_groups'] == 0
+    assert r['readiness']['status'] == 'ready_for_independent_review'
+
+
+def test_isolated_losing_dates_cannot_be_omitted_from_bootstrap_evidence():
+    p = packet(); mapping = {f'2026-01-{5+i:02d}': f'2026-01-{5+i if i<4 else 10+2*(i-4):02d}' for i in range(12)}
+    isolated = set(list(mapping.values())[4:]); p['spec']['to_date'] = '2026-01-24'
+    p['spec']['max_city_hit_regression'] = .9
+    for row in p['plan'] + p['outcomes'] + p['forecasts']:
+        old = row['target_date']; new = mapping[old]
+        for key in ['scheduled_at','issued_at','frozen_at','input_as_of','input_available_at','market_quote_at','first_max_at']:
+            if key in row:row[key] = row[key].replace(old,new)
+        row['event_id'] = row['event_id'].replace(old,new)
+        row['target_date'] = new
+        if 'confirmed_at' in row:
+            stamp_next = (dt.date.fromisoformat(new)+dt.timedelta(days=1)).isoformat()+'T12:00:00Z'
+            row['confirmed_at'] = row['received_at'] = stamp_next
+        if row.get('model_id') == 'shared' and new in isolated:
+            row.update(probabilities={'a':.2,'b':.8},top_band_id='b')
+        elif row.get('model_id') in ('market','incumbent') and new in isolated:
+            row.update(probabilities={'a':.8,'b':.2},top_band_id='a')
+    r = evaluate(p); e = r['comparisons']['market']['day_block_evidence']
+    assert e['gains']['hit'] == pytest.approx(-1/3)
+    assert len(e['uncovered_dates']) == 8 and e['intervals'] is None
+    assert r['readiness']['status'] == 'hold'
+    assert 'market:bootstrap_population_does_not_cover_all_evaluated_dates' in r['readiness']['reasons']
+
+
 def test_training_fit_and_registration_cannot_peek_into_evaluation():
     p = packet(); p['models'][0]['trained_through'] = '2026-01-05'
     r = evaluate(p)
