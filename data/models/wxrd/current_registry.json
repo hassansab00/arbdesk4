@@ -36,6 +36,12 @@
    "night": "2026-10-29",
    "report": "data/eval/wxpredict/current_forecast/2026-10-29.json",
    "report_sha256": "819ab013df78112e7b685169af4101793ddf7a0df2d112cc601ed9dd7efed0c2"
+  },
+  {
+   "decision": "wait",
+   "night": "2026-10-30",
+   "report": "data/eval/wxpredict/current_forecast/2026-10-30.json",
+   "report_sha256": "62264f3e867f016e5b519314f82733463833123fdb422750df650cde7983d611"
   }
  ],
  "paused": false,

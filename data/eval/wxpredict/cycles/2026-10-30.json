@@ -1,0 +1,57 @@
+{
+ "changes_serving": false,
+ "decision": "wait",
+ "evaluation_first": "2026-10-15",
+ "evaluation_last": "2026-10-28",
+ "fit_last": "2026-10-13",
+ "incumbent_fit_last": "2026-10-11",
+ "night": "2026-10-30",
+ "policy": {
+  "evaluation_checkpoints": [
+   "noon",
+   "prepeak_2h",
+   "prepeak_1h",
+   "postpeak_1h"
+  ],
+  "holdout_dates": 14,
+  "improvement_checkpoints": [
+   "noon",
+   "prepeak_2h",
+   "prepeak_1h"
+  ],
+  "maximum_validation_bucket_change": 0.1,
+  "minimum_cities_per_date": 20,
+  "minimum_coverage": 0.8,
+  "minimum_training_rows": 50000,
+  "refit_interval_days": 7,
+  "rounds": 250,
+  "seed": 20261011,
+  "seeds": [
+   20261011,
+   20261012,
+   20261013,
+   20261014,
+   20261015
+  ],
+  "validation_policy": "remaining-five-seed-proper-scores-v2"
+ },
+ "reason": "insufficient on-time recorded first-call inputs",
+ "recorded_input_availability": {
+  "checkpoints": [
+   "noon",
+   "prepeak_2h",
+   "prepeak_1h",
+   "postpeak_1h"
+  ],
+  "feature_policy": "wx-arrival-480-v1",
+  "first_calls": 2629,
+  "ready": false,
+  "recorded_first_calls": 2454,
+  "sparse_checkpoint_dates": [
+   "2026-10-15:noon",
+   "2026-10-15:prepeak_2h",
+   "2026-10-15:prepeak_1h",
+   "2026-10-15:postpeak_1h"
+  ]
+ }
+}
