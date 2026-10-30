@@ -259,7 +259,8 @@ def _engine(monkeypatch, mos_on, mos_row=MOS):
             on = True if key == "eq.station_correction_pricing" else mos_on
             return [{"value": {"enabled": on, "min_lead_days": 1, "max_age_hours": 36}}]
         if path == "derived_corrected_forecast":
-            return [dict(P39)]
+            stamp=dt.datetime.now(dt.timezone.utc).isoformat()
+            return [dict(P39,computed_at=stamp,inputs_oldest_run_at=stamp,inputs_newest_run_at=stamp)]
         if path == "derived_mos_forecast":
             return [dict(mos_row)] if mos_row else []
         raise AssertionError(path)

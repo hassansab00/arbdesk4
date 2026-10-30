@@ -227,6 +227,8 @@ def fit(rows, cities, model_version, as_of, previous=()):
                         state.update(decision='revalidated', reason='unchanged parameters still pass fresh unseen dates',
                                      validated_through=max(r['target_date'] for r in val), validation=keep)
                     else:
-                        state['reason'] = 'candidate did not pass unseen log-loss, Brier and hit-rate gates'
+                        state.update(params=dict(IDENTITY), decision='reverted' if current != IDENTITY else 'held',
+                                     validated_through=None, version=POLICY+':identity',
+                                     reason='candidate and current adjustment did not pass fresh unseen-date gates')
             states.append(state)
     return states

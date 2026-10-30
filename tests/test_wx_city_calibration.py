@@ -89,3 +89,13 @@ def test_incompatible_pool_rows_or_another_local_station_cannot_approve_a_fit(ch
     assert state['decision']=='held' and state['params']==c.IDENTITY
     if change=='local_station':assert state['train_dates']==0 and state['validation_dates']==0
     else:assert state['pool_rows']==20
+
+
+def test_explicit_fresh_rejection_cannot_keep_a_previously_valid_calibration_usable():
+    rows=data();old=c.fit(rows,['0'],'wxrd3:v3:x','2026-10-17')[0]
+    assert old['params']!=c.IDENTITY and c.usable(old,'2026-10-17','wxrd3:v3:x')
+    for r in rows:
+        if r['target_date']>='2026-10-03':r['winning_band_id']='a'
+    state=c.fit(rows,['0'],'wxrd3:v3:x','2026-10-17',[old])[0]
+    assert state['decision']=='reverted' and state['params']==c.IDENTITY
+    assert state['validated_through'] is None and not c.usable(state,'2026-10-17','wxrd3:v3:x')

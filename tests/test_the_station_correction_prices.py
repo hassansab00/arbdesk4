@@ -6,6 +6,7 @@ ladders with the engine's own sigma and ONLY the centre changed: right bucket
 1.847 -> 1.657. So it replaces the centre, and nothing else, at lead 1 or more.
 """
 import os
+import datetime as dt
 import sys
 
 import pytest
@@ -61,7 +62,8 @@ def test_the_loader_respects_the_switch_the_lead_and_the_age(monkeypatch):
         calls.append((path, params))
         if path == "settings":
             return [{"value": {"enabled": switch["on"], "min_lead_days": 1, "max_age_hours": 36}}]
-        return [dict(ROW)]
+        stamp=dt.datetime.now(dt.timezone.utc).isoformat()
+        return [dict(ROW, computed_at=stamp, inputs_oldest_run_at=stamp, inputs_newest_run_at=stamp)]
     monkeypatch.setattr(pe, "rest", rest)
     switch = {"on": False}
     pe._station_cache = None
@@ -84,3 +86,22 @@ def test_a_broken_read_prices_from_the_public_path(monkeypatch, capsys):
     assert pe._station_corrected_for("london", "2026-09-19", 1) is None
     assert "station correction unavailable" in capsys.readouterr().err
     pe._station_cache = None
+
+
+@pytest.mark.parametrize('change',['missing','old_input','future_input','reversed_inputs','future_write','nan','thin'])
+def test_a_fresh_rewrite_cannot_launder_stale_or_invalid_weather_inputs(monkeypatch,change):
+    now=dt.datetime.now(dt.timezone.utc)
+    row=dict(ROW,computed_at=now.isoformat(),inputs_oldest_run_at=now.isoformat(),inputs_newest_run_at=now.isoformat())
+    if change=='missing':row.pop('inputs_oldest_run_at')
+    if change=='old_input':row['inputs_oldest_run_at']=(now-dt.timedelta(hours=37)).isoformat()
+    if change=='future_input':row['inputs_newest_run_at']=(now+dt.timedelta(hours=1)).isoformat()
+    if change=='reversed_inputs':row['inputs_newest_run_at']=(now-dt.timedelta(hours=1)).isoformat()
+    if change=='future_write':row['computed_at']=(now+dt.timedelta(hours=1)).isoformat()
+    if change=='nan':row['combined_c']=float('nan')
+    if change=='thin':row['n_sources']=3
+    def read(table,*a,**kw):
+        if table=='settings':return [{'value':{'enabled':True}}]
+        return [row]
+    monkeypatch.setattr(pe,'rest',read)
+    monkeypatch.setattr(pe,'_station_cache',None)
+    assert pe._station_corrected_for('london','2026-09-19',1) is None

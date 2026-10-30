@@ -138,6 +138,14 @@ SIGMA_FLOOR_C = 0.25        # no distribution narrower than a quarter degree
 # and "trust the city" (k large) at both levels.
 K_CELL_GRID = (2.0, 5.0, 10.0, 20.0, 40.0)
 K_CITY_GRID = (5.0, 15.0, 30.0, 60.0, 120.0)
+# The earliest nested fold may have no fit. Its fixed conservative prior must
+# not depend on the full-history winner, which includes the fold's outcomes.
+NESTED_K_PRIOR = (40.0, 120.0)
+
+
+def prior_only_shrinkage(cells, folds):
+    best, _ = choose_shrinkage(cells, folds=folds)
+    return (best['k_cell'], best['k_city']) if best else NESTED_K_PRIOR
 
 VERIFIED_EVIDENCE_SCOPE = "verified_outcomes_v1"
 FALLBACK_OBS_SOURCE = "v_city_daily_max"   # the pre-station-authority reader
@@ -610,8 +618,7 @@ def main():
                        [d for d in pools.get(c, []) if d.for_date < cutoff])
                       for (c, _l), days in by_cell.items()]
             before = [x for x in before if len(x[0]) >= args.min_days]
-            b, _t = choose_shrinkage(before, folds=args.folds)
-            chosen[cutoff] = (b["k_cell"], b["k_city"]) if b else (best["k_cell"], best["k_city"])
+            chosen[cutoff] = prior_only_shrinkage(before, args.folds)
         return chosen[cutoff]
 
     from common import get_cities
