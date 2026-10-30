@@ -1,10 +1,11 @@
 """Recover missing event rules before a prospective call, without replacing known text."""
 import concurrent.futures
 import time
+import re
 import requests
 
 MAX_MARKETS = 24
-BUDGET_S = 10
+BUDGET_S = 12
 MAX_BYTES = 2 * 1024 * 1024
 MAX_RULES = 256 * 1024
 
@@ -34,10 +35,10 @@ def event_rules(payload, slug):
 
 def fetch(market):
     slug = market.get('event_slug')
-    if not slug:
-        raise ValueError('Event slug unavailable')
-    url = 'https://gamma-api.polymarket.com/events'
-    with requests.get(url, params={'slug':slug}, timeout=(2,3), stream=True) as response:
+    if not slug or not re.fullmatch(r'[a-z0-9-]+',slug):
+        raise ValueError('Event slug unavailable or invalid')
+    url = 'https://gamma-api.polymarket.com/events/slug/'+slug
+    with requests.get(url, timeout=8, stream=True) as response:
         response.raise_for_status()
         raw = bytearray()
         for chunk in response.iter_content(65536):

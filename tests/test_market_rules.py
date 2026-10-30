@@ -46,3 +46,23 @@ def test_no_future_or_other_city_market_requests_and_the_cap_is_explicit():
     assert len(seen)==rules.MAX_MARKETS==detail['requested']
     assert detail['stored']==rules.MAX_MARKETS
     assert detail['deferred']==40-rules.MAX_MARKETS
+
+
+def test_direct_event_endpoint_keeps_identity_bounds_and_request_budget(monkeypatch):
+    import json
+    seen=[]
+    class Response:
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def raise_for_status(self):pass
+        def iter_content(self,n):
+            assert n==65536
+            yield json.dumps(dict(slug=M['event_slug'],description=URL)).encode()
+    def get(url,**kwargs):seen.append((url,kwargs));return Response()
+    monkeypatch.setattr(rules.requests,'get',get)
+    assert rules.fetch(M)==URL
+    assert seen==[('https://gamma-api.polymarket.com/events/slug/'+M['event_slug'],dict(timeout=8,stream=True))]
+    assert seen[0][1]['timeout']<rules.BUDGET_S
+    with pytest.raises(ValueError,match='invalid'):rules.fetch(dict(M,event_slug='../other'))
+    monkeypatch.setattr(rules,'MAX_BYTES',4)
+    with pytest.raises(ValueError,match='size bound'):rules.fetch(M)
