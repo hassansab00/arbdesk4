@@ -17,7 +17,8 @@ const assert = require('node:assert/strict');
     -- fills them from the venue's confirmed settlement.
     create table public.markets(market_id uuid primary key,closed boolean,resolution_date date,city_key text,
       event_slug text,unit text,condition_id text,last_seen_at timestamptz default now(),
-      winning_band_id uuid,resolved_band_id uuid,resolution_verified_at timestamptz,resolution_source_used text);
+      winning_band_id uuid,resolved_band_id uuid,resolution_verified_at timestamptz,resolution_source_used text,
+      rules_text text,rules_fetched_at timestamptz);
     -- created_at/updated_at are NOT NULL in production (both default now()).
     -- A migration that stamps updated_at fails here without them, and the
     -- 2026-09-19 retirement migration does exactly that. See CLAUDE.md: the
@@ -34,6 +35,8 @@ const assert = require('node:assert/strict');
     -- v_station_day_max over them.
     create table public.weather_observations(obs_id bigint primary key,city_key text,valid_at timestamptz,
       observed_at timestamptz,temp_c numeric,temp_f numeric,source text,station text);
+    create table public.derived_weather_peak(city_key text not null,month int not null,
+      peak_hour_local numeric,window_width_h numeric,n_days int,computed_at timestamptz default now(),primary key(city_key,month));
     create table public.derived_forecast_skill_model(
       city_key text not null,model text not null,computed_at timestamptz not null default now(),
       lead_days int not null,n_days int,mae_c numeric,bias_c numeric,p90_abs_err_c numeric,
@@ -2758,6 +2761,7 @@ const assert = require('node:assert/strict');
   assert.equal(off.enabled,false);
 
   await require('./day-max-contracts.cjs')(db);
+  await require('./day-max-early-contracts.cjs')(db);
   await db.close();
   console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, a shadow ledger per strategy and a suspended portfolio account, strategy lifecycle states, the fixed risk rails and the kill switch, the portfolio activated by evidence and its allocation, the decision log and its verified prune, research capture of prices only, no PUBLIC execute on SECURITY DEFINER functions and the settings the browser may not read');
 })().catch(e=>{console.error(e);process.exit(1);});

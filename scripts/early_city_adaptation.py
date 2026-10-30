@@ -80,7 +80,8 @@ def prepare(markets, cities, now=None, read=None):
             if dt.timedelta(0) <= local-scheduled <= dt.timedelta(minutes=75):
                 _contexts[(m['city_key'], str(day))] = dict(checkpoint=checkpoint,
                     contract=m.get('observation_contract'), station=m.get('contract_station') or c.get('icao'),
-                    unit=m.get('unit') or c.get('unit'), timezone=c['timezone'], scheduled_at=scheduled.isoformat())
+                    unit=m.get('unit') or c.get('unit'), timezone=c['timezone'], scheduled_at=scheduled.isoformat(),
+                    rules_sha256=m.get('rules_sha256'),rules_observed_at=now.isoformat(),rules_received_at=m.get('rules_received_at'))
     if not _contexts:
         return
     try:
@@ -188,6 +189,8 @@ def eligible(rows, as_of):
                     or float(timing.get('minutes_before_expected_peak') or 0) < 60):
                 continue
             frozen, issued = cal.timestamp(row['frozen_at']), cal.timestamp(packet['input_forecast_run'])
+            if any(cal.timestamp(packet[k]) > frozen for k in ('rules_observed_at','rules_received_at') if packet.get(k)):
+                continue
             end = dt.datetime.combine(day+dt.timedelta(days=1), dt.time(), ZoneInfo(packet['timezone']))
             scheduled = cal.timestamp(packet['scheduled_at'])
             if (not issued <= frozen < end <= cutoff

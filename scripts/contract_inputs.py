@@ -44,26 +44,28 @@ def annotate(markets, read):
         return markets
     ids = ','.join(str(m['market_id']) for m in markets)
     try:
-        rules = {str(r['market_id']):r.get('rules_text') for r in read('markets', [
-            ('select','market_id,rules_text'),('market_id','in.('+ids+')')])}
+        rules = {str(r['market_id']):r for r in read('markets', [
+            ('select','market_id,rules_text,event_slug'),('market_id','in.('+ids+')')])}
     except Exception:
         rules = {}
-    out = []
-    for row in markets:
-        text = rules.get(str(row['market_id']))
-        contract = 'legacy' if text and ('weather.gov/wrh/timeseries' in text
-                                        or 'hong kong observatory' in text.lower()) else 'unknown'
-        if metar.source_url(text or ''):
-            contract = CONTRACT
-        station=None
-        if contract==CONTRACT:
-            try:
-                station=metar.source_parameters(metar.source_url(text))[0]
-            except ValueError:
-                contract='unknown'
-        out.append(dict(row,rules_text=text,observation_contract=contract,rules_sha256=fingerprint(text),
-                        contract_station=station))
-    return out
+    return [with_rules(dict(row,event_slug=rules.get(str(row['market_id']),{}).get('event_slug') or row.get('event_slug')),
+                       rules.get(str(row['market_id']),{}).get('rules_text')) for row in markets]
+
+
+def with_rules(row, text):
+    """Classify only the supplied, received rules; never infer from settlement."""
+    contract = 'legacy' if text and ('weather.gov/wrh/timeseries' in text
+                                    or 'hong kong observatory' in text.lower()) else 'unknown'
+    if metar.source_url(text or ''):
+        contract = CONTRACT
+    station=None
+    if contract==CONTRACT:
+        try:
+            station=metar.source_parameters(metar.source_url(text))[0]
+        except ValueError:
+            contract='unknown'
+    return dict(row,rules_text=text,observation_contract=contract,rules_sha256=fingerprint(text),
+                contract_station=station)
 
 
 def pack(market, city, raw, source_url, received):
