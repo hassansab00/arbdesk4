@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import PaperAutomation from '@/components/PaperAutomation';
+import DayMaxPrediction from '@/components/DayMaxPrediction';
 import Hint, { PAPER_HINTS as H } from '@/components/Hint';
 import PaperExit from '@/components/PaperExit';
 import PaperDeskControl from '@/components/PaperDeskControl';
@@ -182,6 +183,7 @@ export default function PaperTradesPage() {
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-lg font-semibold">Paper Trades</h1>
       <p className="text-sm text-muted">Real market data · Simulated orders · Traceable decisions</p></div>
       <button className={button} onClick={refresh}>Refresh</button></div>
+    <DayMaxPrediction openLedger={id=>{setAccount(id);setCommand(null);}}/>
     {issue&&<div role="alert" className="rounded border border-bad p-3 text-sm text-bad">{issue}</div>}
     {notice&&<div role="status" className={`text-sm ${noticeWarning?'text-warn':'text-good'}`}>{notice}</div>}
     <div className="flex flex-wrap items-center gap-3"><select disabled={busy} aria-label="Paper account" className="input max-w-sm" value={account} onChange={e=>{setAccount(e.target.value);setCommand(null);}}>

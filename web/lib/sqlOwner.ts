@@ -27,6 +27,7 @@ export const SQL_OWNER: Record<string, string> = {
   "cost_params": "ad4_phase2.sql",
   "current_ladders": "ad4_current_ladder.sql",
   "data_freshness_spec": "ad4_39_freshness.sql",
+  "day_max_prediction_entries": "supabase/migrations/20261030080013_day_max_prediction_paper.sql",
   "decisions": "supabase/migrations/20260925090000_decision_log.sql",
   "deployments": "ad4_00_preflight.sql",
   "derived_band_day_volume": "ad4_00_preflight.sql",

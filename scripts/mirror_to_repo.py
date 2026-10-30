@@ -221,6 +221,7 @@ TABLES = {
     "deployments":                   snapshot("deployment_id"),
     # --- the paper desk and the backtests -----------------------------------
     "paper_accounts":                snapshot("account_id"),
+    "day_max_prediction_entries":    append("created_at", "city_key", "target_date"),
     "strategy_state":                snapshot("strategy_id"),              # plan v2 P5.2
     "paper_trade_plans":             snapshot("plan_id"),
     "paper_orders":                  snapshot("order_id"),

@@ -3,6 +3,7 @@ import * as path from 'path';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { requireOperator } from '../../../lib/operatorAuth';
+import { DAY_MAX_STRATEGY } from '../../../lib/dayMax';
 import { deskActivity, mergeTradeRows, type AccountRow, type DecisionRow, type DeskActivity, type PositionRow,
   type StrategyRow, type StrategyRunState, type TradeRow } from '../../../lib/paperDesks';
 
@@ -119,6 +120,40 @@ export async function GET(request:Request) {
     const client=serverClient();
     const url=new URL(request.url);const resource=url.searchParams.get('resource');
     const account=url.searchParams.get('account')||'';
+    if(resource==='day_max') {
+      const [strategy,ledger,entries,run]=await Promise.all([
+        client.from('strategies').select('enabled,extra').eq('strategy_id',DAY_MAX_STRATEGY).maybeSingle(),
+        client.from('paper_accounts').select('account_id,name,mode,entries_paused,cash').eq('strategy_id',DAY_MAX_STRATEGY).eq('kind','shadow').maybeSingle(),
+        client.from('day_max_prediction_entries').select('*').gte('created_at',new Date(Date.now()-7*86400000).toISOString()).order('created_at',{ascending:false}).limit(200),
+        client.from('ingest_log').select('logged_at,status,detail').eq('job','P7.11_day_max_prediction').order('logged_at',{ascending:false}).limit(1),
+      ]);
+      for(const r of [strategy,ledger,entries,run]) if(r.error) throw new Error(r.error.message);
+      if(entries.data?.length===200) throw new Error('Day Max recent allocations exceeded the display bound');
+      const cfg=strategy.data?.extra?.day_max??{};
+      const choices=cfg.cities??[];
+      const cityKeys=choices.map((c:{city_key:string})=>c.city_key);
+      const records=entries.data??[];
+      const planIds=records.map(e=>e.plan_id).filter(Boolean);
+      const bandIds=records.map(e=>e.snapshot.top_band_id).filter(Boolean);
+      const [names,plans,orders,bands]=await Promise.all([
+        cityKeys.length?client.from('cities').select('city_key,display_name,timezone').in('city_key',cityKeys):Promise.resolve({data:[],error:null}),
+        planIds.length?client.from('paper_trade_plans').select('plan_id,status,reason').in('plan_id',planIds):Promise.resolve({data:[],error:null}),
+        planIds.length?client.from('paper_orders').select('plan_id,status,reason,result').in('plan_id',planIds).eq('action','BUY'):Promise.resolve({data:[],error:null}),
+        bandIds.length?client.from('bands').select('band_id,band_label').in('band_id',bandIds):Promise.resolve({data:[],error:null}),
+      ]);
+      for(const r of [names,plans,orders,bands]) if(r.error) throw new Error(r.error.message);
+      return NextResponse.json({data:{enabled:strategy.data?.enabled??false,activated_at:cfg.activated_at??null,
+        cities:choices,names:Object.fromEntries((names.data??[]).map(c=>[c.city_key,c])),account:ledger.data,
+        last_run:run.data?.[0]??null,entries:records.map(e=>{
+          const plan=plans.data?.find(p=>p.plan_id===e.plan_id),order=orders.data?.find(o=>o.plan_id===e.plan_id);
+          const s=e.snapshot;
+          return {city_key:e.city_key,target_date:e.target_date,checkpoint_id:e.checkpoint_id,plan_id:e.plan_id,created_at:e.created_at,
+            pick:{top_band_id:s.top_band_id,top_prob:s.top_prob,frozen_at:s.frozen_at,checkpoint:s.checkpoint,priced_from:s.priced_from},
+            label:bands.data?.find(b=>b.band_id===s.top_band_id)?.band_label??null,
+            status:order?.status??plan?.status??'allocated',reason:order?.reason??plan?.reason??null,
+            spent:Number(order?.result?.notional??0)+Number(order?.result?.fee??0)};
+        })},error:null},{headers:{'Cache-Control':'no-store'}});
+    }
     if(resource==='accounts') {
       // Every desk, not the first one. This page has always rendered a
       // switcher over an array and auto-selected accounts.data[0]; .limit(1)

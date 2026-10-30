@@ -133,6 +133,15 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Tick (hourly checkpoints)"
     }
   ],
+  "day_max_prediction_entries": [
+    {
+      "cadence": "hourly",
+      "file": "tick.yml",
+      "how": "scripts/day_max_prediction.py",
+      "kind": "action",
+      "name": "Tick (hourly checkpoints)"
+    }
+  ],
   "decisions": [
     {
       "cadence": "several times a day",
@@ -140,6 +149,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/signal_engine.py",
       "kind": "action",
       "name": "Intraday Pipeline (model, probabilities, edges)"
+    },
+    {
+      "cadence": "hourly",
+      "file": "tick.yml",
+      "how": "scripts/day_max_prediction.py",
+      "kind": "action",
+      "name": "Tick (hourly checkpoints)"
     }
   ],
   "derived_band_day_volume": [

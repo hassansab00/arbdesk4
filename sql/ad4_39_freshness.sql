@@ -62,6 +62,7 @@ create table if not exists data_freshness_spec (
 );
 
 insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plain_english) values
+  ('day_max_prediction_entries','created_at',null,'paper','Original frozen Day Max daily allocations; accumulating record, not a scheduled feed.'),
   -- '-' rather than null: the resolver would otherwise pick the first
   -- timestamp column it finds, which on this table is nws_checked_at -
   -- when the NWS grid id was last looked up, not when the row changed.
