@@ -291,6 +291,7 @@ def build_row(city, target, checkpoint, local_time, rows, reasons, books, readin
     row.update(lineage)
     import probability_engine
     forecast_input = probability_engine.forecast_context(city, target, rows)
+    early_packet = forecast_input.pop('early_forecast_audit', None) if forecast_input else None
     if forecast_input:
         row['predictive_context'] = dict(row.get('predictive_context') or {},
                                          forecast_input=forecast_input)
@@ -299,9 +300,14 @@ def build_row(city, target, checkpoint, local_time, rows, reasons, books, readin
     if timing_reference:
         row['predictive_context'] = dict(row.get('predictive_context') or {},
                                          timing_reference=dict(timing_reference))
-    if checkpoint == 'd1_eve':
+    if checkpoint in ('d1_eve','morning'):
         import early_forecast_audit
-        comparison = early_forecast_audit.freeze(rows, bands, unit)
+        import early_city_adaptation
+        packet = early_packet
+        comparison = (packet if packet and packet.get('checkpoint') == checkpoint
+                      and early_city_adaptation.valid_packet(packet, probs) else None)
+        if comparison is None and checkpoint == 'd1_eve':
+            comparison = early_forecast_audit.freeze(rows, bands, unit)
         if comparison:
             row['predictive_context'] = dict(row.get('predictive_context') or {}, early_forecast_audit=comparison)
     if lineage and str(row.get('priced_from') or '').startswith('wxrd3:'):
@@ -587,6 +593,9 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     promoted = pe._promoted_models()
     model_forecasts = pe._model_forecasts(promoted)
     pe._warm_caches()
+    import early_city_adaptation
+    early_city_adaptation.prepare([market_of[d] for d in days + reprice], cities,
+                                 rehearsal_at or dt.datetime.now(dt.timezone.utc))
     import predictive_primary
     checkpoint_names = {}
     for city, target, name, _ in due:

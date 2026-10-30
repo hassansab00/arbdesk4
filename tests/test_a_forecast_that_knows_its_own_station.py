@@ -427,3 +427,13 @@ def test_the_city_pool_gathers_every_lead():
     pools = fp.city_pools({("a", 0): a0, ("a", 1): a1})
     assert len(pools["a"]) == 7
     assert pools["a"] == sorted(pools["a"], key=lambda d: d.for_date)
+
+
+def test_an_unfittable_nested_fold_uses_a_fixed_prior_not_a_future_history_winner(monkeypatch):
+    seen=[]
+    def choose(cells,folds):seen.append((cells,folds));return None,[]
+    monkeypatch.setattr(fp,'choose_shrinkage',choose)
+    assert fp.prior_only_shrinkage([],3)==fp.NESTED_K_PRIOR
+    assert seen==[([],3)]
+    monkeypatch.setattr(fp,'choose_shrinkage',lambda cells,folds:({'k_cell':5.,'k_city':15.},[]))
+    assert fp.prior_only_shrinkage([],3)==(5.,15.)

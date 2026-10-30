@@ -23,6 +23,7 @@ multiplied by something else measuring the same error again.
 """
 
 import os
+import datetime as dt
 import sys
 from types import SimpleNamespace
 
@@ -215,7 +216,8 @@ def test_a_missing_view_does_not_stop_the_engine(monkeypatch):
 def test_a_city_lead_with_no_row_is_not_given_another_ones(monkeypatch):
     monkeypatch.setattr(pe, "rest", lambda *_a, **_k: [
         {"city_key": "london", "lead_days": 1, "bias_c": 1.2,
-         "sigma_ratio": 0.8, "baseline_sigma_c": 1.5}])
+         "sigma_ratio": 0.8, "baseline_sigma_c": 1.5,
+         "computed_at":dt.datetime.now(dt.timezone.utc).isoformat()}])
     monkeypatch.setattr(pe, "_postprocess_cache", None)
     assert pe._postprocess_for("london", 1) is not None
     assert pe._postprocess_for("london", 0) is None
@@ -235,3 +237,18 @@ def test_a_moved_price_says_what_moved_it(monkeypatch):
     assert "+1.20C" in line and "0.80x" in line
     assert "12d_cell" in line and "110d_city" in line
     assert "0.031" in line
+
+
+@pytest.mark.parametrize('change',['missing','old','future','nan','bias','ratio'])
+def test_postprocess_state_expires_and_invalid_parameters_do_not_price(monkeypatch,change):
+    row=_pp()
+    row['computed_at']=dt.datetime.now(dt.timezone.utc).isoformat()
+    if change=='missing':row.pop('computed_at')
+    if change=='old':row['computed_at']=(dt.datetime.now(dt.timezone.utc)-dt.timedelta(days=4)).isoformat()
+    if change=='future':row['computed_at']=(dt.datetime.now(dt.timezone.utc)+dt.timedelta(hours=1)).isoformat()
+    if change=='nan':row['bias_c']=float('nan')
+    if change=='bias':row['bias_c']=5.1
+    if change=='ratio':row['sigma_ratio']=2.1
+    monkeypatch.setattr(pe,'rest',lambda *a,**kw:[row])
+    monkeypatch.setattr(pe,'_postprocess_cache',None)
+    assert pe._postprocess_for('london',0) is None

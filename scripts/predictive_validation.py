@@ -18,6 +18,7 @@ from tick import CHECKPOINTS, PEAK_OFFSETS_H, decision_times
 import wx_city_calibration as cal
 import city_model_selection as selector
 import early_forecast_audit
+import early_city_adaptation as early
 
 JOB = 'P7.10_city_prediction_validation'
 HORIZONS = ('day_ahead', *CHECKPOINTS)
@@ -255,9 +256,11 @@ def collect(checkpoints, outcomes, day_ahead, cities, peaks, now):
                  raw_model_version=(p.get('predictive_context') or {}).get('raw_model_version') or p.get('priced_from'),
                  timing=capture_timing(p,c),
                  paired_context=p.get('predictive_context') or {},probs=probs,
+                 frozen_at=p.get('frozen_at'),settled_at=f.get('settled_at') if f else None,
+                 label_received_at=f.get('banked_at') if f else None,
                  raw_probs=p.get('raw_probs'),baseline_probs=p.get('baseline_probs'),winner=winner)
         if settled:
-            if p['checkpoint'] == 'd1_eve' and p.get('frozen_at'):
+            if p['checkpoint'] in early.CHECKPOINTS and p.get('frozen_at'):
                 r['early_comparison'] = early_forecast_audit.score(
                     (p.get('predictive_context') or {}).get('early_forecast_audit') or {}, probs, winner)
             for src,dest in [('baseline_probs','baseline'),('raw_probs','raw')]:
@@ -426,6 +429,10 @@ def reports(rows,cities,reviews,states,now,model_version=None,selections=(),earl
                     paired_audit=paired_diagnostic(chosen),
                     recent_dates=daily_scores(chosen),
                     early_comparison=early_forecast_audit.summarize(chosen),
+                    early_adaptation=[dict(s,active=early.usable(s,local_target,s['model_version'],s['phase']),
+                        effective_strength=s['strength'] if early.usable(s,local_target,s['model_version'],s['phase']) else early.PRIOR)
+                        for s in states if s.get('policy') == early.POLICY and s['city_key'] == city
+                        and scope == 'served' and horizon in (s['phase'],'overall')],
                     active_model_version=active_version,
                     learning=[dict(s,active=cal.usable(s,local_target,active_version),
                                    readiness=(cal.readiness(s['train_dates'],s['validation_dates'],
@@ -484,15 +491,24 @@ def run(score_only=False, now=None):
             fitted.extend(cal.fit(learning,version_cities[input_version],input_version,now.date(),states))
             selected.extend(selector.fit(learning,version_cities[input_version],input_version,now,selections))
         selections=selected
+        older_p,older_outcomes=[],[]
+        try:
+            older_p,older_outcomes=early.older_mirrored_calls(ROOT,now.date(),first)
+            detail['early_history']='verified repository mirror plus current original calls'
+        except (OSError,ValueError,KeyError) as exc:
+            detail['early_history']='older mirror unavailable; current original calls only: '+type(exc).__name__
+        early_fitted=early.fit(collect(older_p+p,older_outcomes+outcomes,[],cities,{},now),now.date(),states)
+        fitted.extend(early_fitted)
         path=ROOT/'data/eval/wxpredict/city_calibration'/f'{now.date()}.json'
         path.parent.mkdir(parents=True,exist_ok=True)
         path.write_text(json.dumps(dict(as_of=now.isoformat(),policy=cal.POLICY,states=fitted,model_selection=selections),sort_keys=True,indent=2)+'\n')
         upsert_replace('derived_wx_city_calibration',[dict(model_version=s['model_version'],city_key=s['city_key'],phase=s['phase'],as_of=s['as_of'],version=s['version'],state=s) for s in fitted], 'model_version,city_key,phase')
-        states=[s for s in states if s['model_version'] not in versions]+fitted
+        states=[s for s in states if s['model_version'] not in versions and s.get('policy') != early.POLICY]+fitted
         detail.update(calibration_cells=len(fitted),decisions=dict(Counter(s['decision'] for s in fitted)),
                       eligible_learning_calls=sum(len(cal.eligible_rows(learning,now.date(),v)) for v in versions),
                       input_versions=list(versions))
         detail.update(selection_cells=len(selections),selection_decisions=dict(Counter(s['decision'] for s in selections)))
+        detail.update(early_adaptation_cells=len(early_fitted),early_adaptation_decisions=dict(Counter(s['decision'] for s in early_fitted)))
     data=reports(collect(p,outcomes,da,cities,{},now),cities,reviews,states,now,version,selections,early_states,
                  model_versions=active_versions)
     n=publish_reports(data)

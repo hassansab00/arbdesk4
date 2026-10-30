@@ -240,7 +240,7 @@ TABLES = {
 # Every public table the mirror does NOT copy, and why. A table in neither
 # TABLES nor here fails tests/test_every_table_has_a_home.py.
 NOT_MIRRORED = {
-    "derived_wx_city_calibration": "Current working state; nightly versions and input digests are committed under data/eval/wxpredict/city_calibration; used parameters are frozen on each checkpoint.",
+    "derived_wx_city_calibration": "Current city/phase and early-correction working state; nightly versions and input digests are committed under data/eval/wxpredict/city_calibration; used parameters are frozen on each checkpoint.",
     "derived_city_prediction_validation": "Rebuildable summary of mirrored immutable calls, outcomes and day reviews; no unique research content.",
     "research_captures": "JSON copies of six mirrored tables; the archive exports it at 2 days",
     "paper_resolution_evidence": "archived at 1 day once its verdict is in resolution_verdicts and no settlement cites it",

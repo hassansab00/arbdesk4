@@ -51,6 +51,8 @@ export type CityReport = { city: string; display_name: string; timezone: string;
   model_selection?: ModelSelection | null;
   recent_dates?: DailyScore[];
   early_comparison?: EarlyComparison;
+  early_adaptation?: Array<{phase: string; active: boolean; decision: string; reason: string; version: string;
+    effective_strength: number; train_dates: number; validation_dates: number; readiness: Readiness}>;
   early_learning?: Array<{lead_days: number; as_of: string; computed_at: string; version: string;
     calibration: {applies?: boolean; reason?: string; n_fit?: number; n_validation?: number} | null}>;
   paired_audit?: { calls: number; dates: number; raw_hits: number; baseline_hits: number;

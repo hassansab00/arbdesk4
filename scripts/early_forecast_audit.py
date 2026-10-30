@@ -56,6 +56,12 @@ def score(packet, served, winner):
     """A saved pair must name this policy and reproduce the exact frozen call."""
     from wx_city_calibration import metrics, transform, IDENTITY
     try:
+        import early_city_adaptation as early
+        if packet.get('policy') == early.POLICY:
+            if not early.valid_packet(packet, served) or not winner:
+                return None
+            return dict(raw_centre=metrics(packet['raw_centre_probs'], winner),
+                        corrected=metrics(packet['corrected_probs'],winner), served=metrics(served,winner))
         if (packet['policy'] != POLICY or packet['corrected_probs'] != served
                 or not winner):
             return None
@@ -75,4 +81,4 @@ def summarize(rows):
                 correction_helped=sum(r['early_comparison']['corrected']['hit'] > r['early_comparison']['raw_centre']['hit'] for r in pairs),
                 correction_hurt=sum(r['early_comparison']['corrected']['hit'] < r['early_comparison']['raw_centre']['hit'] for r in pairs),
                 mean_log_loss_gain=sum(r['early_comparison']['raw_centre']['log_loss']-r['early_comparison']['corrected']['log_loss'] for r in pairs)/len(pairs) if pairs else None,
-                interpretation='Forward frozen evening pairs only. Positive log-loss gain favours the correction. No automatic model promotion from this diagnostic.')
+                interpretation='Original forward-frozen early pairs only. Positive log-loss gain favours the baseline correction; served adaptations are scored separately. Unknown legacy recipes cannot approve adaptation.')

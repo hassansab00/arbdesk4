@@ -60,6 +60,9 @@ VERIFIED_EVIDENCE_SCOPE = "verified_outcomes_v1"
 # of 673 city-days - so they are refused here whatever they say about applies.
 CALIBRATION_EVIDENCE_SCOPE = "frozen_day_ahead_v1"
 COLD_START_MAE_C = 4.0
+POSTPROCESS_MAX_AGE_DAYS = 3
+POSTPROCESS_MAX_BIAS_C = 5.0
+POSTPROCESS_RATIO_BOUNDS = (.5, 2.0)
 
 # A PROBABILITY OF EXACTLY ZERO IS A ROUNDING ARTEFACT, NOT A FORECAST.
 #
@@ -884,8 +887,18 @@ def _station_corrected_for(city_key, for_date, lead_days):
                 since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=max_age)).isoformat()
                 for r in rest("derived_corrected_forecast", [
                         ("select", "city_key,for_date,lead_days,combined_c,spread_c,n_sources,version,"
-                                   "width_c,width_version,computed_at"),
+                                   "width_c,width_version,computed_at,inputs_oldest_run_at,inputs_newest_run_at"),
                         ("computed_at", f"gte.{since}")]):
+                    now = dt.datetime.now(dt.timezone.utc)
+                    try:
+                        stamps = [dt.datetime.fromisoformat(str(r[k]).replace('Z','+00:00'))
+                                  for k in ('inputs_oldest_run_at','inputs_newest_run_at','computed_at')]
+                        if (not all(dt.timedelta(0) <= now-t <= dt.timedelta(hours=max_age) for t in stamps)
+                                or stamps[0] > stamps[1] or stamps[1] > stamps[2]
+                                or int(r['n_sources']) < 4 or not math.isfinite(float(r['combined_c']))):
+                            continue
+                    except (KeyError, ValueError, TypeError, OverflowError):
+                        continue
                     r["_min_lead"] = min_lead
                     _station_cache[(r["city_key"], str(r["for_date"]))] = r
                 _blend_station_model(_station_cache)
@@ -999,7 +1012,7 @@ def _postprocess_for(city_key, lead_days):
         try:
             for r in rest("v_forecast_postprocess_applied", [
                     ("select", "city_key,lead_days,bias_c,sigma_ratio,"
-                               "baseline_sigma_c,n_days,n_city_days,crps_gain"),
+                               "baseline_sigma_c,n_days,n_city_days,crps_gain,computed_at"),
             ]):
                 if r.get("lead_days") is None:
                     continue
@@ -1017,9 +1030,14 @@ def _postprocess_for(city_key, lead_days):
     if not row or row.get("baseline_sigma_c") is None:
         return None
     try:
-        if float(row["baseline_sigma_c"]) <= 0 or float(row["sigma_ratio"]) <= 0:
+        age = dt.datetime.now(dt.timezone.utc)-dt.datetime.fromisoformat(str(row['computed_at']).replace('Z','+00:00'))
+        if (not dt.timedelta(0) <= age <= dt.timedelta(days=POSTPROCESS_MAX_AGE_DAYS)
+                or not all(math.isfinite(float(row[k])) for k in ('bias_c','baseline_sigma_c','sigma_ratio'))
+                or abs(float(row['bias_c'])) > POSTPROCESS_MAX_BIAS_C
+                or not POSTPROCESS_RATIO_BOUNDS[0] <= float(row['sigma_ratio']) <= POSTPROCESS_RATIO_BOUNDS[1]
+                or float(row["baseline_sigma_c"]) <= 0):
             return None
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, KeyError):
         return None
     return row
 
@@ -1680,6 +1698,33 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
             if cal["method"] == "temperature"
             else f"calibrated:platt(a={cal['a']:.3f},b={cal['b']:+.3f},n={cal.get('n')})")
 
+    import early_city_adaptation as early
+    if not model_priced and traj_centre is None:
+        recipe = dict(source_model=forecast.get('model'), source=forecast.get('source'),
+                      forecast_lead_days=int(lead_days),
+                      centre='station_mos' if srow and srow.get('mos_c') is not None else
+                             'station' if srow else 'postprocess' if pp else 'measured_bias',
+                      measured_width=bool(width_priced), uncertainty_policy=(uncertainty or {}).get('policy'),
+                      calibration_method=(cal or {}).get('method'))
+        packet, replacement = early.price(__import__(__name__), city_key, for_date, out, bands, unit,
+                                         centre, centre_corrected, sigma, observed_floor_c, q_down, q_up, recipe)
+        if packet:
+            context = _forecast_context[(city_key,str(for_date),computed_at)]
+            context['early_forecast_audit'] = packet
+            if replacement is not None:
+                label = forecast_label + ':' + packet['version']
+                version = model_version_id('forecast', label,
+                    config=dict(forecast_config, early_strength=packet['strength'], early_version=packet['version']), structural=False)
+                if version:
+                    out = replacement
+                    for r in out:
+                        r['forecast_version'] = version
+                    reasons = [f'priced_from:{label}' if r.startswith('priced_from:') else r for r in reasons]
+                    context.update(priced_from=label, centre_c=out[0]['centre_c'])
+                else:
+                    packet.update(strength=early.PRIOR,served_probs=packet['corrected_probs'],
+                                  version=early.POLICY+':prior',fitted_as_of=None)
+                    reasons.append('early_strength_fallback:version_not_registered')
     import predictive_primary
     baseline=(out,reg,reasons)
     return predictive_primary.apply(city_key, for_date, baseline) if use_primary else baseline
@@ -1747,6 +1792,8 @@ def main():
     # post-processing, divergence or the measurement layer - silently. Filled
     # here, serially, the workers only ever read.
     _warm_caches()
+    import early_city_adaptation
+    early_city_adaptation.prepare(markets, cities)
     import predictive_primary
     primary = predictive_primary.prepare(markets, bands_by_market, cities)
     workers = max(1, int(os.environ.get("ENGINE_WORKERS", "8")))

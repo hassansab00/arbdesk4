@@ -9,6 +9,7 @@ prices from it only when the switch says so: at lead <= max_lead_days, and
 only where the centre is the combination the width was fitted around.
 """
 import os
+import datetime as dt
 import sys
 
 import pytest
@@ -110,7 +111,8 @@ def test_the_loader_reads_the_switch_and_an_unreadable_one_is_off(monkeypatch, c
             return [{"value": {"enabled": True, "min_lead_days": 1, "max_age_hours": 36}}]
         if path == "derived_corrected_forecast":
             assert "width_c" in p["select"] and "width_version" in p["select"]
-            return [dict(ROW)]
+            stamp=dt.datetime.now(dt.timezone.utc).isoformat()
+            return [dict(ROW,computed_at=stamp,inputs_oldest_run_at=stamp,inputs_newest_run_at=stamp)]
         return []
     monkeypatch.setattr(pe, "rest", rest)
     width = {"boom": False}
