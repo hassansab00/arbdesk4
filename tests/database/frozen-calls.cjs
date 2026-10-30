@@ -45,6 +45,9 @@ const near = (a, b, why) => assert.ok(Math.abs(Number(a) - b) < 1e-6, `${why}: $
     [B(2)]: { bid: 0.88, ask: 0.92, last: 0.11 },
     [B(3)]: { bid: 0.05, ask: null, last: 0.01 } });
 
+  // Give the old-rule fixture its real historical receipt era, so the linked
+  // correction migration can distinguish it from records banked after the fix.
+  await db.exec("alter table public.fact_checkpoint_outcome alter column banked_at set default '2026-09-25T11:14:00Z'::timestamptz");
   // Banked under the OLD rule first: the stored row calls b1 the favourite.
   await db.query(ins, ['nyc', '2026-09-24', 'noon', probs, B(2), 0.5, deadBook, B(1)]);
   await db.exec(`insert into public.v_venue_market_resolution values
@@ -55,6 +58,7 @@ const near = (a, b, why) => assert.ok(Math.abs(Number(a) - b) < 1e-6, `${why}: $
   assert.equal(old.market_top_band_id, B(1), 'the old rule took the dead bucket');
   assert.equal(old.market_hit, false);
 
+  await db.exec("alter table public.fact_checkpoint_outcome alter column banked_at set default clock_timestamp()");
   await db.exec(MIG('20260926090000_hit_and_miss_scores_frozen_calls.sql'));
 
   // the rule itself
@@ -143,5 +147,19 @@ const near = (a, b, why) => assert.ok(Math.abs(Number(a) - b) < 1e-6, `${why}: $
   assert.equal((await db.query('select count(*)::int n from public.v_checkpoint_scoreboard')).rows[0].n, 2);
   await db.exec('reset role');
   await db.exec(MIG('20261004140000_one_call_per_checkpoint.sql'));   // re-runnable
+  // The display must exactly reuse the linked saved scores, including the
+  // corrected old-rule receipt, without changing calls or model/market scores.
+  await db.exec(MIG('20260930003000_the_market_scores_banked_before_the_fix.sql'));
+  const beforeStored = (await db.query('select * from public.v_checkpoint_calls order by for_date,decided_at')).rows;
+  const beforeFacts = (await db.query('select to_jsonb(f) row from public.fact_checkpoint_outcome f order by checkpoint_id')).rows;
+  const beforeReceipts = (await db.query('select to_jsonb(p) row from public.prediction_checkpoints p order by checkpoint_id')).rows;
+  await db.exec(MIG('20261030094246_reuse_frozen_checkpoint_market_scores.sql'));
+  assert.deepEqual((await db.query('select * from public.v_checkpoint_calls order by for_date,decided_at')).rows,beforeStored);
+  assert.deepEqual((await db.query('select to_jsonb(f) row from public.fact_checkpoint_outcome f order by checkpoint_id')).rows,beforeFacts);
+  assert.deepEqual((await db.query('select to_jsonb(p) row from public.prediction_checkpoints p order by checkpoint_id')).rows,beforeReceipts);
+  await db.exec(MIG('20261030094246_reuse_frozen_checkpoint_market_scores.sql'));
+  await db.exec('set role anon');
+  assert.equal((await db.query('select count(*)::int n from public.v_checkpoint_calls')).rows[0].n,3);
+  await db.exec('reset role');
   console.log('frozen-calls: one-sided books held inside their quote, old and new rows graded alike, scoreboard adds up, one call per checkpoint (a second capture stays and is not scored)');
 })().catch((e) => { console.error(e); process.exit(1); });

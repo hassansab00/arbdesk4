@@ -53,3 +53,15 @@ limits, immediate fallback, raw/calibrated price coherence, floored morning
 ladders and verified offload reads. Run the full Python, database, TypeScript,
 route and production-build checks before publishing. Production acceptance must
 also verify a new ordinary tick and the unchanged historical frozen receipts.
+
+## Historical display refresh
+
+The checkpoint display now reads the immutable banked market scores through
+`v_checkpoint_outcome`, including the linked correction for the original book
+rule. It computes only the favourite's displayed quote from the saved book.
+It no longer expands and regrades every historical bucket on each refresh.
+The migration compares every old and new display column with `EXCEPT ALL` in
+both directions and refuses a difference. View options and grants stay in
+place; calls, labels and banked scores are untouched. This addresses a slow
+historical query that could abort the shared page-cache refresh and leave its
+health sample overdue, without increasing refresh cadence or timeout limits.
