@@ -62,6 +62,8 @@ create table if not exists data_freshness_spec (
 );
 
 insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plain_english) values
+  ('market_rule_receipts','received_at',null,'market','Received initial event rules retained before prospective forecasts; accumulating record.'),
+  ('day_max_day_ahead_calls','frozen_at',null,'paper','Original pre-midnight Day Max ladders, received prospectively; accumulating record.'),
   ('day_max_prediction_entries','created_at',null,'paper','Original frozen Day Max daily allocations; accumulating record, not a scheduled feed.'),
   -- '-' rather than null: the resolver would otherwise pick the first
   -- timestamp column it finds, which on this table is nws_checked_at -

@@ -164,6 +164,8 @@ SQL_RECORD = {
 }
 
 MIGRATION_RECORD = {
+    "supabase/migrations/20261030170828_day_max_original_early_calls.sql":
+        "Clock lookup for a selected prospective city, not city enumeration",
     "supabase/migrations/20261030080013_day_max_prediction_paper.sql":
         "Clock lookup for one already selected frozen call, not city enumeration",
     "supabase/migrations/20261016174633_city_calibration_forward_record.sql":

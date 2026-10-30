@@ -1,0 +1,25 @@
+const {PGlite}=require('@electric-sql/pglite');
+const fs=require('node:fs');const path=require('node:path');const assert=require('node:assert/strict');
+(async()=>{
+ const db=new PGlite();
+ await db.exec(`create role anon;create role authenticated;create role service_role;create schema arbdesk_private;
+ create function arbdesk_private.immutable_record() returns trigger language plpgsql as $$begin raise exception 'immutable';end$$;
+ create table public.markets(market_id uuid primary key,event_slug text,rules_text text,rules_fetched_at timestamptz);
+ insert into public.markets values('00000000-0000-0000-0000-000000000001','weather-city',null,null);`);
+ const file=fs.readFileSync(path.join(__dirname,'../../supabase/migrations/20261030170827_initial_market_rule_receipts.sql'),'utf8');
+ await db.exec(file);await db.exec(file);
+ const id='00000000-0000-0000-0000-000000000001';
+ await assert.rejects(db.query('select public.record_missing_market_rules($1,$2,$3)',[id,'other','rules']),/identity/);
+ await assert.rejects(db.query('select public.record_missing_market_rules($1,$2,$3)',[id,'weather-city',' ']),/absent/);
+ const first=(await db.query('select public.record_missing_market_rules($1,$2,$3) x',[id,'weather-city','initial rules'])).rows[0].x;
+ assert.equal(first.stored,true);
+ const next=(await db.query('select public.record_missing_market_rules($1,$2,$3) x',[id,'weather-city','replacement'])).rows[0].x;
+ assert.equal(next.stored,false);assert.equal(next.rules_text,'initial rules');
+ assert.equal((await db.query('select count(*)::int n from public.market_rule_receipts')).rows[0].n,1);
+ await assert.rejects(db.exec('update public.market_rule_receipts set rules_text=\'changed\''),/immutable/);
+ await assert.rejects(db.exec('delete from public.market_rule_receipts'),/immutable/);
+ await db.exec('set role anon');
+ await assert.rejects(db.exec('select * from public.market_rule_receipts'),/permission denied/);
+ await assert.rejects(db.query('select public.record_missing_market_rules($1,$2,$3)',[id,'weather-city','rules']),/permission denied/);
+ console.log('market-rule receipts: fill-only recovery, original retention, identity, private RPC, immutable receipt and repeat install passed');
+})().catch(e=>{console.error(e);process.exit(1)});

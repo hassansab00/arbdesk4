@@ -239,6 +239,9 @@ def world(monkeypatch):
     monkeypatch.setattr(tick, "get_cities", lambda **kw: [
         {"city_key": "nyc", "timezone": "America/New_York", "unit": "F"}])
     monkeypatch.setattr(pe, "_upcoming_markets", lambda: MARKETS[:1])
+    import market_rules
+    w['rule_recovery']={'requested':0,'stored':0,'errors':[],'deferred':0}
+    monkeypatch.setattr(market_rules,'recover',lambda markets,needed:(markets,dict(w['rule_recovery'])))
     monkeypatch.setattr(pe, "_bands_for_markets", lambda ids: [
         {"band_id": "b1", "market_id": "m1"}, {"band_id": "b2", "market_id": "m1"}])
     monkeypatch.setattr(pe, "_promoted_models", lambda: {})
@@ -855,3 +858,22 @@ def test_primary_receives_actual_remaining_deadline_with_downstream_reserve(worl
     assert len(deadlines)==1
     assert before+budget_s-tick.PRIMARY_DOWNSTREAM_RESERVE_S <= deadlines[0]
     assert deadlines[0] <= after+budget_s-tick.PRIMARY_DOWNSTREAM_RESERVE_S
+
+
+def test_rule_recovery_precedes_authority_capture_and_failures_stay_visible(world,monkeypatch):
+    import market_rules,contract_inputs
+    steps=[]
+    def recover(markets,needed):
+        steps.append('rules')
+        assert ('nyc','2026-09-25') in needed
+        return [dict(m,rules_text='received original rules') for m in markets],dict(world['rule_recovery'])
+    def authority(markets,cities,dry_run=False):
+        steps.append('authority')
+        assert all(m.get('rules_text')=='received original rules' for m in markets)
+        return {}
+    monkeypatch.setattr(market_rules,'recover',recover)
+    monkeypatch.setattr(contract_inputs,'capture',authority)
+    world['rule_recovery']['errors']=[{'city':'nyc','error':'source unavailable'}]
+    tick.run(now=at('2026-09-24T22:35'))
+    assert steps==['rules','authority'] and world['logged'][0][1]=='attention'
+    assert world['written'], 'a recovery failure must not suppress independent valid calls'

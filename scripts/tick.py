@@ -525,7 +525,6 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     unit_of = {c["city_key"]: (c.get("unit") or "C") for c in cities}
     markets = pe._upcoming_markets()
     import contract_inputs
-    authority_inputs = contract_inputs.capture(markets, cities, dry_run=dry_run)
     peak_rows = rest("derived_weather_peak",
                      {"select": "city_key,month,peak_hour_local,n_days,computed_at"})
     peak_of = {(r["city_key"], int(r["month"])): r["peak_hour_local"]
@@ -540,12 +539,18 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     s10 = {"inputs": s10_shadow.fetch_inputs(now, cities, dry_run, budget_s=S10_FETCH_S)}
 
     candidates, notes = due_checkpoints(now, markets, tz_of, peak_of, written=set())
+    import market_rules
+    if dry_run:
+        rule_recovery = {'dry_run':True}
+    else:
+        markets,rule_recovery = market_rules.recover(markets,{(c,t) for c,t,_,_ in candidates})
+    authority_inputs = contract_inputs.capture(markets, cities, dry_run=dry_run)
     held = _written({(c, t, k) for c, t, k, _ in candidates})
     due = [d for d in candidates if (d[0], d[1], d[2]) not in held]
     detail = {"engine_version": version, "due": len(due), "already_written": len(candidates) - len(due),
               "budget_s": round(budget_s, 1),
               "notes": notes[:20], "observations": stations, "s10": s10,
-              "contract_inputs": authority_inputs}
+              "contract_inputs": authority_inputs,"rules_recovery":rule_recovery}
     market_of = {(m["city_key"], str(m["resolution_date"])): m for m in markets}
     days = sorted({(c, t) for c, t, _, _ in due})
 
@@ -583,7 +588,8 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
               f"stations {stations['rows']} rows")
         if not dry_run:
             log_run("tick", "attention" if stations["error"] or current.get("error") or authority_inputs.get('errors')
-                    or authority_inputs.get('error') or authority_inputs.get('deferred') else "ok", 0,
+                    or authority_inputs.get('error') or authority_inputs.get('deferred')
+                    or rule_recovery.get('errors') or rule_recovery.get('deferred') else "ok", 0,
                     dict(detail, seconds=round(time.monotonic() - t0, 1)))
         return detail
 
@@ -768,7 +774,8 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     status = ("ok" if not failed and not deferred and not stations["error"] and not engine_error
               and not current_error and not variant_lost and not s10_unnamed and not engine_lost
               and not authority_inputs.get('errors') and not authority_inputs.get('error')
-              and not authority_inputs.get('deferred') else "attention")
+              and not authority_inputs.get('deferred') and not rule_recovery.get('errors')
+              and not rule_recovery.get('deferred') else "attention")
     print(f"tick {now:%Y-%m-%d %H:%MZ}: {len(due)} due, {len(out)} rows, "
           f"{len(reprice)} re-priced, {len(ladders)} current ladders, "
           f"{len(deferred)} deferred, {len(failed)} failed, {detail['seconds']} s")

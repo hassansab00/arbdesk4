@@ -8,6 +8,7 @@ import datetime as dt
 import math
 import time
 from collections import Counter
+from zoneinfo import ZoneInfo
 
 from common import rest, rest_all, rpc, log_run, request_deadline, get_cities
 from paper_execution import instant
@@ -21,7 +22,7 @@ POLICY = 'day-max-frozen-fixed-stake-v1'
 STAKE = 10
 MAX_AGE_MIN = 90
 MAX_SECONDS = 45
-CHECKPOINTS = ('d1_eve', 'morning', 'noon', 'prepeak_2h', 'prepeak_1h')
+CHECKPOINTS = ('day_ahead', 'd1_eve', 'morning', 'noon', 'prepeak_2h', 'prepeak_1h')
 
 
 def choices(config):
@@ -49,7 +50,7 @@ def original_calls(rows, config, cities, now):
             continue
         try:
             frozen = instant(p['frozen_at'])
-            if not p.get('inputs_ok') or not instant(config['activated_at']) <= frozen <= now:
+            if not p.get('inputs_ok') or not instant(config.get('selection_changed_at') or config['activated_at']) <= frozen <= now:
                 raise ValueError('unavailable_or_before_activation')
             if now-frozen > dt.timedelta(minutes=MAX_AGE_MIN):
                 raise ValueError('stale_frozen_call')
@@ -60,6 +61,15 @@ def original_calls(rows, config, cities, now):
             scheduled = instant(timing['scheduled_local'])
             if not scheduled <= instant(p['decided_at']) <= frozen <= scheduled+dt.timedelta(minutes=75):
                 raise ValueError('late_checkpoint_capture')
+            if p['checkpoint']=='day_ahead':
+                ctx=p.get('predictive_context') or {}
+                source=instant(ctx['source_computed_at'])
+                boundary=instant(ctx['cutoff_at'])
+                run=instant(p.get('input_as_of') or p['forecast_issued_at'])
+                if (ctx.get('source_kind')!='day_max_day_ahead_calls' or boundary!=scheduled
+                    or not boundary-dt.timedelta(hours=8)<=source<boundary
+                    or run>source or p.get('running_max_c') is not None):
+                    raise ValueError('invalid_original_day_ahead_source')
             probs = p.get('probs') or {}
             values = [float(x) for x in probs.values()]
             if not values or not all(math.isfinite(x) and 0 <= x <= 1 for x in values):
@@ -104,7 +114,21 @@ def run(dry_run=False):
             now = dt.datetime.now(dt.timezone.utc)
             city_rows = [c for c in get_cities(require_coords=False) if c['city_key'] in selected]
             cities = {c['city_key']:c for c in city_rows}
-            rows = rest_all('prediction_checkpoints', {'select':'*',
+            detail['day_ahead_capture'] = []
+            if not dry_run:
+                for city,choice in selected.items():
+                    if choice['checkpoint']!='day_ahead':
+                        continue
+                    local=now.astimezone(ZoneInfo(cities[city]['timezone']))
+                    if local.hour*60+local.minute>75:
+                        continue
+                    try:
+                        receipt=rpc('capture_day_max_day_ahead',{'p_city':city,'p_target':local.date().isoformat()})
+                        detail['day_ahead_capture'].append(dict(city=city,**receipt))
+                    except Exception as exc:
+                        detail['day_ahead_capture'].append(dict(city=city,error=str(exc)[:200]))
+            rows = rest_all('v_day_max_original_calls', {'select':'*',
+                'checkpoint':'in.('+','.join(sorted({c['checkpoint'] for c in selected.values()}))+')',
                 'target_date':'gte.'+(now.date()-dt.timedelta(days=1)).isoformat(),
                 'city_key':'in.('+','.join(selected)+')'}, order='checkpoint_id')
             candidates, detail['skipped'] = original_calls(rows, config, cities, now)
@@ -143,7 +167,8 @@ def run(dry_run=False):
     detail['seconds'] = round(time.monotonic()-started,2)
     detail['dry_run'] = dry_run
     if not dry_run:
-        log_run(JOB, 'ok', detail['allocated'], detail)
+        attention=any(r.get('error') for r in detail.get('day_ahead_capture',[])) or detail.get('waiting')=='bounded_run_deferred_remaining_candidates'
+        log_run(JOB, 'attention' if attention else 'ok', detail['allocated'], detail)
     return detail
 
 

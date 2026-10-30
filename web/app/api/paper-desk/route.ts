@@ -135,15 +135,17 @@ export async function GET(request:Request) {
       const records=entries.data??[];
       const planIds=records.map(e=>e.plan_id).filter(Boolean);
       const bandIds=records.map(e=>e.snapshot.top_band_id).filter(Boolean);
-      const [names,plans,orders,bands]=await Promise.all([
+      const [names,plans,orders,bands,calls]=await Promise.all([
         cityKeys.length?client.from('cities').select('city_key,display_name,timezone').in('city_key',cityKeys):Promise.resolve({data:[],error:null}),
         planIds.length?client.from('paper_trade_plans').select('plan_id,status,reason').in('plan_id',planIds):Promise.resolve({data:[],error:null}),
         planIds.length?client.from('paper_orders').select('plan_id,status,reason,result').in('plan_id',planIds).eq('action','BUY'):Promise.resolve({data:[],error:null}),
         bandIds.length?client.from('bands').select('band_id,band_label').in('band_id',bandIds):Promise.resolve({data:[],error:null}),
+        cityKeys.length?client.from('v_day_max_original_calls').select('city_key,target_date,checkpoint,frozen_at,inputs_ok,block_reason').in('city_key',cityKeys).in('checkpoint',['day_ahead','d1_eve']).gte('target_date',new Date().toISOString().slice(0,10)).lte('target_date',new Date(Date.now()+2*86400000).toISOString().slice(0,10)).limit(200):Promise.resolve({data:[],error:null}),
       ]);
-      for(const r of [names,plans,orders,bands]) if(r.error) throw new Error(r.error.message);
+      for(const r of [names,plans,orders,bands,calls]) if(r.error) throw new Error(r.error.message);
+      if(calls.data?.length===200) throw new Error('Day Max frozen call display exceeded its bound');
       return NextResponse.json({data:{enabled:strategy.data?.enabled??false,activated_at:cfg.activated_at??null,
-        cities:choices,names:Object.fromEntries((names.data??[]).map(c=>[c.city_key,c])),account:ledger.data,
+        selection_changed_at:cfg.selection_changed_at??null,calls:calls.data??[],cities:choices,names:Object.fromEntries((names.data??[]).map(c=>[c.city_key,c])),account:ledger.data,
         last_run:run.data?.[0]??null,entries:records.map(e=>{
           const plan=plans.data?.find(p=>p.plan_id===e.plan_id),order=orders.data?.find(o=>o.plan_id===e.plan_id);
           const s=e.snapshot;

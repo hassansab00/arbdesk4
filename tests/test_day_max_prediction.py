@@ -47,3 +47,18 @@ def test_source_packet_keeps_forecast_time_and_probability():
     assert packet['decision_evidence']['forecast']['run_at']==p['forecast_issued_at']
     p['forecast_issued_at']='2026-10-30T13:00:00Z'
     with pytest.raises(ValueError,match='timestamp'): signal_for(p,b,m,NOW)
+
+
+def test_day_ahead_uses_original_pre_midnight_input_not_current_forecast():
+    config,p,cities=fixture();config['cities'][0]['checkpoint']='day_ahead'
+    p.update(checkpoint='day_ahead',local_decision_time='2026-10-30T00:00:00',
+        decided_at='2026-10-30T00:37:00Z',frozen_at='2026-10-30T00:37:00Z',
+        forecast_issued_at='2026-10-29T18:00:00Z')
+    p['predictive_context'].update(source_kind='day_max_day_ahead_calls',source_computed_at='2026-10-29T23:00:00Z',cutoff_at='2026-10-30T00:00:00Z')
+    now=dt.datetime(2026,10,30,0,40,tzinfo=dt.timezone.utc)
+    assert original_calls([p],config,cities,now)[0]==[p]
+    for change in [dict(source_computed_at='2026-10-30T00:01:00Z'),dict(cutoff_at='2026-10-29T00:00:00Z'),dict(source_kind='rebuild')]:
+        bad=copy.deepcopy(p);bad['predictive_context'].update(change)
+        assert not original_calls([bad],config,cities,now)[0]
+    config['selection_changed_at']='2026-10-30T00:38:00Z'
+    assert not original_calls([p],config,cities,now)[0]

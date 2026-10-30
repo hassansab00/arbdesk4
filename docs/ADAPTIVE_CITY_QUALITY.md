@@ -65,3 +65,28 @@ both directions and refuses a difference. View options and grants stay in
 place; calls, labels and banked scores are untouched. This addresses a slow
 historical query that could abort the shared page-cache refresh and leave its
 health sample overdue, without increasing refresh cadence or timeout limits.
+
+## Prospective rules recovery and early paper entries
+
+Missing future-event rules are recovered only for due city/dates, with bounded
+parallel public reads and a private fill-only RPC. The raw initial rules receive
+an immutable server receipt and go through the existing repository mirror.
+Known text is retained. Unknown or conflicting station contracts do not become
+eligible merely because recovery was attempted. The original call keeps the
+rules fingerprint and receipt/observation time; old forecasts stay unchanged.
+
+Day Max supports one configured early timing per city: evening-before at 18:00
+local or the last complete original pricing ladder before local midnight. The
+latter is copied once by the server in the first 75 minutes of the target day,
+using only pre-midnight forecast inputs, with no target-day observation floor.
+Partial or mixed ladders, prices older than eight hours and captures after the
+saved expected peak are refused. This separate retained receipt never inserts
+synthetic calls into the global checkpoint history. Execution uses current books
+and the existing shadow-ledger risk rails. Existing allocations remain unique
+per city/target date even if the configured timing changes. No schedule is added.
+
+Timing choices compare both early horizons on matching settled dates. Legacy
+day-ahead scores lack server freeze receipts and remain diagnostic evidence,
+not validated learning or profitability evidence. Configuration stays fixed
+for prospective paper measurement. The UI lists each selected city's waiting,
+blocked, missed-window or execution status for the chosen settlement date.

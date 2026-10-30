@@ -133,6 +133,15 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Tick (hourly checkpoints)"
     }
   ],
+  "day_max_day_ahead_calls": [
+    {
+      "cadence": "hourly",
+      "file": "tick.yml",
+      "how": "scripts/day_max_prediction.py",
+      "kind": "action",
+      "name": "Tick (hourly checkpoints)"
+    }
+  ],
   "day_max_prediction_entries": [
     {
       "cadence": "hourly",
@@ -1503,6 +1512,16 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_day_ahead_frozen_validation": [
     "derived_city_prediction_validation",
     "derived_wx_city_calibration",
+    "live_capture"
+  ],
+  "v_day_max_original_calls": [
+    "bands",
+    "cities",
+    "day_max_day_ahead_calls",
+    "day_max_prediction_entries",
+    "markets",
+    "paper_accounts",
+    "prediction_checkpoints",
     "live_capture"
   ],
   "v_decision_prediction": [

@@ -92,6 +92,7 @@ def snapshot(*pk, where=None):
 
 
 TABLES = {
+    "market_rule_receipts": append("received_at", "receipt_id"),
     # --- what the engine decided --------------------------------------------
     "band_probabilities":            append("computed_at", "prob_id"),
     "prediction_checkpoints":        append("decided_at", "checkpoint_id"),
@@ -221,6 +222,7 @@ TABLES = {
     "deployments":                   snapshot("deployment_id"),
     # --- the paper desk and the backtests -----------------------------------
     "paper_accounts":                snapshot("account_id"),
+    "day_max_day_ahead_calls":        append("frozen_at", "call_id"),
     "day_max_prediction_entries":    append("created_at", "city_key", "target_date"),
     "strategy_state":                snapshot("strategy_id"),              # plan v2 P5.2
     "paper_trade_plans":             snapshot("plan_id"),

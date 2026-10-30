@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 305 of them - and for each MISSING one names the
+-- and function the app reads - 308 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -38,6 +38,7 @@ with expected(rel, owner, used_by) as (values
     ('cost_params', 'ad4_phase2.sql', ''),
     ('current_ladders', 'ad4_current_ladder.sql', ''),
     ('data_freshness_spec', 'ad4_39_freshness.sql', ''),
+    ('day_max_day_ahead_calls', 'supabase/migrations/20261030170828_day_max_original_early_calls.sql', ''),
     ('day_max_prediction_entries', 'supabase/migrations/20261030080013_day_max_prediction_paper.sql', ''),
     ('decisions', 'supabase/migrations/20260925090000_decision_log.sql', ''),
     ('deployments', 'ad4_00_preflight.sql', ''),
@@ -96,6 +97,7 @@ with expected(rel, owner, used_by) as (values
     ('live_capture', 'ad4_prune_live_capture.sql', ''),
     ('live_weather', 'ad4_live_weather.sql', '(CityCards), (GlobalBar), (RightRail), /board, /live, /opportunities'),
     ('market_confirmation_attempts', 'supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql', ''),
+    ('market_rule_receipts', 'supabase/migrations/20261030170827_initial_market_rule_receipts.sql', ''),
     ('markets', 'ad4_00_preflight.sql', '(Header), (SettlementStatus), /predictive'),
     ('model_registry', 'supabase/migrations/20261004190000_one_prediction_contract.sql', ''),
     ('model_versions', 'ad4_00_preflight.sql', ''),
@@ -198,6 +200,7 @@ with expected(rel, owner, used_by) as (values
     ('v_data_health', 'ad4_39_freshness.sql', ''),
     ('v_databank_coverage', 'ad4_18_databank.sql', '(DataBank)'),
     ('v_day_ahead_frozen_validation', 'supabase/migrations/20261017170738_frozen_city_learning.sql', ''),
+    ('v_day_max_original_calls', 'supabase/migrations/20261030170828_day_max_original_early_calls.sql', ''),
     ('v_decision_prediction', 'supabase/migrations/20261004210000_decisions_name_their_call.sql', ''),
     ('v_desk_equity_curve', 'ad4_84_risk_budget.sql', ''),
     ('v_desk_risk_state', 'ad4_84_risk_budget.sql', ''),
@@ -365,6 +368,7 @@ begin
     ('cost_params', 'ad4_phase2.sql', ''),
     ('current_ladders', 'ad4_current_ladder.sql', ''),
     ('data_freshness_spec', 'ad4_39_freshness.sql', ''),
+    ('day_max_day_ahead_calls', 'supabase/migrations/20261030170828_day_max_original_early_calls.sql', ''),
     ('day_max_prediction_entries', 'supabase/migrations/20261030080013_day_max_prediction_paper.sql', ''),
     ('decisions', 'supabase/migrations/20260925090000_decision_log.sql', ''),
     ('deployments', 'ad4_00_preflight.sql', ''),
@@ -423,6 +427,7 @@ begin
     ('live_capture', 'ad4_prune_live_capture.sql', ''),
     ('live_weather', 'ad4_live_weather.sql', '(CityCards), (GlobalBar), (RightRail), /board, /live, /opportunities'),
     ('market_confirmation_attempts', 'supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql', ''),
+    ('market_rule_receipts', 'supabase/migrations/20261030170827_initial_market_rule_receipts.sql', ''),
     ('markets', 'ad4_00_preflight.sql', '(Header), (SettlementStatus), /predictive'),
     ('model_registry', 'supabase/migrations/20261004190000_one_prediction_contract.sql', ''),
     ('model_versions', 'ad4_00_preflight.sql', ''),
@@ -525,6 +530,7 @@ begin
     ('v_data_health', 'ad4_39_freshness.sql', ''),
     ('v_databank_coverage', 'ad4_18_databank.sql', '(DataBank)'),
     ('v_day_ahead_frozen_validation', 'supabase/migrations/20261017170738_frozen_city_learning.sql', ''),
+    ('v_day_max_original_calls', 'supabase/migrations/20261030170828_day_max_original_early_calls.sql', ''),
     ('v_decision_prediction', 'supabase/migrations/20261004210000_decisions_name_their_call.sql', ''),
     ('v_desk_equity_curve', 'ad4_84_risk_budget.sql', ''),
     ('v_desk_risk_state', 'ad4_84_risk_budget.sql', ''),
