@@ -6,6 +6,7 @@ import re
 import pytest
 
 WEB_LOOKUP_ONLY = {
+    "web/app/api/paper-desk/route.ts",  # names/timezones of saved Day Max selections, including historical entries
     
     "web/components/RightRail.tsx",
 }
@@ -163,6 +164,8 @@ SQL_RECORD = {
 }
 
 MIGRATION_RECORD = {
+    "supabase/migrations/20261030080013_day_max_prediction_paper.sql":
+        "Clock lookup for one already selected frozen call, not city enumeration",
     "supabase/migrations/20261016174633_city_calibration_forward_record.sql":
         "Historical or diagnostic city lookup",
 

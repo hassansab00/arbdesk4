@@ -1,0 +1,49 @@
+import copy
+import datetime as dt
+import pytest
+from day_max_prediction import choices, original_calls, signal_for, POLICY
+
+NOW=dt.datetime(2026,10,30,12,40,tzinfo=dt.timezone.utc)
+
+def fixture():
+    config=dict(policy=POLICY,activated_at='2026-10-29T00:00:00Z',cities=[dict(city_key='city',checkpoint='noon',stake_usd=10)])
+    p=dict(checkpoint_id='original',city_key='city',target_date='2026-10-30',checkpoint='noon',
+        local_decision_time='2026-10-30T12:00:00',decided_at='2026-10-30T12:35:00Z',frozen_at='2026-10-30T12:35:00Z',
+        inputs_ok=True,probs={'a':.7,'b':.3},top_band_id='a',predictive_context={'clim_peak_hour':14},
+        forecast_issued_at='2026-10-30T06:00:00Z')
+    return config,p,{'city':{'timezone':'UTC'}}
+
+def test_first_original_call_survives_later_perfect_replacement():
+    config,p,cities=fixture()
+    newer={**p,'checkpoint_id':'replacement','decided_at':'2026-10-30T12:36:00Z','probs':{'a':0,'b':1},'top_band_id':'b'}
+    rows,skips=original_calls([newer,p],config,cities,NOW)
+    assert rows==[p] and not skips
+
+@pytest.mark.parametrize('change',[
+    {'frozen_at':None},{'frozen_at':'2026-10-30T13:00:00Z'},{'inputs_ok':False},
+    {'predictive_context':{}},{'predictive_context':{'clim_peak_hour':12.5}},
+    {'probs':{'a':float('nan')}},{'probs':{'a':.1,'b':.9}},
+    {'decided_at':'2026-10-30T11:59:00Z'},
+])
+def test_bad_late_or_missing_original_is_not_a_trade(change):
+    config,p,cities=fixture();p.update(change)
+    rows,skips=original_calls([p],config,cities,NOW)
+    assert rows==[] and skips
+
+def test_before_activation_no_backfill_and_scope_is_fixed():
+    config,p,cities=fixture();config['activated_at']=NOW.isoformat()
+    assert not original_calls([p],config,cities,NOW)[0]
+    config,p,cities=fixture();p['checkpoint']='morning'
+    assert not original_calls([p],config,cities,NOW)[0]
+    config['cities'].append(copy.deepcopy(config['cities'][0]))
+    with pytest.raises(ValueError): choices(config)
+
+def test_source_packet_keeps_forecast_time_and_probability():
+    _,p,_=fixture()
+    b=dict(band_id='a',market_id='m')
+    m=dict(market_id='m',city_key='city',resolution_date=p['target_date'],unit='C',closed=False)
+    packet=signal_for(p,b,m,NOW)['payload']['decision_inputs']['a']
+    assert packet['model_prob_yes']==.7
+    assert packet['decision_evidence']['forecast']['run_at']==p['forecast_issued_at']
+    p['forecast_issued_at']='2026-10-30T13:00:00Z'
+    with pytest.raises(ValueError,match='timestamp'): signal_for(p,b,m,NOW)

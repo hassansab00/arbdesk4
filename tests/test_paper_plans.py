@@ -25,6 +25,16 @@ def test_basket_reserves_fees_with_equal_shares_and_keeps_original_decision():
     assert evidence['signal']==signal and len(evidence['quotes'])==2
     assert Decimal(evidence['net_edge_per_share'])==Decimal('.279')
 
+def test_explicit_fixed_stake_uses_budget_without_kelly_size():
+    account,signal,capture=fixture()
+    signal.pop('suggested_shares')
+    account['policy']['max_plan_usd']=100
+    legs,evidence=prepare(account,signal,capture,now=NOW,fixed_stake_usd=10)
+    assert Decimal('9.95') <= sum(Decimal(x['cash_ceiling']) for x in legs) <= 10
+    assert evidence['fixed_stake_usd']=='10'
+    with pytest.raises(ValueError,match='positive'):
+        prepare(account,signal,capture,now=NOW,fixed_stake_usd=-1)
+
 def test_two_separate_leg_signals_share_one_account_command():
     account,signal,_=fixture()
     second=copy.deepcopy(signal);second.update(signal_id=2,band_id='b')

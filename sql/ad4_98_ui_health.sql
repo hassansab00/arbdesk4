@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 304 of them - and for each MISSING one names the
+-- and function the app reads - 305 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -38,6 +38,7 @@ with expected(rel, owner, used_by) as (values
     ('cost_params', 'ad4_phase2.sql', ''),
     ('current_ladders', 'ad4_current_ladder.sql', ''),
     ('data_freshness_spec', 'ad4_39_freshness.sql', ''),
+    ('day_max_prediction_entries', 'supabase/migrations/20261030080013_day_max_prediction_paper.sql', ''),
     ('decisions', 'supabase/migrations/20260925090000_decision_log.sql', ''),
     ('deployments', 'ad4_00_preflight.sql', ''),
     ('derived_band_day_volume', 'ad4_00_preflight.sql', ''),
@@ -364,6 +365,7 @@ begin
     ('cost_params', 'ad4_phase2.sql', ''),
     ('current_ladders', 'ad4_current_ladder.sql', ''),
     ('data_freshness_spec', 'ad4_39_freshness.sql', ''),
+    ('day_max_prediction_entries', 'supabase/migrations/20261030080013_day_max_prediction_paper.sql', ''),
     ('decisions', 'supabase/migrations/20260925090000_decision_log.sql', ''),
     ('deployments', 'ad4_00_preflight.sql', ''),
     ('derived_band_day_volume', 'ad4_00_preflight.sql', ''),

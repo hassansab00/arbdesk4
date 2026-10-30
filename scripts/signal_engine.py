@@ -80,7 +80,7 @@ def _enabled_strategies():
     rows = rest("strategies", [("select", "*"), ("enabled", "eq.true")])
     out = []
     for r in rows:
-        if r["strategy_id"] in engine_shadow.STRATEGIES:
+        if r["strategy_id"] in engine_shadow.STRATEGIES or r["strategy_id"] == 's14_day_max_prediction':
             continue
         extra = r.get("params") or r.get("extra") or {}
         out.append(StrategyConfig(

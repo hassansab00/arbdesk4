@@ -2757,6 +2757,7 @@ const assert = require('node:assert/strict');
   assert.equal(off.state,'research','a re-run never switches back on a twin someone switched off');
   assert.equal(off.enabled,false);
 
+  await require('./day-max-contracts.cjs')(db);
   await db.close();
   console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, a shadow ledger per strategy and a suspended portfolio account, strategy lifecycle states, the fixed risk rails and the kill switch, the portfolio activated by evidence and its allocation, the decision log and its verified prune, research capture of prices only, no PUBLIC execute on SECURITY DEFINER functions and the settings the browser may not read');
 })().catch(e=>{console.error(e);process.exit(1);});

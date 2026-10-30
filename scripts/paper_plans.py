@@ -245,7 +245,7 @@ def allocation_room(account, signal, *, rest_fn=None):
     return room, capital / sized_on, record
 
 
-def prepare(account, signal, capture, *, now=None, rail_room=None, allocation=None):
+def prepare(account, signal, capture, *, now=None, rail_room=None, allocation=None, fixed_stake_usd=None):
     fixed_now = now
     now = now or dt.datetime.now(dt.timezone.utc)
     policy, payload = account['policy'], signal.get('payload') or {}
@@ -294,6 +294,11 @@ def prepare(account, signal, capture, *, now=None, rail_room=None, allocation=No
         raise ValueError('Fresh fee-inclusive basket edge is below policy')
     # Reserve rounded per-leg fees plus a cent of rounding headroom per leg.
     budget = min(number(policy['max_plan_usd']),number(account['cash'])-number(account['reserved_cash']))
+    if fixed_stake_usd is not None:
+        stake = number(fixed_stake_usd)
+        if stake <= 0:
+            raise ValueError('Fixed paper stake must be positive')
+        budget = min(budget, stake)
     # INSIDE THE RAILS, NOT REFUSED BY THEM (plan v2 P5.9). queue_plan refuses
     # a plan that would put more than 3% of the account on one city-day, or
     # buy above 0.97, or run while halted; sizing the plan to fit here means
@@ -322,9 +327,9 @@ def prepare(account, signal, capture, *, now=None, rail_room=None, allocation=No
     # smallest of the three is the order. A signal without a size is refused:
     # every ENTER signal written in the 7 days to 24 Sep carried one (2,610 of
     # 2,610), so a missing size is a fault to surface, not a default to fill.
-    if signal.get('suggested_shares') is None:
+    if fixed_stake_usd is None and signal.get('suggested_shares') is None:
         raise ValueError('The engine gave this signal no size (suggested_shares missing)')
-    target = number(signal['suggested_shares'])
+    target = affordable_q if fixed_stake_usd is not None else number(signal['suggested_shares'])
     if allocated is not None:
         target = target * scale
     target = target.quantize(Decimal('.01'),rounding=ROUND_DOWN)
@@ -466,6 +471,7 @@ def prepare(account, signal, capture, *, now=None, rail_room=None, allocation=No
     return legs, {'signal':signal,'quotes':quotes,'net_edge_per_share':str(net_edge),'expected_payout_per_basket':str(expected),
         'quoted_cost_per_basket':str(unit_cost),'prepared_at':now.isoformat(),
         'engine_shares':str(target),'budget_shares':str(affordable_q),
+        **({'fixed_stake_usd':str(stake)} if fixed_stake_usd is not None else {}),
         **({'allocation':allocated} if allocated is not None else {}),
         'execution_assumption':'Independent IOC legs; no guaranteed basket completion',
         'engine_version':os.environ.get('GITHUB_SHA') or os.environ.get('ARBDESK_ENGINE_VERSION','unversioned')}
