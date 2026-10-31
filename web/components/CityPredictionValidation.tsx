@@ -9,11 +9,14 @@ import { HORIZONS, CityReport, rankCities, recentCityScores, evidenceWords, timi
 type Row = { city_key: string; checkpoint: string; scope: string; as_of: string; report: CityReport };
 const pct = (n: number | null | undefined) => n == null ? '—' : `${(100*n).toFixed(1)}%`;
 const num = (n: number | null | undefined) => n == null ? '—' : n.toFixed(3);
-export default function CityPredictionValidation({ cities, moment }: { cities: string[]; moment: string }) {
-  const [horizon,setHorizon] = useState('day_ahead');
+export default function CityPredictionValidation({ cities, moment, setMoment }: {
+  cities: string[]; moment: string; setMoment: (moment: string) => void;
+}) {
+  const [overall,setOverall] = useState(false);
+  const horizon = overall ? 'overall' : moment;
   const [scope,setScope] = useState('served');
   const [strict,setStrict] = useState(false);
-  useEffect(()=>{ if(HORIZONS.some(([k])=>k===moment)) setHorizon(moment); },[moment]);
+  useEffect(()=>{ setOverall(false); },[moment]);
   const q = useQuery<Row[]>(()=>supabase.from('v_city_prediction_validation').select('*')
     .eq('checkpoint',horizon).eq('scope',scope).in('city_key',cities).limit(500),[horizon,scope,cities.join(',')],60000,500);
   const ranked = rankCities((q.data ?? []).map(r=>timingView(r.report,strict)));
@@ -25,7 +28,11 @@ export default function CityPredictionValidation({ cities, moment }: { cities: s
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="text-sm font-semibold">City accuracy · original frozen calls</h2>
       <div className="flex flex-wrap gap-2 text-xs">
-        <select aria-label="Accuracy horizon" className="rounded border border-border bg-panel p-1" value={horizon} onChange={e=>setHorizon(e.target.value)}>
+        <select aria-label="Accuracy horizon" className="rounded border border-border bg-panel p-1" value={horizon} onChange={e=>{
+          const next=e.target.value;
+          setOverall(next==='overall');
+          if(next!=='overall') setMoment(next);
+        }}>
           {HORIZONS.map(([k,v])=><option key={k} value={k}>{v}</option>)}
         </select>
         <select aria-label="Accuracy predictor" className="rounded border border-border bg-panel p-1" value={scope} onChange={e=>setScope(e.target.value)}>
@@ -37,6 +44,11 @@ export default function CityPredictionValidation({ cities, moment }: { cities: s
         </select>
       </div>
     </div>
+    <p className="text-xs text-muted">
+      {overall
+        ? <>Overall combines checkpoints. The cards and Was it right? remain on {HORIZONS.find(([key])=>key===moment)?.[1] ?? moment}.</>
+        : <>This checkpoint selection is shared with the city cards and Was it right?. Compare the original frozen pick; the live forecast can update between captures.</>}
+    </p>
     <p className="max-w-5xl text-xs leading-relaxed text-muted">
       Predict → freeze → settle → score → learn → validate. Only the first call counts, after its local day ends and the venue confirms the winner.
       Rank is observed winning-bucket accuracy, with uncertainty and sample counts. It does not measure trading returns.
