@@ -1,0 +1,8 @@
+{
+ "available_at": "2026-10-31T08:36:00.507628+00:00",
+ "metadata": "data/models/wxrd/candidates/wxrd-auto-20261031-695ab16e3825.json",
+ "metadata_sha256": "f3ab8880882826f9bb71542b27ec821702959bca9023858004a3f988e60138eb",
+ "model_sha256": "695ab16e382567352333852a0bdebf70d7233954c3465913964ddcb333c644f0",
+ "schema": 1,
+ "variant": "wxrd_auto"
+}
