@@ -232,6 +232,11 @@ def test_the_five_seed_variant_names_its_version_and_its_models(tmp_path):
 
 
 def test_each_variant_runs_on_its_own_and_a_missing_model_is_skipped(monkeypatch, tmp_path):
+    # This fixture supplies the frozen variants explicitly. Generated
+    # challenger manifests must not add an unrelated variant to that fixture.
+    from wxpredict import cycle_registry, current_registry
+    monkeypatch.setattr(cycle_registry, "selected", lambda: None)
+    monkeypatch.setattr(current_registry, "selected", lambda: None)
     ran = []
     monkeypatch.setattr(wl, "VARIANTS", {"wxrd": (wl.MODEL_JSON, "P7.6_wxrd_shadow"),
                                          "wxrd3": (str(tmp_path / "absent.json"), "P7.6_wxrd3_shadow")})
