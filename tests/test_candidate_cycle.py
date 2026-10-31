@@ -133,6 +133,7 @@ def test_the_real_fit_and_arrival_inference_pipeline_runs_without_promoting_ties
     eval_rows = [row(r["date"], r["city"], r["checkpoint"]) for r in scores() if r['checkpoint'] in cycle.REMAINING_CHECKPOINTS]
     def build_evaluation(*args,**kwargs):
         assert kwargs=={'checkpoints':cycle.REMAINING_CHECKPOINTS}
+        assert not fitted, 'Contract/label checks must precede expensive model fitting'
         return eval_rows, {'first_calls':len(eval_rows)}
     monkeypatch.setattr(arrival_dataset, "build", build_evaluation)
     monkeypatch.setattr(cycle, "MIN_TRAIN_ROWS", 20)

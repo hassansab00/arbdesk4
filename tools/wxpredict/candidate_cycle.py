@@ -167,15 +167,15 @@ def fit_and_evaluate(p, model_path, meta, work):
     del df
     if len(train) < MIN_TRAIN_ROWS or train.date.max() >= p["evaluation_first"] or meta["fit_last"] >= p["evaluation_first"]:
         raise ValueError("insufficient training data or training/evaluation overlap")
-    x = remaining.features(train, wf.features(train))
-    models = [remaining.fit(x, remaining.target(train), seed, ROUNDS) for seed in SEEDS]
-    training_rows = len(train)
-    del train, x
     through = dt.datetime.fromisoformat(p["night"]).replace(tzinfo=common.UTC).timestamp()
     rows, coverage = arrival_dataset.build(p["evaluation_first"], p["evaluation_last"], table, through,
                                          checkpoints=REMAINING_CHECKPOINTS)
     if not rows:
         return {**p, "decision": "reject", "reasons": ["no complete recorded first-call evaluation rows"], "coverage": coverage}, None, None
+    x = remaining.features(train, wf.features(train))
+    models = [remaining.fit(x, remaining.target(train), seed, ROUNDS) for seed in SEEDS]
+    training_rows = len(train)
+    del train, x
     # The live predictor uses this exact write/read conversion before calling
     # LightGBM. It fixes numeric dtypes and preserves the same rounding.
     evaluation_path = os.path.join(work, "actual_arrival_evaluation.csv.gz")
