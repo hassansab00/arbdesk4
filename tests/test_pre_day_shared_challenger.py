@@ -91,18 +91,25 @@ def test_pending_labels_are_never_scored_or_used_as_training_misses():
     assert pp.attach(p,f,'UTC',now)==(None,'winner_outside_frozen_ladder')
 
 
-def test_new_strength_packets_keep_their_actual_served_ladder():
+@pytest.mark.parametrize('strength', [1.0, .5, 0.0])
+def test_new_strength_packets_keep_their_actual_served_ladder(strength):
     import early_city_adaptation as early
     p,f,now=fixture();packet=p['predictive_context']['early_forecast_audit']
     raw,corrected=packet['raw_centre_probs'],packet['corrected_probs']
     candidates={str(b):{k:(1-b)*raw[k]+b*corrected[k] for k in raw} for b in early.GRID}
     packet.update(policy=early.POLICY,contract='legacy',station='TEST',recipe='synthetic',checkpoint='d1_eve',
-                  timezone='UTC',strength=.5,candidates=candidates,served_probs=candidates['0.5'],
+                  timezone='UTC',strength=strength,candidates=candidates,served_probs=candidates[str(strength)],
+                  raw_centre_c=20.012345,corrected_centre_c=21.123456,sigma_c=1.234567,
                   fitted_as_of='2026-07-31')
     packet['model_version']=early.family(packet['contract'],packet['station'],packet['unit'],packet['recipe'])
-    p.update(probs=candidates['0.5'],centre_c=20.5)
+    p.update(probs=candidates[str(strength)],
+             centre_c=round(20.012345+strength*(21.123456-20.012345),4),sigma_c=1.2346,
+             top_band_id='a' if strength==0 else 'b')
     r,reason=pp.attach(p,f,'UTC',now)
-    assert reason is None and r['incumbent']==candidates['0.5']
+    assert reason is None and r['incumbent']==candidates[str(strength)]
+    for field in ('centre_c','sigma_c'):
+        bad=copy.deepcopy(p);bad[field]+=.0001
+        with pytest.raises(ValueError,match='temperature context'):pp.attach(bad,f,'UTC',now)
     packet['rules_received_at']='2026-08-01T00:00:00Z'
     assert pp.attach(p,f,'UTC',now)==(None,'rules_after_freeze')
     p,f,now=fixture();p['predictive_context']['early_forecast_audit']={'policy':'unknown'}

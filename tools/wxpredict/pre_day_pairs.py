@@ -120,9 +120,13 @@ def attach(call, fact, timezone, as_of):
     if not all(math.isfinite(v) for v in (centre, raw_centre, sigma)) or sigma <= 0:
         raise ValueError('invalid frozen temperature context')
     expected_centre = float(packet['corrected_centre_c'])
+    expected_sigma = float(packet['sigma_c'])
     if policy == 'early-city-strength-v1':
-        expected_centre = raw_centre+float(packet['strength'])*(expected_centre-raw_centre)
-    if abs(float(packet['sigma_c'])-sigma) > 1e-6 or abs(expected_centre-centre) > 1e-6:
+        # The strength packet precedes row serialization. probability_engine
+        # rounds width/centre to four places; adapted replacements do likewise.
+        expected_centre = round(raw_centre+float(packet['strength'])*(expected_centre-raw_centre),4)
+        expected_sigma = round(expected_sigma,4)
+    if abs(expected_sigma-sigma) > 1e-6 or abs(expected_centre-centre) > 1e-6:
         raise ValueError('frozen temperature context differs from the paired ladder')
     top = str(call['top_band_id'])
     if top not in served or served[top] < max(served.values())-1e-6:
