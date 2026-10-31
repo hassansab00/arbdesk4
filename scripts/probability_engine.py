@@ -29,6 +29,9 @@ Run standalone (`python probability_engine.py`) or via
 .github/workflows/pipeline_intraday.yml, 4x/day aligned after model cycles.
 """
 import datetime as dt
+import copy
+import hashlib
+import json
 import math
 import os
 import sys
@@ -587,7 +590,7 @@ def _bands_for_markets(market_ids):
 
 
 def forecast_provenance(model_priced, mrow, forecast, traj_row=None, station_row=None,
-                        width_version=None):
+                        width_version=None, city_key=None, for_date=None):
     """(label, config) for the forecast a price was built on (plan v2 P3.7).
 
     Decided from what the engine DID, not by comparing numbers. The old test
@@ -619,6 +622,19 @@ def forecast_provenance(model_priced, mrow, forecast, traj_row=None, station_row
                   "combined_c": station_row.get("combined_c"), "n_sources": station_row.get("n_sources")}
         if width_version:
             config["width_version"] = width_version
+        # The blend version and provider run can be shared by many cities,
+        # but combined_c belongs to one city-day. model_version_id caches by
+        # label, so an unscoped label made the first city's config describe
+        # every later city. Register the actual input identity, without
+        # changing any calculation or rewriting old model-version records.
+        city = city_key or station_row.get("city_key")
+        target = for_date if for_date is not None else station_row.get("for_date")
+        if city is not None and target is not None:
+            config.update(city_key=str(city), target_date=str(target),
+                          input_policy="city-day-forecast-input-v1")
+            digest = hashlib.sha256(json.dumps(config, sort_keys=True,
+                                               separators=(",", ":")).encode()).hexdigest()
+            label += f":city-day-input:{digest}"
     if traj_row is not None:
         hour = traj_row.get("local_hour")
         label = f"trajectory:{int(hour):02d}h:" + label if hour is not None else "trajectory:" + label
@@ -887,7 +903,7 @@ def _station_corrected_for(city_key, for_date, lead_days):
                 max_age = float(cfg.get("max_age_hours", STATION_MAX_AGE_HOURS))
                 since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=max_age)).isoformat()
                 for r in rest("derived_corrected_forecast", [
-                        ("select", "city_key,for_date,lead_days,combined_c,spread_c,n_sources,version,"
+                        ("select", "city_key,for_date,lead_days,combined_c,spread_c,n_sources,sources,version,"
                                    "width_c,width_version,computed_at,inputs_oldest_run_at,inputs_newest_run_at"),
                         ("computed_at", f"gte.{since}")]):
                     now = dt.datetime.now(dt.timezone.utc)
@@ -933,7 +949,7 @@ def _blend_station_model(cache):
         since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=max_age)).isoformat()
         updates = []
         for m in rest("derived_mos_forecast", [
-                ("select", "city_key,for_date,lead_days,mos_c,blend_c,p39_version,version,computed_at,calibration"),
+                ("select", "city_key,for_date,lead_days,mos_c,blend_c,p39_version,version,computed_at,calibration,inputs"),
                 ("computed_at", f"gte.{since}"), ("blend_c", "not.is.null")]):
             row = cache.get((m["city_key"], str(m["for_date"])))
             if row is None or m.get("p39_version") != row.get("version") or int(m["lead_days"]) < min_lead:
@@ -942,12 +958,14 @@ def _blend_station_model(cache):
         for row, blend, m in updates:          # all or nothing: nothing above wrote
             row["p39_c"] = row["combined_c"]
             row["mos_c"] = m.get("mos_c")
+            row["mos_inputs"] = copy.deepcopy(m.get("inputs"))
             row["combined_c"] = blend
             row["version"] = f"{row.get('version')}+{m.get('version')}"
             # P3.9's errors describe its own centre. A blend may replace
             # that width only with its own independently checked city fit.
             cal = m.get("calibration") or {}
             cal = cal if isinstance(cal, dict) else {}
+            row["mos_calibration"] = copy.deepcopy(cal)
             if (cal.get("applies") is True and cal.get("city_key") == m["city_key"]
                     and cal.get("lead_days") == int(m["lead_days"])
                     and str(cal.get("version", "")).startswith("city-blend-width:")):
@@ -1628,7 +1646,8 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     # every post-mortem on a model-priced trade would point at NWS.
     forecast_label, forecast_config = forecast_provenance(
         model_priced, mrow, forecast, traj_row if traj_centre is not None else None, srow,
-        width_version=srow.get("width_version") if width_priced else None)
+        width_version=srow.get("width_version") if width_priced else None,
+        city_key=city_key, for_date=for_date)
     if uncertainty and uncertainty['applied'] and traj_centre is None:
         forecast_label += ':' + forecast_uncertainty.POLICY
         forecast_config = dict(forecast_config, uncertainty_policy=forecast_uncertainty.POLICY)
@@ -1640,6 +1659,13 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
         centre_c=centre_corrected, sigma_c=sigma,
         skill_lead_days=skill_lead_days, skill_source=skill_source,
         uncertainty=uncertainty, observed_floor_c=observed_floor_c)
+    if srow is not None:
+        _forecast_context[(city_key, str(for_date), computed_at)]["station_combination"] = {
+            key: copy.deepcopy(srow[key]) for key in (
+                "city_key", "for_date", "lead_days", "combined_c", "p39_c", "mos_c",
+                "n_sources", "sources", "spread_c", "version", "computed_at",
+                "inputs_oldest_run_at", "inputs_newest_run_at", "width_c",
+                "width_version", "mos_calibration", "mos_inputs") if key in srow}
     forecast_version = model_version_id(
         "forecast", forecast_label, config=forecast_config, structural=False)
     # The readable label too, for a caller that records the path (the tick's

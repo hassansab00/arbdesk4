@@ -3,6 +3,54 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Miami day-ahead failure trace and input lineage — 31 Oct
+
+Read-only live queries of `v_day_max_original_calls`, `band_probabilities`,
+`model_versions` and `fact_band_outcome`, and the retained 24/25 Oct
+`derived_mos_forecast` mirrors, isolate the two evening-to-late reversals:
+
+- 23 Oct: the evening centre was 27.904C; the late served centre was
+  27.493C. The exact matching retained MOS input names station centre
+  27.558C and MOS centre 27.429C. At the stored 0.7888C width, replaying the
+  engine's lattice gives the station centre 43.8382% on 82-83F versus
+  40.1541% on 80-81F; the served blend gives 41.8289% versus 42.2744%.
+  Thus the MOS blend's -0.065C shift crossed the bucket boundary and hurt
+  this one exact-bucket outcome. This is retrospective attribution, not
+  forward evidence for disabling MOS.
+- 25 Oct: the evening centre was 27.681C; the late station centre was
+  27.310C and MOS centre 27.335C, yielding served 27.323C. MOS moved the
+  late station forecast +0.013C; the station forecast already favoured the
+  losing 80-81F bucket. Disabling MOS does not repair this failure.
+
+One confirmed recording defect prevents reliable version-level attribution:
+forecast version `686b6271-0ad7-419e-b214-d6ab047535e3` is shared by ten
+city-days; its config records Los Angeles's 25.204C combination, while
+Miami's own probability rows under it carry 27.323C. The registration cache
+keys on `(kind,label)`, but the label previously named the shared recipe/run
+and its config contained city-specific values.
+
+The repair gives new station forecast inputs a deterministic identity over
+their config, including city and target date. Complete source combinations,
+station/MOS component centres, input run bounds and MOS calibration evidence
+are copied into each new checkpoint's existing forecast-input context.
+Original probabilities, outcomes and historical version rows are preserved.
+The regression reproduces the measured LA/Miami collision through the real
+registration cache and compares actual pricing probabilities with the old
+label behaviour. No predicted-accuracy gain is claimed from this lineage fix.
+
+The complete database contracts passed. The first Python 3.11 run reached
+4,893 passing tests, with two failures: one archive fixture was still being
+restored in the sparse checkout, and the fixed-variant isolation fixture
+unexpectedly admitted the newly generated automatic challenger. The restored
+archive replay tests pass; the variant fixture now isolates its explicitly
+configured frozen variants from both automatic registries. Its complete
+19-test module passes. Final complete Python 3.11 validation: 4,895 passed,
+9 skipped (233.41 s). The complete database contracts passed. The original
+main-branch provenance function reproduces the LA/Miami collision; the repaired
+function gives the two inputs distinct identities.
+No serving setting,
+portfolio allocation, schedule or historical record has been changed.
+
 ## Paper execution audit follow-up — 28 Oct
 
 P5.2 re-tests now count only trades opened after the latest recorded
