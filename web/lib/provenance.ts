@@ -926,6 +926,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "weather_forecast_features": [
     {
+      "cadence": "several times a day",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/refresh_station_forecasts.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
+    },
+    {
       "cadence": "hourly",
       "file": "tick.yml",
       "how": "scripts/ingest_nws.py",

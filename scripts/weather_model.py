@@ -928,6 +928,7 @@ def predict_forward(fits, by_city):
         fc_by_city.setdefault(r["city_key"], []).append(r)
 
     preds, no_anchor, no_rows = [], [], []
+    missing_features = {}
     for city, fit in fits.items():
         rows = fc_by_city.get(city)
         if not rows:
@@ -955,6 +956,7 @@ def predict_forward(fits, by_city):
             # was missing a feature this city's fit uses. Naming it is the
             # whole point: this is the shape of failure that ran green.
             no_rows.append(city)
+            missing_features[city] = sorted({f for f in fit["coefficients"] if f not in ("intercept", "prev_max_c") and any(r.get(f) is None for r in rows)})
         preds.extend(got)
 
     notes = []
@@ -969,8 +971,7 @@ def predict_forward(fits, by_city):
     if no_rows:
         notes.append(f"{len(no_rows)} city/cities had forecast days and an anchor but "
                      "produced no prediction - every row was missing a feature the fit "
-                     "uses, so the forecast read is not asking for everything the fit "
-                     "kept: " + ", ".join(sorted(no_rows)[:8]))
+                     "uses: " + "; ".join(city+" ("+", ".join(missing_features[city])+")" for city in sorted(no_rows)))
     return preds, ("  ".join(notes) or None)
 
 

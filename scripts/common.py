@@ -17,7 +17,8 @@ from concurrent.futures import ThreadPoolExecutor
 _REAL_GET, _REAL_POST = requests.get, requests.post
 _session_obj = None
 _session_lock = threading.Lock()
-_request_end = ContextVar('request_end', default=None)
+_request_end = ContextVar('request_end', default=(float(os.environ['AD4_REQUEST_DEADLINE'])
+    if os.environ.get('AD4_REQUEST_DEADLINE') else None))
 
 
 @contextmanager

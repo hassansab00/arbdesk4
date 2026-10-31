@@ -218,6 +218,11 @@ def ops():
     global _OPS
     if _OPS is None:
         import importlib.util
+        import sys
+        canonical = sys.modules.get('common')
+        if canonical is not None and os.path.realpath(getattr(canonical, '__file__', '')) == os.path.realpath(os.path.join(ROOT, 'scripts', 'common.py')):
+            _OPS = canonical
+            return _OPS
         spec = importlib.util.spec_from_file_location("ops_common", os.path.join(ROOT, "scripts", "common.py"))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)

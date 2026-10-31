@@ -220,6 +220,7 @@ def test_every_step_the_paper_switch_skips_is_marked_in_its_expectation():
     for step in re.split(r"\n      - name: ", wf)[1:]:
         if "vars.PAPER_TRADES_ENABLED != 'false'" in step:
             gated.update(re.findall(r"python3? (?:scripts/)?([a-z_/]+\.py)", step))
+    gated.discard("run_stage.py")  # deadline wrapper emits no ingest job of its own
     assert len(gated) == 6, gated
     notes = dict(((f, j), n) for f, j, n in re.findall(
         r"\('(pipeline_intraday\.yml)',\s*'([A-Za-z0-9_.]+)',\s*\d+,\s*('[^']*'|null)\)", MIGRATION))

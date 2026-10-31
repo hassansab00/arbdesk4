@@ -33,6 +33,7 @@ import math
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from collections import defaultdict
 
 from common import rest, rest_all, insert, get_cities, log_run, model_version_id
@@ -1088,6 +1089,26 @@ _skill_cache = {}
 _global_skill_cache = {}
 
 
+def _warm_skill_cache():
+    """Load shared skill rows before parallel workers; newest verified wins."""
+    for table, dimensions in [('derived_forecast_skill', ('city_key', 'lead_days')),
+                               ('derived_forecast_skill_model', ('city_key', 'model', 'lead_days'))]:
+        columns = list(dimensions) + ['n_days', 'mae_c', 'bias_c', 'computed_at', 'evidence_scope']
+        try:
+            rows = rest_all(table, [('select', ','.join(columns))],
+                            order='computed_at.desc', page_size=1000)
+        except Exception as exc:
+            print(f'skill prefetch unavailable: {table}: {type(exc).__name__}', file=sys.stderr)
+            continue
+        grouped = defaultdict(list)
+        for row in rows:
+            grouped[tuple(row[k] for k in dimensions)].append(row)
+        for key, group in grouped.items():
+            verified = [r for r in group if r.get('evidence_scope') == VERIFIED_EVIDENCE_SCOPE]
+            latest = max(verified or group, key=lambda r: r.get('computed_at') or '')
+            _skill_cache[key] = dict(latest, verified=bool(verified))
+
+
 def _global_skill(lead_days):
     """Conservative cross-city cold-start width for an unmeasured city.
 
@@ -1792,13 +1813,15 @@ def main():
     # post-processing, divergence or the measurement layer - silently. Filled
     # here, serially, the workers only ever read.
     _warm_caches()
+    _warm_skill_cache()
     import early_city_adaptation
     early_city_adaptation.prepare(markets, cities)
     import predictive_primary
     primary = predictive_primary.prepare(markets, bands_by_market, cities)
     workers = max(1, int(os.environ.get("ENGINE_WORKERS", "8")))
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        results = list(pool.map(_price, jobs))
+        contexts = [(copy_context(), job) for job in jobs]
+        results = list(pool.map(lambda pair: pair[0].run(_price, pair[1]), contexts))
     for (city_key, for_date, unit, band_rows), result in zip(jobs, results):
         if result is None:
             continue
@@ -1808,6 +1831,8 @@ def main():
         if len(sample_prints) < 3:
             sample_prints.append((city_key, for_date, band_rows, rows, reg))
 
+    if jobs and not all_rows:
+        raise RuntimeError("no fresh probability ladders; downstream pricing must stop")
     if all_rows:
         insert("band_probabilities", all_rows)
 

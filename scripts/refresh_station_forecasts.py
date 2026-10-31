@@ -54,12 +54,72 @@ def complete(hourly, series, day, timezone):
     return len(got) == len(expected) and set(got) == expected
 
 
-def fetch(cities, started, rounds):
+EXTRA_HOURLY = ('wind_direction_10m', 'relative_humidity_2m', 'apparent_temperature', 'precipitation_probability')
+
+
+def forecast_features(city, answer, received):
+    """Complete local days, same observed feature units; missing stays missing."""
+    hourly = (answer or {}).get('hourly') or {}
+    zone = ZoneInfo(city['timezone'])
+    by_day = {}
+    for i, stamp in enumerate(hourly.get('time', [])):
+        local = dt.datetime.fromisoformat(stamp).replace(tzinfo=dt.timezone.utc).astimezone(zone)
+        by_day.setdefault(local.date(), []).append((i, local.hour))
+    def values(variable, indexes):
+        series = hourly.get(variable) or []
+        return [float(series[i]) for i in indexes if i < len(series) and finite(series[i])]
+    def at(variable, i):
+        v = values(variable, [i])
+        return v[0] if v else None
+    def mean(v):
+        return sum(v)/len(v) if v else None
+    out = []
+    today = received.astimezone(zone).date()
+    for day, entries in sorted(by_day.items()):
+        if not 0 <= (day-today).days <= 2 or not complete(hourly, 'temperature_2m', day.isoformat(), city['timezone']):
+            continue
+        indexes = [i for i, _ in entries]
+        daytime = [i for i, hour in entries if 9 <= hour <= 17]
+        morning = next((i for i, hour in entries if hour == 8), None)
+        previous = next((i for i, hour in by_day.get(day-dt.timedelta(days=1), []) if hour == 8), None)
+        temp = values('temperature_2m', indexes)
+        dew = at('dew_point_2m', morning) if morning is not None else None
+        mt = at('temperature_2m', morning) if morning is not None else None
+        pressure = at('pressure_msl', morning) if morning is not None else None
+        prev_pressure = at('pressure_msl', previous) if previous is not None else None
+        cloud = [x*8/100 for x in values('cloud_cover', daytime)]
+        wind = [x/1.852 for x in values('wind_speed_10m', daytime)]
+        precip = values('precipitation', indexes)
+        apparent = values('apparent_temperature', indexes)
+        pop = values('precipitation_probability', indexes)
+        vectors = [(at('wind_speed_10m', i), at('wind_direction_10m', i)) for i in daytime]
+        vectors = [(w, math.radians(d)) for w, d in vectors if w is not None and d is not None]
+        total = sum(w for w, _ in vectors)
+        out.append(dict(city_key=city['city_key'], for_date=day.isoformat(), run_at=received.isoformat(),
+            source='open-meteo-forward-features-v1', lead_days=(day-today).days,
+            forecast_max_c=max(temp), forecast_min_c=min(temp), apparent_max_c=max(apparent) if apparent else None,
+            morning_temp_c=mt, morning_dewpoint_c=dew,
+            dewpoint_depression_c=mt-dew if mt is not None and dew is not None else None,
+            morning_humidity=at('relative_humidity_2m', morning) if morning is not None else None,
+            morning_pressure_hpa=pressure,
+            pressure_change_24h_hpa=pressure-prev_pressure if pressure is not None and prev_pressure is not None else None,
+            cloud_mean=mean(cloud), cloud_max=max(cloud) if cloud else None,
+            wind_mean=mean(wind), wind_max=max(wind) if wind else None,
+            precip_total=sum(precip)/25.4 if len(precip)==len(indexes) else None,
+            precip_probability=max(pop) if pop else None, n_hours=len(indexes),
+            wind_u_mean=sum(-w*math.sin(d) for w,d in vectors)/total if len(vectors)>=3 and total>0 else None,
+            wind_v_mean=sum(-w*math.cos(d) for w,d in vectors)/total if len(vectors)>=3 and total>0 else None))
+    return out
+
+
+def fetch(cities, started, rounds, features=None):
     """Reuse bounded batched requests, retaining only complete input days."""
     bm, md, missing = [], [], []
     def ask(chunk, part):
-        return hr.current_request(chunk, part, timeout_s=FORWARD_REQUEST_SECONDS)
+        return hr.current_request(chunk, part, timeout_s=FORWARD_REQUEST_SECONDS, extra_hourly=EXTRA_HOURLY)
     for city, (heating, models) in hr.fetch_each(ask, cities, rounds):
+        if features is not None:
+            features.extend(forecast_features(city, heating, started))
         timezone = city["timezone"]
         b, m = hr.current_rows(city["city_key"], heating, models, started, timezone)
         b = [row for row in b if all(complete((heating or {}).get("hourly", {}), var, row[2], timezone)
@@ -213,21 +273,30 @@ def main(argv=None):
     coefficients = rest_all("derived_mos_coefficients", [("select", "*")], order="city_key.asc,lead_days.asc")
     labels, station_days = forward_labels(rest_all, cities, started)
     rounds = []
+    features = []
     previous_deadline = hr._deadline
     try:
         hr._deadline = time.monotonic() + sm.FETCH_SECONDS
-        bm, md, missing = fetch(cities, started, rounds)
+        bm, md, missing = fetch(cities, started, rounds, features)
     finally:
         hr._deadline = previous_deadline
     received = dt.datetime.now(dt.timezone.utc)
+    zones = {c['city_key']: c['timezone'] for c in cities}
+    for feature in features:
+        feature['run_at'] = received.isoformat()
+        feature['lead_days'] = (dt.date.fromisoformat(feature['for_date'])-
+            received.astimezone(ZoneInfo(zones[feature['city_key']])).date()).days
+    features = [f for f in features if 0 <= f['lead_days'] <= 2]
     raw, corrected, mos = build(cities, bm, md, cells, widths, coefficients, labels, started, received)
     expected = {(c["city_key"], lead) for c in cities for lead in hr.LEADS}
     detail = dict(inputs_received_at=received.isoformat(), raw_rows=len(raw), corrected_rows=len(corrected),
-                  mos_rows=len(mos), unreached=missing, rounds=rounds, refit=False, station_days=station_days,
+                  mos_rows=len(mos), feature_rows=len(features), unreached=missing, rounds=rounds, refit=False, station_days=station_days,
                   missing_corrected=sorted(expected - {(r["city_key"], r["lead_days"]) for r in corrected}),
                   missing_mos=sorted(expected - {(r["city_key"], r["lead_days"]) for r in mos}))
     print(json.dumps(detail, default=str))
     if not args.dry_run:
+        if features:
+            upsert_replace("weather_forecast_features", features, "city_key,for_date,run_at")
         publish(raw, corrected, mos, upsert_replace)
         log_run(JOB, "ok" if not missing and not detail["missing_mos"] else ("partial" if corrected else "error"),
                 len(corrected) + len(mos), detail)

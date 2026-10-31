@@ -1451,3 +1451,14 @@ figures. Record the A11 projection here after P6.1.
   - anon reads 294 °C rows (e.g. "28°C / 27°C") and 89 °F rows (e.g. "68-69°F / 64-65°F"), and `v_city_hit_summary` still returns 49 cities.
 - **Canonical ladder (measured the same day):** closed °C buckets are 1 wide with single-degree labels (12,582 bands). Closed °F buckets are 2 wide with range labels (3,869 bands).
 - **Test:** `tests/test_a_celsius_bucket_is_one_degree.py`.
+
+### 31 Oct 2026 — intraday deadlines and learning recovery
+
+- Enforce the optional primary predictor's existing preparation allowance on its actual database transport, reuse the canonical request context, and propagate the stage deadline into pricing threads. Prefetch shared skill rows before those threads.
+- Bound intraday pricing, edges, evidence, signals and scoring with explicit outcome receipts. Require successful current-cycle producers before edges/signals/proposals, while independent fills, settlement and evidence recovery continue.
+- Refresh complete city-local forward feature days from the existing weather provider: directional wind, pressure change, humidity and other fitted drivers. Preserve missing values, observed units and original forecasts; no historical call is rewritten.
+- Reuse loaded original checkpoint/outcome evidence for learning, recover older originals from hash-verified mirrors, and report exact compatibility/chronology exclusions. Calibration sample and later-date validation requirements are unchanged.
+- Fit one fixed five-seed remaining-day research challenger when no challenger exists and training has advanced. Publish verified weights under an explicitly unvalidated research lineage; only the existing future original-call evaluation can validate it. Serving files and portfolio settings remain unchanged.
+- The 31 Oct daily candidate job failed at `arrival_dataset.build` with `live and labeled venue ladders differ` (run 41169234571, job 124448795270). Keep mismatched contracts out of evaluation and count the exclusions in the unchanged coverage denominator instead of aborting the entire evaluation. Never reshape a ladder to make it match.
+- UI distinguishes raw-weight training cutoff, challenger state, forecast refresh, and per-city calibration eligibility.
+- Validation: full Python 3.11 suite passed (4,884 passed, 9 skipped; 393.26 s), as did the database transaction/contracts suite, web TypeScript, route tests and production build. Production workflow results follow after merge. Production predictive accuracy improvement is not yet measured.

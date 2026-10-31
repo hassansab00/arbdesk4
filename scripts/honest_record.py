@@ -381,11 +381,13 @@ def previous_request(cities, part, start, end):
     return _per_place(_get(PREVIOUS_API, params, label), cities, label)
 
 
-def current_request(cities, part, timeout_s=None):
+def current_request(cities, part, timeout_s=None, extra_hourly=()):
     base = dict(_places(cities), timezone="GMT",
                 forecast_days=4)        # UTC days: enough for local day+2 at any offset
     if part == "heating":
-        params = dict(base, hourly=",".join(HEATING))
+        params = dict(base, hourly=",".join(dict.fromkeys((*HEATING, *extra_hourly))))
+        if extra_hourly:
+            params.update(past_days=1, wind_speed_unit="kmh", precipitation_unit="mm", temperature_unit="celsius")
     else:
         params = dict(base, hourly="temperature_2m", models=",".join(MODELS))
     label = _label(cities, f"current {part}")
