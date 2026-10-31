@@ -407,6 +407,11 @@ jobs:
             if git push origin HEAD:main; then exit 0; fi
           done
           exit 1
+      - name: Check the fixed forward challenger bootstrap
+        id: bootstrap_plan
+        if: ${{ !cancelled() }}
+        timeout-minutes: 1
+        run: python tools/wxpredict/bootstrap_cycle.py --plan
       - name: Check the independent candidate window
         id: plan
         if: ${{ !cancelled() }}
@@ -418,11 +423,18 @@ jobs:
         timeout-minutes: 6
         run: python tools/wxpredict/current_cycle.py --plan
       - name: Install candidate research dependencies
-        if: ${{ !cancelled() && (steps.plan.outputs.fit == 'true' || steps.current_plan.outputs.fit == 'true') }}
+        if: ${{ !cancelled() && (steps.bootstrap_plan.outputs.fit == 'true' || steps.plan.outputs.fit == 'true' || steps.current_plan.outputs.fit == 'true') }}
         run: pip install -r requirements.wxpredict.txt
+      - name: Fit one fixed challenger awaiting forward validation
+        id: bootstrap_fit
+        if: ${{ !cancelled() && steps.bootstrap_plan.outcome == 'success' && steps.bootstrap_plan.outputs.fit == 'true' }}
+        timeout-minutes: 30
+        run: python tools/wxpredict/bootstrap_cycle.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Fit and evaluate the shadow challenger
         id: fit
-        if: ${{ !cancelled() && steps.plan.outcome == 'success' && steps.plan.outputs.fit == 'true' }}
+        if: ${{ !cancelled() && steps.plan.outcome == 'success' && steps.plan.outputs.fit == 'true' && steps.bootstrap_plan.outputs.fit != 'true' }}
         timeout-minutes: 30
         run: python tools/wxpredict/candidate_cycle.py
         env:
@@ -435,7 +447,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Commit the candidate evidence and shadow registry
-        if: ${{ !cancelled() && steps.plan.outcome == 'success' && (steps.plan.outputs.fit != 'true' || steps.fit.outcome == 'success') && steps.current_plan.outcome == 'success' && (steps.current_plan.outputs.fit != 'true' || steps.current_fit.outcome == 'success') }}
+        if: ${{ !cancelled() && steps.plan.outcome == 'success' && (steps.plan.outputs.fit != 'true' || steps.fit.outcome == 'success' || steps.bootstrap_fit.outcome == 'success') && (steps.bootstrap_plan.outputs.fit != 'true' || steps.bootstrap_fit.outcome == 'success') && steps.current_plan.outcome == 'success' && (steps.current_plan.outputs.fit != 'true' || steps.current_fit.outcome == 'success') }}
         timeout-minutes: 3
         run: |
           git config user.name 'github-actions[bot]'

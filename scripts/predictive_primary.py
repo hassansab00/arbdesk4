@@ -15,6 +15,7 @@ import os
 import sys
 import time
 from collections import Counter
+from contextlib import nullcontext
 from zoneinfo import ZoneInfo
 
 POLICY = "wxrd3-horizons-v1"
@@ -100,158 +101,160 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
         sys.path.insert(0, os.path.join(root, "tools"))
         from wxpredict import common, live_reader as lr, wxrd_live as wl
         from wxpredict import build_table, capture_history, decision_inputs, current_forecasts
+        sys.path.insert(0, os.path.join(root, "tools", "wxpredict"))
         import sdyes_forward
         ops = common.ops()
-        meta_path = wl.VARIANTS["wxrd3"][0]
-        with open(meta_path) as fh:
-            meta = json.load(fh)
-        version = wl.variant_version(meta, "wxrd3")
-        import contract_inputs
-        versions = sorted({version,*[contract_inputs.version(version,m.get('observation_contract'),m.get('contract_station'))
-                                    for m in selected]})
-        from wx_city_calibration import phase, transform, usable
-        try:
-            cells = ops.rest_all("derived_wx_city_calibration", [
-                ("select", "city_key,phase,state"), ("model_version", "in.("+','.join(versions)+")"),
-                ("computed_at", "lte."+now.isoformat())], order="city_key.asc,phase.asc", page_size=1000)
-        except Exception:
-            cells = []  # A missing/unavailable fit keeps the raw distribution.
-        calibration = {(c["city_key"],c["phase"],c["state"].get('model_version',version)): c["state"] for c in cells}
-        import city_model_selection as selector
-        try:
-            choices = ops.rest_all('derived_city_prediction_validation',[
-                ('select','city_key,checkpoint,model_selection:report->model_selection'),
-                ('scope','eq.served'),('as_of','lte.'+now.isoformat())],
-                order='city_key.asc,checkpoint.asc',page_size=1000)
-            peaks = ops.rest_all('derived_weather_peak',[
-                ('select','city_key,month,peak_hour_local')],order='city_key.asc,month.asc',page_size=1000)
-        except Exception as exc:
-            choices, peaks = [], []
-            _detail['selection_state_error'] = type(exc).__name__
-        choices={(r['city_key'],r['checkpoint']):r['model_selection'] for r in choices if r.get('model_selection')}
-        peaks={(r['city_key'],int(r['month'])):r['peak_hour_local'] for r in peaks}
-        model = wl.load_model(meta, meta_path)
-        city_keys = {m["city_key"] for m in selected}
-        first = now - dt.timedelta(hours=wl.RECORD_HOURS)
-        rows = ops.rest_all("live_capture", [
-            ("select", "kind,key,captured_at,written_at,payload"),
-            ("kind", f"in.({','.join(wl.KINDS)})"),
-            ("captured_at", f"gte.{first.isoformat()}"),
-            ("captured_at", f"lte.{now.isoformat()}"),
-            ("or", wl.key_filter(cities, city_keys))], order="capture_id.asc", page_size=1000)
-        boundary = now.replace(hour=0, minute=0, second=0) - dt.timedelta(days=1)
-        prefixes = {c + "|" for c in city_keys}
-        prefixes.update(common.iem_id(cities[c]["icao"]) + "|" for c in city_keys if cities[c].get("icao"))
-        receipt_kinds=('hourly0','models0')
-        cold = capture_history.read(first.timestamp(), boundary.timestamp(), kinds=wl.KINDS,
-                                    prefixes=prefixes,receipt_kinds=receipt_kinds)
-        warm=[]
-        for receipt in rows:
-            available=receipt['captured_at']
-            if receipt['kind'] in receipt_kinds:
-                if not receipt.get('written_at'):
-                    continue
-                available=max((available,receipt['written_at']),key=lr.unix)
-            warm.append((receipt['kind'],receipt['key'],available,receipt['payload']))
-        record = lr.Record([*cold,*warm])
-        all_bands = [b for m in selected for b in bands_by_market.get(m["market_id"], [])]
-        dates = [str(m["resolution_date"]) for m in selected]
-        events = lr.live_events(selected, all_bands, cities, min(dates), max(dates))
-        sdays, _ = build_table.load_station_daily()
-        bm, md = build_table.load_daily_forecasts()
-        vectors, pairs = [], []
-        for e in events:
-            if not meta.get("fit_last") or str(meta["fit_last"])[:10] >= e["date"]:
-                skipped["model trained on or after target"] += 1
-                continue
-            if time.monotonic() - t0 > allowance:
-                skipped["primary preparation budget"] += 1
-                continue
-            row = lr.row_at(record, e, cities, sdays, bm, md, int(now.timestamp()),
-                            report_lag_s=meta["report_lag_s"])
-            why = input_problem(row)
-            if why:
-                skipped[why] += 1
-                continue
-            vectors.append(row)
-            pairs.append((e, row))
-        probs = sdyes_forward.model_probs(vectors, model)
-        commit, committed_at = decision_inputs.history_identity()
-        if committed_at > now.timestamp():
-            raise ValueError("history vintage is newer than the prediction")
-        packed, accepted = [], []
-        for e, row in pairs:
-            p = probs.get((str(e["event_id"]), int(row["decision_utc"])))
-            if not valid_distribution(e["band_ids"], p):
-                skipped["invalid primary distribution"] += 1
-                continue
-            vector = {k: None if k in decision_inputs.LABELS else row.get(k) for k in lr.features.COLUMNS}
-            if row.get('observation_contract'):
-                vector.update(observation_contract=row['observation_contract'],
-                              rules_sha256=e.get('rules_sha256'),authority_input=row.get('authority_input'))
-            effective_version=contract_inputs.version(version,e.get('observation_contract'),e.get('contract_station'))
-            raw = json.dumps(vector, sort_keys=True, separators=(",", ":"), allow_nan=False)
-            sha = hashlib.sha256(raw.encode()).hexdigest()
-            key = "|".join((POLICY, str(e["event_id"]), str(int(now.timestamp()))))
-            payload = {"policy": POLICY, "version": effective_version, "as_of": now.isoformat(),
-                       "history_commit": commit, "history_committed_at": committed_at,
-                       "model_fit_through": str(meta["fit_last"])[:10],
-                       "band_ids": list(e["band_ids"]), "row": vector, "row_sha256": sha}
-            # Optional research context never changes the frozen weather vector
-            # or the working predictor if its provider snapshot is unavailable.
-            payload['timezone'] = cities[e['city']]['timezone']
+        with getattr(ops, 'request_deadline', lambda _end: nullcontext())(t0 + allowance):
+            meta_path = wl.VARIANTS["wxrd3"][0]
+            with open(meta_path) as fh:
+                meta = json.load(fh)
+            version = wl.variant_version(meta, "wxrd3")
+            import contract_inputs
+            versions = sorted({version,*[contract_inputs.version(version,m.get('observation_contract'),m.get('contract_station'))
+                                        for m in selected]})
+            from wx_city_calibration import phase, transform, usable
             try:
-                decision_inputs.add_current(payload, current_forecasts.context(
-                    record, e, int(now.timestamp()), common.zone(cities[e['city']])))
-                payload['current_received_at'] = current_forecasts.receipts(
-                    record, e, int(now.timestamp()), common.zone(cities[e['city']]))
-                payload['current_receipts_sha256'] = hashlib.sha256(json.dumps(
-                    payload['current_received_at'],sort_keys=True,separators=(',',':')).encode()).hexdigest()
+                cells = ops.rest_all("derived_wx_city_calibration", [
+                    ("select", "city_key,phase,state"), ("model_version", "in.("+','.join(versions)+")"),
+                    ("computed_at", "lte."+now.isoformat())], order="city_key.asc,phase.asc", page_size=1000)
+            except Exception:
+                cells = []  # A missing/unavailable fit keeps the raw distribution.
+            calibration = {(c["city_key"],c["phase"],c["state"].get('model_version',version)): c["state"] for c in cells}
+            import city_model_selection as selector
+            try:
+                choices = ops.rest_all('derived_city_prediction_validation',[
+                    ('select','city_key,checkpoint,model_selection:report->model_selection'),
+                    ('scope','eq.served'),('as_of','lte.'+now.isoformat())],
+                    order='city_key.asc,checkpoint.asc',page_size=1000)
+                peaks = ops.rest_all('derived_weather_peak',[
+                    ('select','city_key,month,peak_hour_local')],order='city_key.asc,month.asc',page_size=1000)
             except Exception as exc:
-                errors=_detail.setdefault('current_context_errors',{})
-                errors[type(exc).__name__]=errors.get(type(exc).__name__,0)+1
-                payload['current_context_error'] = type(exc).__name__
-            packed.append({"key": key, "payload": payload})
-            accepted.append((e, row, p, sha, key, payload))
-        if packed and not dry_run:
-            ops.rpc("live_capture_put", {"p_kind": decision_inputs.KIND,
-                "p_captured_at": dt.datetime.now(dt.timezone.utc).isoformat(), "p_rows": packed})
-        for e, row, p, sha, input_key, payload in accepted:
-            effective_version=contract_inputs.version(version,e.get('observation_contract'),e.get('contract_station'))
-            # Market identity includes the ladder; a twin market cannot borrow
-            # another listing's probabilities just because its city/day match.
-            key = (e["city"], e["date"], frozenset(map(str, e["band_ids"])))
-            raw_probs = dict(zip(map(str, e["band_ids"]), map(float, p)))
-            context = {k: row.get(k) for k in lr.features.COLUMNS if k not in decision_inputs.LABELS}
-            context.update(band_ids=list(map(str,e["band_ids"])), model_fit_through=str(meta["fit_last"])[:10])
-            if 'current_forecasts_sha256' in payload and 'current_receipts_sha256' in payload:
-                context.update(current_forecasts_sha256=payload['current_forecasts_sha256'],
-                               current_receipts_sha256=payload['current_receipts_sha256'],
-                               timezone=payload['timezone'])
-            if row.get('observation_contract'):
-                context.update(observation_contract=row['observation_contract'],rules_sha256=e.get('rules_sha256'),
-                               authority_input=row.get('authority_input'))
-            state = calibration.get((e["city"], phase(context),effective_version))
-            served = raw_probs
-            if state and usable(state, e["date"], effective_version):
+                choices, peaks = [], []
+                _detail['selection_state_error'] = type(exc).__name__
+            choices={(r['city_key'],r['checkpoint']):r['model_selection'] for r in choices if r.get('model_selection')}
+            peaks={(r['city_key'],int(r['month'])):r['peak_hour_local'] for r in peaks}
+            model = wl.load_model(meta, meta_path)
+            city_keys = {m["city_key"] for m in selected}
+            first = now - dt.timedelta(hours=wl.RECORD_HOURS)
+            rows = ops.rest_all("live_capture", [
+                ("select", "kind,key,captured_at,written_at,payload"),
+                ("kind", f"in.({','.join(wl.KINDS)})"),
+                ("captured_at", f"gte.{first.isoformat()}"),
+                ("captured_at", f"lte.{now.isoformat()}"),
+                ("or", wl.key_filter(cities, city_keys))], order="capture_id.asc", page_size=1000)
+            boundary = now.replace(hour=0, minute=0, second=0) - dt.timedelta(days=1)
+            prefixes = {c + "|" for c in city_keys}
+            prefixes.update(common.iem_id(cities[c]["icao"]) + "|" for c in city_keys if cities[c].get("icao"))
+            receipt_kinds=('hourly0','models0')
+            cold = capture_history.read(first.timestamp(), boundary.timestamp(), kinds=wl.KINDS,
+                                        prefixes=prefixes,receipt_kinds=receipt_kinds)
+            warm=[]
+            for receipt in rows:
+                available=receipt['captured_at']
+                if receipt['kind'] in receipt_kinds:
+                    if not receipt.get('written_at'):
+                        continue
+                    available=max((available,receipt['written_at']),key=lr.unix)
+                warm.append((receipt['kind'],receipt['key'],available,receipt['payload']))
+            record = lr.Record([*cold,*warm])
+            all_bands = [b for m in selected for b in bands_by_market.get(m["market_id"], [])]
+            dates = [str(m["resolution_date"]) for m in selected]
+            events = lr.live_events(selected, all_bands, cities, min(dates), max(dates))
+            sdays, _ = build_table.load_station_daily()
+            bm, md = build_table.load_daily_forecasts()
+            vectors, pairs = [], []
+            for e in events:
+                if not meta.get("fit_last") or str(meta["fit_last"])[:10] >= e["date"]:
+                    skipped["model trained on or after target"] += 1
+                    continue
+                if time.monotonic() - t0 > allowance:
+                    skipped["primary preparation budget"] += 1
+                    continue
+                row = lr.row_at(record, e, cities, sdays, bm, md, int(now.timestamp()),
+                                report_lag_s=meta["report_lag_s"])
+                why = input_problem(row)
+                if why:
+                    skipped[why] += 1
+                    continue
+                vectors.append(row)
+                pairs.append((e, row))
+            probs = sdyes_forward.model_probs(vectors, model)
+            commit, committed_at = decision_inputs.history_identity()
+            if committed_at > now.timestamp():
+                raise ValueError("history vintage is newer than the prediction")
+            packed, accepted = [], []
+            for e, row in pairs:
+                p = probs.get((str(e["event_id"]), int(row["decision_utc"])))
+                if not valid_distribution(e["band_ids"], p):
+                    skipped["invalid primary distribution"] += 1
+                    continue
+                vector = {k: None if k in decision_inputs.LABELS else row.get(k) for k in lr.features.COLUMNS}
+                if row.get('observation_contract'):
+                    vector.update(observation_contract=row['observation_contract'],
+                                  rules_sha256=e.get('rules_sha256'),authority_input=row.get('authority_input'))
+                effective_version=contract_inputs.version(version,e.get('observation_contract'),e.get('contract_station'))
+                raw = json.dumps(vector, sort_keys=True, separators=(",", ":"), allow_nan=False)
+                sha = hashlib.sha256(raw.encode()).hexdigest()
+                key = "|".join((POLICY, str(e["event_id"]), str(int(now.timestamp()))))
+                payload = {"policy": POLICY, "version": effective_version, "as_of": now.isoformat(),
+                           "history_commit": commit, "history_committed_at": committed_at,
+                           "model_fit_through": str(meta["fit_last"])[:10],
+                           "band_ids": list(e["band_ids"]), "row": vector, "row_sha256": sha}
+                # Optional research context never changes the frozen weather vector
+                # or the working predictor if its provider snapshot is unavailable.
+                payload['timezone'] = cities[e['city']]['timezone']
                 try:
-                    served = transform(raw_probs, context["band_ids"], state["params"])
-                except (KeyError, TypeError, ValueError):
+                    decision_inputs.add_current(payload, current_forecasts.context(
+                        record, e, int(now.timestamp()), common.zone(cities[e['city']])))
+                    payload['current_received_at'] = current_forecasts.receipts(
+                        record, e, int(now.timestamp()), common.zone(cities[e['city']]))
+                    payload['current_receipts_sha256'] = hashlib.sha256(json.dumps(
+                        payload['current_received_at'],sort_keys=True,separators=(',',':')).encode()).hexdigest()
+                except Exception as exc:
+                    errors=_detail.setdefault('current_context_errors',{})
+                    errors[type(exc).__name__]=errors.get(type(exc).__name__,0)+1
+                    payload['current_context_error'] = type(exc).__name__
+                packed.append({"key": key, "payload": payload})
+                accepted.append((e, row, p, sha, key, payload))
+            if packed and not dry_run:
+                ops.rpc("live_capture_put", {"p_kind": decision_inputs.KIND,
+                    "p_captured_at": dt.datetime.now(dt.timezone.utc).isoformat(), "p_rows": packed})
+            for e, row, p, sha, input_key, payload in accepted:
+                effective_version=contract_inputs.version(version,e.get('observation_contract'),e.get('contract_station'))
+                # Market identity includes the ladder; a twin market cannot borrow
+                # another listing's probabilities just because its city/day match.
+                key = (e["city"], e["date"], frozenset(map(str, e["band_ids"])))
+                raw_probs = dict(zip(map(str, e["band_ids"]), map(float, p)))
+                context = {k: row.get(k) for k in lr.features.COLUMNS if k not in decision_inputs.LABELS}
+                context.update(band_ids=list(map(str,e["band_ids"])), model_fit_through=str(meta["fit_last"])[:10])
+                if 'current_forecasts_sha256' in payload and 'current_receipts_sha256' in payload:
+                    context.update(current_forecasts_sha256=payload['current_forecasts_sha256'],
+                                   current_receipts_sha256=payload['current_receipts_sha256'],
+                                   timezone=payload['timezone'])
+                if row.get('observation_contract'):
+                    context.update(observation_contract=row['observation_contract'],rules_sha256=e.get('rules_sha256'),
+                                   authority_input=row.get('authority_input'))
+                state = calibration.get((e["city"], phase(context),effective_version))
+                served = raw_probs
+                if state and usable(state, e["date"], effective_version):
+                    try:
+                        served = transform(raw_probs, context["band_ids"], state["params"])
+                    except (KeyError, TypeError, ValueError):
+                        state = None
+                else:
                     state = None
-            else:
-                state = None
-            _predictions[key] = {"version": effective_version, "as_of": now.isoformat(),
-                "probs": served, "raw_probs": raw_probs, "input_key": input_key,
-                "calibration": state, "predictive_context": context,
-                "floor_c": float(row["rmax_c"]), "unit": e["unit"],
-                "floor_unit": float(row["rmax_unit"]), "input_sha256": sha,
-                "history_commit": commit}
-            _predictions[key].update(selection_states={h:choices.get((e['city'],h)) for h in selector.HORIZONS},
-                horizon=selector.horizon_at(e['date'],cities[e['city']]['timezone'],
-                    peaks.get((e['city'],int(e['date'][5:7]))),now))
-        _detail.update(selected=len(_predictions), version=version)
-        if len(events) < len(selected):
-            skipped["no complete canonical ladder"] += len(selected) - len(events)
+                _predictions[key] = {"version": effective_version, "as_of": now.isoformat(),
+                    "probs": served, "raw_probs": raw_probs, "input_key": input_key,
+                    "calibration": state, "predictive_context": context,
+                    "floor_c": float(row["rmax_c"]), "unit": e["unit"],
+                    "floor_unit": float(row["rmax_unit"]), "input_sha256": sha,
+                    "history_commit": commit}
+                _predictions[key].update(selection_states={h:choices.get((e['city'],h)) for h in selector.HORIZONS},
+                    horizon=selector.horizon_at(e['date'],cities[e['city']]['timezone'],
+                        peaks.get((e['city'],int(e['date'][5:7]))),now))
+            _detail.update(selected=len(_predictions), version=version)
+            if len(events) < len(selected):
+                skipped["no complete canonical ladder"] += len(selected) - len(events)
     except (Exception, SystemExit) as exc:
         _predictions = {}
         _detail["error"] = f"{type(exc).__name__}: {str(exc)[:200]}"

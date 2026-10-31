@@ -61,7 +61,7 @@ def ensure(meta, root=None, force_remote=False, budget_s=60):
     return path
 
 
-def publish(path, model_id, sha):
+def publish(path, model_id, sha, *, validated=True):
     """Upload once, then read the public asset back before registering a model."""
     if not re.fullmatch(r"wxrd-auto-[0-9]{8}-[a-f0-9]{12}", model_id):
         raise ValueError("invalid candidate artifact id")
@@ -78,7 +78,7 @@ def publish(path, model_id, sha):
     if response.status_code == 404:
         response = requests.post(base + "/releases", headers=headers,
             json={"tag_name": tag, "name": model_id, "prerelease": True,
-                  "body": "Validated shadow candidate weights. Raw model SHA256: " + sha}, timeout=30)
+                  "body": ("Validated shadow candidate weights. " if validated else "Research challenger awaiting future validation. ")+"Raw model SHA256: "+sha}, timeout=30)
     response.raise_for_status()
     release = response.json()
     name = model_id + ".txt.gz"

@@ -19,6 +19,7 @@ If a live schema check finds a genuine separate NO-token book, swap
 """
 import datetime as dt
 import sys
+import os
 import math
 from collections import defaultdict
 
@@ -438,6 +439,13 @@ def main():
     probs = _latest_by_band("v_latest_prob",
                              "band_id,calibrated_prob,computed_at,confidence,regime_label,forecast_max_c,bias_applied_c,prob_id,pricing_eligible,pricing_block_reason,skill_source",
                              band_ids, "computed_at")
+    cycle = os.environ.get('AD4_CYCLE_STARTED_AT')
+    if cycle:
+        boundary = dt.datetime.fromisoformat(cycle.replace('Z', '+00:00'))
+        probs = {bid: row for bid, row in probs.items() if row.get('computed_at')
+                 and dt.datetime.fromisoformat(row['computed_at'].replace('Z', '+00:00')) >= boundary}
+        if not probs:
+            raise RuntimeError('no probabilities from this pricing cycle')
     # v_latest_book, NOT book_snapshots. On the real schema
     # book_snapshots.bid_levels / ask_levels are integer LEVEL COUNTS - the
     # ladder lives in raw_book, with pre-aggregated depth in the *_usd_*c

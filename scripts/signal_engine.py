@@ -132,7 +132,7 @@ def _band_views():
     than recomputed, for the same reason the pricing is read from
     v_opportunities and not re-derived: one implementation, read everywhere.
     """
-    rows = rest_all(BOARD, [("select", "*")],
+    rows = rest_all(BOARD, [("select", "band_id,side,city_key,resolution_date,unit,band_label,band_lo,band_hi,open_low,open_high,model_prob,market_price,edge_net_pp,tradeable,block_reason,confidence,regime_label,market_state,fillable_usd_5c,token_yes,token_no,spread")],
                     order="band_id.asc,side.asc", page_size=1000)
     by_band = defaultdict(dict)
     for r in rows:
@@ -247,6 +247,10 @@ def _band_views():
         # slope through the day the timing row describes, so it rides with it.
         ap = (approach.get(city) or {}) if tm else {}
         pr = probs.get(band_id) or {}
+        cycle = os.environ.get('AD4_CYCLE_STARTED_AT')
+        if cycle and (not pr.get('computed_at') or
+            dt.datetime.fromisoformat(pr['computed_at'].replace('Z', '+00:00')) < dt.datetime.fromisoformat(cycle.replace('Z', '+00:00'))):
+            continue
         meta = band_meta.get(band_id) or {}
         lead = pr.get("lead_days")
         sk = skill.get((city, int(lead))) if lead is not None else None

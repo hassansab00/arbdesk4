@@ -451,11 +451,52 @@ def reports(rows,cities,reviews,states,now,model_version=None,selections=(),earl
     return result
 
 
+def learning_pairs(checkpoints, outcomes, cities):
+    """The SQL paired view's first-original-call join, reusing loaded evidence."""
+    first = {}
+    for row in checkpoints:
+        key = (row['city_key'], row['target_date'], row['checkpoint'])
+        if key not in first or (row['decided_at'], row['checkpoint_id']) < (first[key]['decided_at'], first[key]['checkpoint_id']):
+            first[key] = row
+    facts = {r['checkpoint_id']: r for r in outcomes}
+    city_of = {c['city_key']: c for c in cities}
+    out = []
+    for row in first.values():
+        fact, city = facts.get(row['checkpoint_id']), city_of.get(row['city_key'])
+        version = (row.get('predictive_context') or {}).get('raw_model_version') or row.get('priced_from')
+        if not fact or not city or not str(version).startswith('wxrd3:') or not row.get('raw_probs') or not row.get('baseline_probs'):
+            continue
+        out.append(dict(row, timezone=city['timezone'], unit=city.get('unit'), model_version=version,
+                        winning_band_id=fact.get('winner_band_id'), settled_at=fact.get('settled_at'),
+                        label_received_at=fact.get('banked_at')))
+    return out
+
+
+def older_predictor_calls(root, as_of, report_first):
+    """Read verified mirrored originals; chronology gates remain in each fitter."""
+    import sys
+    sys.path.insert(0, str(Path(root)/'tools'))
+    from wxpredict import arrival_dataset as arrival
+    midnight = dt.datetime.combine(as_of, dt.time(), dt.timezone.utc)
+    start = midnight-dt.timedelta(days=cal.PRIORS['window_days']+2)
+    first = str(as_of-dt.timedelta(days=cal.PRIORS['window_days']))
+    calls = arrival.mirrored_rows('prediction_checkpoints', start.timestamp(), midnight.timestamp(), root=str(root),
+        where=lambda r: first <= r['target_date'] < report_first)
+    ids = {p['checkpoint_id'] for p in calls}
+    facts = arrival.mirrored_rows('fact_checkpoint_outcome', start.timestamp(), midnight.timestamp(), root=str(root),
+        where=lambda r: r['checkpoint_id'] in ids)
+    for row in calls:
+        for field in ('probs', 'predictive_context', 'raw_probs', 'baseline_probs'):
+            row[field] = json.loads(row[field]) if isinstance(row.get(field), str) and row[field] else row.get(field) or None
+        row['frozen_at'] = row.get('frozen_at') or None
+    return calls, facts
+
+
 def run(score_only=False, now=None):
     now=now or dt.datetime.now(dt.timezone.utc)
     first=(now.date()-dt.timedelta(days=30)).isoformat()
     cities=get_cities(require_coords=False,extra=('display_name',))
-    p=rest_all('prediction_checkpoints',[('select','*'),('target_date','gte.'+first)],order='checkpoint_id.asc',page_size=1000)
+    p=rest_all('prediction_checkpoints',[('select','checkpoint_id,city_key,target_date,checkpoint,decided_at,local_decision_time,frozen_at,input_as_of,input_sha256,priced_from,engine_version,probs,raw_probs,baseline_probs,predictive_context'),('target_date','gte.'+first)],order='checkpoint_id.asc',page_size=1000)
     outcomes=rest_all('v_checkpoint_outcome',[('select','checkpoint_id,winner_band_id,settled_at,banked_at,market_complete,market_hit,log_loss_market,brier_market'),('target_date','gte.'+first)],order='checkpoint_id.asc',page_size=1000)
     da=rest_all('v_day_ahead_frozen_validation',[('select','*'),('for_date','gte.'+first)],order='city_key.asc,for_date.asc',page_size=1000)
     reviews=rest_all('derived_day_review',[('select','*'),('target_date','gte.'+first)],order='city_key.asc,target_date.asc',page_size=1000)
@@ -484,19 +525,20 @@ def run(score_only=False, now=None):
     versions=tuple(sorted(version_cities))
     detail={'score_only':score_only,'active_cities':len(cities),'capture_schedule_policy':'saved-city-clock-v1'}
     if not score_only:
-        learning=rest_all('v_city_predictor_pairs',[('select','*'),('target_date','gte.'+(now.date()-dt.timedelta(days=180)).isoformat())],order='city_key.asc,target_date.asc,checkpoint.asc',page_size=1000)
+        older_p, older_outcomes = [], []
+        try:
+            older_p, older_outcomes = older_predictor_calls(ROOT, now.date(), first)
+            detail['learning_history'] = 'verified mirrored originals plus current original calls'
+        except (OSError, ValueError, KeyError) as exc:
+            detail['learning_history'] = 'older mirror unavailable: '+type(exc).__name__
+        learning = learning_pairs(older_p+p, older_outcomes+outcomes, cities)
         fitted=[]
         selected=[]
         for input_version in versions:
             fitted.extend(cal.fit(learning,version_cities[input_version],input_version,now.date(),states))
             selected.extend(selector.fit(learning,version_cities[input_version],input_version,now,selections))
         selections=selected
-        older_p,older_outcomes=[],[]
-        try:
-            older_p,older_outcomes=early.older_mirrored_calls(ROOT,now.date(),first)
-            detail['early_history']='verified repository mirror plus current original calls'
-        except (OSError,ValueError,KeyError) as exc:
-            detail['early_history']='older mirror unavailable; current original calls only: '+type(exc).__name__
+        detail['early_history'] = detail['learning_history']
         early_fitted=early.fit(collect(older_p+p,older_outcomes+outcomes,[],cities,{},now),now.date(),states)
         fitted.extend(early_fitted)
         path=ROOT/'data/eval/wxpredict/city_calibration'/f'{now.date()}.json'
@@ -511,6 +553,15 @@ def run(score_only=False, now=None):
         detail.update(early_adaptation_cells=len(early_fitted),early_adaptation_decisions=dict(Counter(s['decision'] for s in early_fitted)))
     data=reports(collect(p,outcomes,da,cities,{},now),cities,reviews,states,now,version,selections,early_states,
                  model_versions=active_versions)
+    from wxpredict import cycle_registry
+    registry_state = cycle_registry.registry()
+    shadow = registry_state.get('current')
+    for row in data:
+        row['report']['learning_pipeline'] = dict(raw_model_fit_through=meta.get('fit_last'),
+            challenger_status=('forward validated research challenger' if registry_state.get('forward_validated')
+                               else 'awaiting forward validation') if shadow else 'no challenger registered',
+            challenger_available_at=(shadow or {}).get('available_at'),
+            challenger_model_sha256=(shadow or {}).get('model_sha256'))
     n=publish_reports(data)
     log_run(JOB,'ok',n,detail)
     print(json.dumps(dict(rows=n,**detail)),flush=True)

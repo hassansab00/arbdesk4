@@ -139,17 +139,22 @@ def build(first, last, table, through, include_current=False, checkpoints=CHECKP
     by_event = {e["event_id"]: e for e in events}
     markets, bands = lr.read_definitions()
     mapping = parity.event_crosswalk(markets, list(common.market_rows("events")), bands, list(common.market_rows("bands")))
-    matched = []
+    matched, mismatched = [], []
     for e in lr.live_events(markets, bands, cities, first, last):
         event = by_event.get(mapping.get(e["event_id"]))
         if event is None:
             continue
         if event["bands"] != e["bands"] or event["station"] != e["station"] or event["unit"] != e["unit"]:
-            raise ValueError("live and labeled venue ladders differ")
+            mismatched.append(e)
+            continue  # retain the mismatch in coverage; never reshape a contract to fit
         matched.append({**event, "band_ids": e["band_ids"]})
     calls, vectors = recorded(first, last, through, checkpoints)
     rows, excluded = [], collections.Counter()
     for call in calls:
+        if any(e['city'] == call['city_key'] and e['date'] == call['target_date']
+               and call['top_band_id'] in e['band_ids'] for e in mismatched):
+            excluded['live_and_labeled_contract_mismatch'] += 1
+            continue
         payload = vectors.get(str(call["checkpoint_id"]))
         if payload is None:
             excluded["missing_on_time_recorded_vector"] += 1
@@ -159,7 +164,11 @@ def build(first, last, table, through, include_current=False, checkpoints=CHECKP
         if len(chosen) != 1 or chosen[0]["event_id"] not in labels:
             excluded["unsettled_or_missing_exact_identity"] += 1
             continue
-        r = attach(call, payload, chosen[0], labels[chosen[0]["event_id"]], include_current=include_current)
+        try:
+            r = attach(call, payload, chosen[0], labels[chosen[0]['event_id']], include_current=include_current)
+        except ValueError:
+            excluded['recorded_contract_or_market_mismatch'] += 1
+            continue
         if r is None:
             excluded["ineligible_or_missing_first_call_market"] += 1
             continue

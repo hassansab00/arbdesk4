@@ -9,7 +9,7 @@ import json
 import math
 import random
 import re
-from collections import defaultdict
+from collections import defaultdict, Counter
 from zoneinfo import ZoneInfo
 
 POLICY = 'wx-city-phase-season-v1'
@@ -89,35 +89,55 @@ def readiness(train_dates, validation_dates, priors=PRIORS, pool_rows=None, pool
                 policy='same weights and observation contract; chronological dates; validation still required')
 
 
-def eligible_rows(rows, as_of, model_version, *, pooled=False):
+def eligible_rows(rows, as_of, model_version, *, pooled=False, diagnostics=None):
     cutoff = dt.datetime.combine(as_of, dt.time(), dt.timezone.utc)
     first = as_of-dt.timedelta(days=PRIORS['window_days'])
-    selected = {}
+    selected, excluded = {}, Counter()
     for r in rows:
         try:
             day = dt.date.fromisoformat(r['target_date'])
             ctx = r.get('predictive_context') or {}
             ph = phase(ctx)
+            compatible = (pool_version(r['model_version']) == pool_version(model_version)
+                          if pooled else r['model_version'] == model_version)
+            reason = ('incompatible_model_or_contract' if not compatible else
+                      'outside_window' if not first <= day < as_of else
+                      'missing_phase' if not ph else
+                      'missing_freeze_or_input_timestamp' if not r.get('frozen_at') or not r.get('input_as_of') else
+                      'missing_confirmed_label' if not r.get('settled_at') or not r.get('label_received_at') else None)
+            if reason:
+                excluded[reason] += 1
+                continue
             end = dt.datetime.combine(day+dt.timedelta(days=1), dt.time(), ZoneInfo(r['timezone']))
             frozen, input_at = timestamp(r['frozen_at']), timestamp(r['input_as_of'])
             settled, received = timestamp(r['settled_at']), timestamp(r['label_received_at'])
             fit = dt.date.fromisoformat(ctx['model_fit_through'])
-            compatible = (pool_version(r['model_version']) == pool_version(model_version)
-                          if pooled else r['model_version'] == model_version)
-            if (not compatible or not ph or not first <= day < as_of
-                or fit >= day or not input_at <= frozen < end <= cutoff
-                or not frozen < settled <= received < cutoff):
+            if fit >= day:
+                excluded['training_overlap'] += 1
+                continue
+            if not input_at <= frozen < end <= cutoff or not frozen < settled <= received < cutoff:
+                excluded['invalid_timing'] += 1
                 continue
             ids = ctx['band_ids']
             transform(r['raw_probs'], ids, IDENTITY)
             if r['winning_band_id'] not in ids:
+                excluded['winner_outside_ladder'] += 1
                 continue
             key = (r['city_key'], r['target_date'], ph)
             if key not in selected or frozen < timestamp(selected[key]['frozen_at']):
+                if key in selected:
+                    excluded['later_duplicate'] += 1
                 selected[key] = dict(r, phase=ph)
+            else:
+                excluded['later_duplicate'] += 1
         except (KeyError, TypeError, ValueError):
-            continue
-    return sorted(selected.values(), key=lambda r: (r['target_date'], r['city_key'], r['frozen_at']))
+            excluded['invalid_fields'] += 1
+    out = sorted(selected.values(), key=lambda r: (r['target_date'], r['city_key'], r['frozen_at']))
+    if diagnostics is not None:
+        diagnostics.update(input_rows=len(rows), eligible_rows=len(out), exclusions=dict(excluded),
+            first_eligible_date=min((r['target_date'] for r in out), default=None),
+            last_eligible_date=max((r['target_date'] for r in out), default=None))
+    return out
 
 
 def usable(state, target, model_version):
@@ -176,7 +196,9 @@ def _validation(rows, candidate, current):
 
 def fit(rows, cities, model_version, as_of, previous=()):
     as_of = dt.date.fromisoformat(str(as_of))
-    pool_rows = eligible_rows(rows, as_of, model_version, pooled=True)
+    source_rows = rows
+    pool_diagnostics = {}
+    pool_rows = eligible_rows(rows, as_of, model_version, pooled=True, diagnostics=pool_diagnostics)
     rows = eligible_rows(rows, as_of, model_version)
     split = as_of-dt.timedelta(days=PRIORS['validation_days'])
     previous = {(s['city_key'], s['phase']): s for s in previous if s['model_version'] == model_version}
@@ -199,6 +221,10 @@ def fit(rows, cities, model_version, as_of, previous=()):
                          pool_model_version=pool_version(model_version),pool_rows=len(pool),
                          pool_dates=len({r['target_date'] for r in pool}),
                          decision='held', reason='insufficient independent training/validation dates')
+            eligibility = {}
+            eligible_rows([r for r in source_rows if r.get('city_key') == city], as_of, model_version, diagnostics=eligibility)
+            state['eligibility'] = eligibility
+            state['compatible_pool_eligibility'] = pool_diagnostics
             state['input_digest'] = hashlib.sha256(json.dumps([(r['city_key'],r['target_date'],r['input_sha256'],r['winning_band_id'])
                 for r in pool_rows if r['phase'] == ph], separators=(',',':')).encode()).hexdigest()
             state['readiness'] = readiness(nt, nv, pool_rows=len(pool),

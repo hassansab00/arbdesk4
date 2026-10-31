@@ -7,6 +7,7 @@ export const HORIZONS = [
 ] as const;
 export type Learning = { phase: string; as_of: string; decision: string; reason: string;
   train_dates: number; validation_dates: number; version: string; validated_through: string | null;
+  eligibility?: { input_rows: number; eligible_rows: number; exclusions: Record<string,number> };
   active: boolean; effective_params: { temperature: number; tilt: number }; readiness?: Readiness };
 export type Readiness = { sample_ready: boolean; validation_window_days: number; policy: string;
   counts: Array<{ name: string; available: number; required: number; missing: number }> };
@@ -47,6 +48,7 @@ export type CityReport = { city: string; display_name: string; timezone: string;
   raw: { n: number; hit: number | null; log_loss: number | null };
   why: { missed_dates: number; reviewed_dates: number; weather: Record<string, number>;
     mean_peak_shift_h: number | null; public_forecast_mae_c: number | null; public_forecast_bias_c: number | null };
+  learning_pipeline?: { raw_model_fit_through?: string; challenger_status: string; challenger_available_at?: string; challenger_model_sha256?: string };
   learning: Learning[]; versions: Record<string,number>;
   model_selection?: ModelSelection | null;
   recent_dates?: DailyScore[];
