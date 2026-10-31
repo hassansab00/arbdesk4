@@ -18,6 +18,8 @@ def test_primary_database_reads_share_the_actual_request_deadline(monkeypatch):
     monkeypatch.setattr(sys, 'path', list(sys.path))
     sys.path.insert(0, str(ROOT/'tools'))
     from wxpredict import common, wxrd_live
+    from types import SimpleNamespace
+    monkeypatch.setitem(sys.modules, 'sdyes_forward', SimpleNamespace())
     monkeypatch.setattr(common, '_OPS', None)
     assert common.ops() is ops
     monkeypatch.setenv('PREDICTIVE_PRIMARY', pp.POLICY)
