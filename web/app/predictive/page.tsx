@@ -725,7 +725,7 @@ export default function PredictivePage() {
         <PredictionClocks cities={cities.filter(c => selected.includes(c.city_key))} />
       </div>
       <div id="predictive-accuracy" className="scroll-mt-20" tabIndex={-1}>
-        <CityPredictionValidation cities={selected} moment={moment} />
+        <CityPredictionValidation cities={selected} moment={moment} setMoment={setMoment} />
       </div>
       <div id="predictive-results" className="scroll-mt-20" tabIndex={-1}>
         <PredictionHindsight rows={hindsightQ.data ?? []} loading={hindsightQ.loading} error={hindsightQ.error}
