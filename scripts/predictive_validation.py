@@ -489,6 +489,24 @@ def older_predictor_calls(root, as_of, report_first):
         for field in ('probs', 'predictive_context', 'raw_probs', 'baseline_probs'):
             row[field] = json.loads(row[field]) if isinstance(row.get(field), str) and row[field] else row.get(field) or None
         row['frozen_at'] = row.get('frozen_at') or None
+    for fact in facts:
+        # CSV mirrors preserve values as text. Decode evidence types before
+        # collect() applies the same logic as the typed live REST response.
+        for field in ('market_complete', 'market_hit'):
+            value = fact.get(field)
+            if value is None or value == '':
+                fact[field] = None
+            elif isinstance(value, bool):
+                pass
+            elif str(value).lower() in ('true', 't', '1', 'false', 'f', '0'):
+                fact[field] = str(value).lower() in ('true', 't', '1')
+            else:
+                raise ValueError('invalid mirrored outcome boolean: '+field)
+        for field in ('log_loss_market', 'brier_market'):
+            value = fact.get(field)
+            fact[field] = None if value is None or value == '' else float(value)
+        for field in ('settled_at', 'banked_at'):
+            fact[field] = fact.get(field) or None
     return calls, facts
 
 

@@ -185,3 +185,28 @@ def test_probability_workers_inherit_the_actual_budget_and_keep_order(monkeypatc
         engine.main()
     assert seen==[(123456.,seen[0][1])] and seen[0][1]!=main_thread
     assert written==[dict(band_id='a',calibrated_prob=1)]
+
+
+@pytest.mark.parametrize('complete,hit',[('True','False'),('False','True')])
+def test_archived_outcome_strings_reach_the_original_scorer_as_typed_evidence(tmp_path,monkeypatch,complete,hit):
+    import predictive_validation as pv
+    monkeypatch.setattr(sys,'path',list(sys.path));sys.path.insert(0,str(ROOT/'tools'))
+    from wxpredict import arrival_dataset
+    call=dict(city_key='city',target_date='2026-09-30',checkpoint='noon',checkpoint_id='old',
+        decided_at='2026-09-30T12:00:00Z',frozen_at='2026-09-30T12:01:00Z',
+        local_decision_time='2026-09-30T12:00:00',engine_version='version',priced_from='wxrd3:old',
+        probs=json.dumps({'a':.8,'b':.2}),raw_probs=json.dumps({'a':.8,'b':.2}),
+        baseline_probs=json.dumps({'a':.5,'b':.5}),predictive_context='{}')
+    fact=dict(checkpoint_id='old',winner_band_id='a',settled_at='2026-10-01T00:01:00Z',
+        banked_at='2026-10-01T00:02:00Z',market_complete=complete,market_hit=hit,
+        log_loss_market='1.5',brier_market='0.75')
+    monkeypatch.setattr(arrival_dataset,'mirrored_rows',lambda table,*a,**kw:[dict(call)] if table=='prediction_checkpoints' else [dict(fact)])
+    calls,facts=pv.older_predictor_calls(tmp_path,dt.date(2026,10,31),'2026-10-01')
+    assert facts[0]['market_complete'] is (complete=='True')
+    assert facts[0]['market_hit'] is (hit=='True')
+    rows=pv.collect(calls,facts,[],[dict(city_key='city',timezone='UTC')],{},dt.datetime(2026,10,31,tzinfo=UTC))
+    assert len(rows)==1 and rows[0]['metrics']['hit']==1
+    if complete=='True':
+        assert rows[0]['market_metrics']==dict(hit=0,log_loss=1.5,brier=.75)
+    else:
+        assert rows[0]['market_metrics'] is None
