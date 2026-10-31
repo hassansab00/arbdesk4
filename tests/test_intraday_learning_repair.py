@@ -142,7 +142,8 @@ def test_a_mismatched_contract_is_reported_without_repairing_its_geometry(tmp_pa
     table=tmp_path/'table.csv.gz'
     with gzip.open(table,'wt') as out:
         writer=csv.DictWriter(out,fieldnames=list(dict.fromkeys(['source','date','event_id',*parity.LABELS])))
-        writer.writeheader();writer.writerow(dict.fromkeys(writer.fieldnames,''))
+        writer.writeheader()
+        writer.writerow(dict(source='venue',date=event['date'],event_id=event['event_id']))
     monkeypatch.setattr(arrival.common,'cities',lambda:{})
     monkeypatch.setattr(arrival.common,'nightly_reports',lambda:[])
     monkeypatch.setattr(arrival.common,'market_rows',lambda *a:[])
@@ -151,10 +152,11 @@ def test_a_mismatched_contract_is_reported_without_repairing_its_geometry(tmp_pa
     monkeypatch.setattr(live_reader,'read_definitions',lambda:([],[]))
     monkeypatch.setattr(live_reader,'live_events',lambda *a:[live])
     monkeypatch.setattr(parity,'event_crosswalk',lambda *a:{'live':'historical'})
-    monkeypatch.setattr(arrival,'recorded',lambda *a:([dict(checkpoint_id='call',city_key='city',target_date='2026-10-20',top_band_id='a')],{}))
+    monkeypatch.setattr(arrival,'recorded',lambda *a:([dict(checkpoint_id='call',city_key='city',target_date='2026-10-20',top_band_id='a')],{'call':{'checkpoint_id':'call'}}))
     rows,coverage=arrival.build('2026-10-20','2026-10-20',str(table),0)
     assert not rows and coverage['first_calls']==1
-    assert coverage['excluded']=={'live_and_labeled_contract_mismatch':1}
+    assert coverage['excluded']=={'live_settled_contract_mismatch':1}
+    assert coverage['contract_mismatches'][0]['fields']==['bands']
     assert event['bands']!=live['bands']
 
 
