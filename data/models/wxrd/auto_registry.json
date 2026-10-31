@@ -112,6 +112,13 @@
    "model_id": "wxrd-auto-20261031-695ab16e3825",
    "night": "2026-10-31",
    "report": "data/eval/wxpredict/cycles/bootstrap_2026-10-31.json"
+  },
+  {
+   "action": "cycle",
+   "decision": "wait forward",
+   "fitted": false,
+   "night": "2026-10-31",
+   "report": "data/eval/wxpredict/cycles/2026-10-31.json"
   }
  ],
  "paused": false,
