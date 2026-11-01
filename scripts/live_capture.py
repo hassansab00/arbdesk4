@@ -34,8 +34,8 @@ public.live_capture (supabase/migrations/20261011210000_the_live_record.sql):
           (features.pick_daily); the record had neither, so no live row could
           carry them. One more request a chunk (the models), asked exactly as
           the nightly record asks it (honest_record.previous_request).
-  hourly0 and models0 keep the current forecast as actually received, through
-          24 hours ahead, in those same requests. They never replace frozen
+  hourly0 and models0 keep the current forecast as actually received, for
+          today's and tomorrow's complete local days, in those same requests. They never replace frozen
           inputs. Receipt time is not a forecast model initialisation time.
   report  every report the tick's own IEM read returned (tick.py asks once
           for every field the training reads and leaves the answer in
@@ -56,6 +56,7 @@ import json
 import os
 import sys
 import time
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from requests import exceptions as http_errors
 
@@ -197,6 +198,29 @@ def hourly_window(now, horizon_h=HORIZON_H):
     return first, last
 
 
+def current_window(city, now):
+    """Two local dates, retaining DST hours and dropping irrelevant old hours.
+
+    A missing timezone cannot establish local-day boundaries; retain the old
+    bounded window for compatibility and leave that gap explicit in metadata.
+    """
+    if not city.get('timezone'):
+        return hourly_window(now, CAPTURE_HORIZONS[0])
+    try:
+        zone = ZoneInfo(city['timezone'])
+    except (ZoneInfoNotFoundError,ValueError):
+        return hourly_window(now, CAPTURE_HORIZONS[0])
+    day = now.astimezone(zone).date()
+    start = dt.datetime.combine(day, dt.time(), zone).astimezone(dt.timezone.utc)
+    end = dt.datetime.combine(day+dt.timedelta(days=2), dt.time(), zone).astimezone(dt.timezone.utc)
+    # API hours are UTC-aligned, including stations in half-hour timezones.
+    first = start.replace(minute=0,second=0,microsecond=0)
+    if first < start:
+        first += dt.timedelta(hours=1)
+    last = (end-dt.timedelta(microseconds=1)).replace(minute=0,second=0,microsecond=0)
+    return first.replace(tzinfo=None), last.replace(tzinfo=None)
+
+
 def _series_rows(city_key, answer, first, last, names, keep):
     """[{key, payload}]: every hour of one city's answer (asked in GMT) in
     [first, last] whose values `keep` accepts, the named series in order."""
@@ -264,6 +288,9 @@ def _fetch(cities, now, left, hourly, rows_of):
     when the last one did, and the record is when each value arrived."""
     windows = {lead: hourly_window(now, h) for lead, h in CAPTURE_HORIZONS.items()}
     first, last = windows[1][0], max(w[1] for w in windows.values())
+    current_windows = {c['city_key']:current_window(c,now) for c in cities}
+    if current_windows:
+        last = max(last,max(w[1] for w in current_windows.values()))
     rows = {lead: [] for lead in CAPTURE_HORIZONS}
     errors, retries, answered, recovered = [], [], 0, 0
     pending = [(cities[i:i + CITIES_PER_REQUEST], False)
@@ -280,7 +307,15 @@ def _fetch(cities, now, left, hourly, rows_of):
             got = {lead: [] for lead in CAPTURE_HORIZONS}
             for city, a in zip(chunk, answers):
                 for lead in CAPTURE_HORIZONS:
-                    made = rows_of(city["city_key"], a, lead, *windows[lead])
+                    window = current_windows[city['city_key']] if lead == 0 else windows[lead]
+                    made = rows_of(city["city_key"], a, lead, *window)
+                    if lead == 0:
+                        location = {k:city.get(k) for k in ('latitude','longitude','timezone')}
+                        returned = {k:a[k] for k in ('latitude','longitude','elevation','timezone','utc_offset_seconds') if k in a}
+                        for value in made:
+                            value['request_location'] = location
+                            if returned:
+                                value['response_location'] = returned
                     got[lead] += made
                     if lead == 0 and not made:
                         errors.append(f"{city['city_key']}: current forecast unavailable")
@@ -304,6 +339,7 @@ def _fetch(cities, now, left, hourly, rows_of):
     return rows, {"cities": len(cities), "answered": answered,
                   "values": {lead: sum(len(r) for _, r in batches) for lead, batches in rows.items()},
                   "window": {lead: [w[0].isoformat(), w[1].isoformat()] for lead, w in windows.items()},
+                  "current_local_windows": {k:[x.isoformat() for x in w] for k,w in current_windows.items()},
                   "retries": retries, "recovered": recovered, "errors": errors}
 
 
@@ -395,15 +431,27 @@ def current_snapshots(rows):
     for a database row and index entry for every city/hour on every revision.
     Previous snapshots stay available for as-of reads and the archive.
     """
-    by_city = {}
+    by_city, locations, returned_locations = {}, {}, {}
     for row in rows:
         city, hour = row["key"].split("|", 1)
         hours = by_city.setdefault(city, {})
         if hour in hours and hours[hour] != row["payload"]:
             raise ValueError("conflicting current forecast hour")
         hours[hour] = row["payload"]
+        if row.get('request_location') is not None:
+            location = row['request_location']
+            if city in locations and locations[city] != location:
+                raise ValueError('conflicting current forecast request locations')
+            locations[city] = location
+        if row.get('response_location') is not None:
+            location = row['response_location']
+            if city in returned_locations and returned_locations[city] != location:
+                raise ValueError('conflicting current forecast response locations')
+            returned_locations[city] = location
     return [{"key": city + "|snapshot", "payload": {
-        "schema": "nwp-current-snapshot-v1", "hours": dict(sorted(hours.items()))}}
+        "schema": "nwp-current-snapshot-v1", "hours": dict(sorted(hours.items())),
+        **({'request_location':locations[city]} if city in locations else {}),
+        **({'response_location':returned_locations[city]} if city in returned_locations else {})}}
         for city, hours in sorted(by_city.items())]
 
 
