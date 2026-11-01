@@ -1,0 +1,10 @@
+{
+ "changes_serving": false,
+ "decision": "wait forward",
+ "forward_first": "2026-11-02",
+ "forward_last": "2026-11-15",
+ "forward_policy": "remaining-challenger-fixed-forward-v1",
+ "model_sha256": "695ab16e382567352333852a0bdebf70d7233954c3465913964ddcb333c644f0",
+ "night": "2026-11-01",
+ "reason": "fixed full forward window not yet complete"
+}
