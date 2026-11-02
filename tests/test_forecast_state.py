@@ -95,6 +95,15 @@ def test_evidence_gaps_are_excluded_with_named_reasons(change,reason):
     assert m.attach(p,DEFINITIONS,THROUGH)==(None,reason)
 
 
+@pytest.mark.parametrize('field',['raw_forecast_c','centre_c','sigma_c'])
+@pytest.mark.parametrize('missing',[None,''])
+def test_missing_numeric_fields_are_counted_without_aborting_other_calls(field,missing):
+    incomplete=packet(city='incomplete');incomplete['call'][field]=missing
+    records,coverage=study.prepare([incomplete,packet()],DEFINITIONS,THROUGH)
+    assert len(records)==1 and coverage['first_calls']==2
+    assert coverage['excluded']=={'missing_numeric_forecast_context':1}
+
+
 @pytest.mark.parametrize('change',[
     {'reading_at':'2026-08-01T10:00:00Z'},
     {'reading_at':'2026-07-31T23:59:00Z'},

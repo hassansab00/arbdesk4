@@ -92,6 +92,8 @@ def attach(packet, definitions, through):
         raise ValueError('frozen band geometry has a gap or overlap')
     if any(b['lo'] is not None and b['hi'] is not None and number(b['lo']) >= number(b['hi']) for b in bands):
         raise ValueError('invalid frozen band width')
+    if any(c.get(key) is None or c.get(key) == '' for key in ('centre_c','raw_forecast_c','sigma_c')):
+        return None, 'missing_numeric_forecast_context'
     centre, raw, sigma = map(number, (c['centre_c'],c['raw_forecast_c'],c['sigma_c']))
     if sigma <= 0:
         raise ValueError('nonpositive original uncertainty')
