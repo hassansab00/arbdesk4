@@ -54,6 +54,12 @@
    "night": "2026-11-01",
    "report": "data/eval/wxpredict/current_forecast/2026-11-01.json",
    "report_sha256": "2a699c77076a9fbdcfbad16753c03890bb3255628c736c23decf861b17d1e4dc"
+  },
+  {
+   "decision": "wait",
+   "night": "2026-11-02",
+   "report": "data/eval/wxpredict/current_forecast/2026-11-02.json",
+   "report_sha256": "1351c044110f46ac3766ecfe3746bae0f24afe6aac6b75883185a0e8bbc41ffc"
   }
  ],
  "paused": false,
