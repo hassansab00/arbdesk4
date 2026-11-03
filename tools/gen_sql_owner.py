@@ -37,10 +37,12 @@ def build() -> dict:
         src = _strip_comments(open(f).read())
         rel = os.path.relpath(f, root)
         base = os.path.basename(f) if rel.startswith("sql" + os.sep) else rel
-        for pat in (r"create\s+(?:or\s+replace\s+)?(?:materialized\s+)?view\s+(?:if\s+not\s+exists\s+)?(?:public\.)?([a-z0-9_]+)",
-                    r"create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?([a-z0-9_]+)"):
+        for pat in (r"create\s+(?:or\s+replace\s+)?(?:materialized\s+)?view\s+(?:if\s+not\s+exists\s+)?(?:([a-z0-9_]+)\.)?([a-z0-9_]+)",
+                    r"create\s+table\s+(?:if\s+not\s+exists\s+)?(?:([a-z0-9_]+)\.)?([a-z0-9_]+)"):
             for m in re.finditer(pat, src, re.I):
-                name = m.group(1).lower()
+                schema, name = m.group(1), m.group(2).lower()
+                if schema and schema.lower() != "public":
+                    continue
                 if name in NOT_A_NAME:
                     continue
                 owner.setdefault(name, base)

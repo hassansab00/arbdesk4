@@ -540,3 +540,15 @@ def test_the_panel_distinguishes_a_floor_from_a_maximum():
     for state in ["series", "floor_only", "absent"]:
         assert state in panel, f"the panel does not report the {state} case"
     assert "floor" in panel.lower()
+
+
+def test_private_schema_is_not_mistaken_for_a_missing_public_table():
+    from tools.gen_sql_owner import build
+    owners=build()
+    assert "arbdesk_private" not in owners
+    assert "shared_weather_calls" in owners
+
+
+def test_private_rpc_writes_are_not_public_freshness_feeds():
+    from tools.gen_provenance import _rpc_writes
+    assert all("arbdesk_private" not in tables for tables in _rpc_writes().values())

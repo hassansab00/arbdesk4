@@ -176,6 +176,11 @@ jobs:
           TICK_AT: ${{ github.event.inputs.at }}
           LIVE_CAPTURE_IEM: ${{ runner.temp }}/iem_answer.txt
         run: .venv/bin/python scripts/tick.py
+      - name: Shared weather forward test
+        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
+        continue-on-error: true
+        timeout-minutes: 1
+        run: timeout 25 .venv/bin/python scripts/shared_weather_forward.py
       - name: Day Max Prediction paper entries
         if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
         timeout-minutes: 2

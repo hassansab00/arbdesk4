@@ -179,3 +179,5 @@ ad4_city_calibration_forward.sql
 ad4_lineup_labels.sql
 
 ad4_page_cache_requests.sql
+
+ad4_shared_weather_forward.sql

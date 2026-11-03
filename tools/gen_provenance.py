@@ -152,8 +152,9 @@ def _rpc_writes():
         for i, (pos, hdr_end, fn) in enumerate(marks):
             hard_end = marks[i + 1][0] if i + 1 < len(marks) else len(src)
             body = _function_body(src, hdr_end, hard_end)
-            tables = set(m.lower() for m in re.findall(
-                r"insert\s+into\s+(?:public\.)?([a-z0-9_]+)", body, re.I))
+            tables = {name.lower() for schema,name in re.findall(
+                r"insert\s+into\s+(?:([a-z0-9_]+)\.)?([a-z0-9_]+)", body, re.I)
+                if not schema or schema.lower() == "public"}
             tables |= set(m.lower() for m in re.findall(
                 r"refresh\s+materialized\s+view\s+(?:concurrently\s+)?(?:public\.)?([a-z0-9_]+)",
                 body, re.I))
