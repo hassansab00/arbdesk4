@@ -5,6 +5,13 @@ PR that advances a step.
 
 ## Trade API retirement repair — 3 Nov
 
+Production follow-up: both trade collection paths reached the mandatory
+progress receipt, then failed because the shared RPC client decoded the
+successful empty HTTP 204 acknowledgement as JSON. Accept void receipts
+without decoding a body; non-void malformed JSON and HTTP failures still
+fail. Original saved marks, condition cohorts, predictions and data remain
+unchanged. Recovery acceptance requires a real run after this correction.
+
 The trade collector and discovery-history reader migrate to Data API v2:
 condition cohorts, explicit response envelopes, exact cursor finality and
 client-side date windows. Partial collections retain their original mark and
