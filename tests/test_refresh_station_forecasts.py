@@ -124,6 +124,42 @@ def test_fetch_rejects_incomplete_future_days_and_retains_complete_models(monkey
     assert not rf.fetch([city], NOW, [])[1]
 
 
+def test_slow_weather_chunks_split_and_retain_independently_received_cities(monkeypatch):
+    cities=[dict(city_key=f'city-{i}',timezone='UTC') for i in range(4)]
+    stamps=[(dt.datetime(2026,10,19)+dt.timedelta(hours=i)).isoformat() for i in range(96)]
+    heating=dict(hourly=dict(time=stamps,**{v:[20]*96 for v in rf.hr.HEATING}))
+    models=dict(hourly=dict(time=stamps,**{f'temperature_2m_{m}':[20]*96 for m in rf.hr.MODELS}))
+    asked=[]
+    def current(chunk,part,**kwargs):
+        asked.append(([c['city_key'] for c in chunk],part))
+        if len(chunk)>2:return None
+        return [None if c['city_key']=='city-3' else (heating if part=='heating' else models) for c in chunk]
+    monkeypatch.setattr(rf.hr,'CHUNK',4)
+    monkeypatch.setattr(rf.hr,'current_request',current)
+    monkeypatch.setattr(rf.hr,'_left',lambda:100)
+    def each(ask,places,rounds):
+        for _ in range(3):
+            for part in rf.hr.PARTS:ask(places,part)
+        return [(city,(None,None)) for city in places]
+    monkeypatch.setattr(rf.hr,'fetch_each',each)
+    bm,md,missing=rf.fetch(cities,NOW,[])
+    assert {r[0] for r in bm}=={c['city_key'] for c in cities[:3]}
+    assert {r[0] for r in md}=={c['city_key'] for c in cities[:3]} and missing==['city-3']
+    assert [ids for ids,part in asked if part=='heating']==[
+        ['city-0','city-1','city-2','city-3'],['city-0','city-1'],['city-2','city-3'],['city-3']]
+
+
+def test_weather_retry_never_starts_a_subrequest_after_its_existing_deadline(monkeypatch):
+    city=fixture()[0][0]
+    monkeypatch.setattr(rf.hr,'_left',lambda:0)
+    monkeypatch.setattr(rf.hr,'current_request',lambda *a,**k:pytest.fail('expired weather request'))
+    def each(ask,places,rounds):
+        assert ask(places,'heating') is None
+        return [(places[0],(None,None))]
+    monkeypatch.setattr(rf.hr,'fetch_each',each)
+    assert rf.fetch([city],NOW,[])==([],[],['seoul'])
+
+
 def test_engine_rejects_previous_input_blend_and_accepts_matching_refresh(monkeypatch):
     import probability_engine as pe
     _, p39, mos = rf.build(*fixture())

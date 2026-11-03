@@ -60,9 +60,16 @@ def availability(rows, coverage, first, last, training=False):
     expected = coverage['first_calls']
     fraction = paired/expected if expected else 0.
     needed = MIN_TRAIN_DATES if training else legacy.HOLDOUT_DATES
+    reasons=[]
+    if first>last:reasons.append('window_precedes_recorded_inputs')
+    elif not expected:reasons.append('no_original_calls_in_window')
+    if len(good)<needed:reasons.append('too_few_complete_dates')
+    if expected and fraction<legacy.MIN_COVERAGE:reasons.append('paired_input_coverage_below_minimum')
     return dict(ready=len(good)>=needed and fraction>=legacy.MIN_COVERAGE,
                 complete_dates=len(good), required_dates=needed, paired_rows=paired,
                 first_calls=expected, coverage=fraction, input_coverage=coverage,
+                window_first=first,window_last=last,recorded_inputs_from=INPUTS_FROM,
+                unavailable_reasons=reasons,excluded_by_reason=coverage.get('excluded',{}),
                 checkpoint_dates=[dict(date=d,checkpoint=cp,cities=len(groups[(d,cp)]))
                                   for d in dates for cp in calls.CHECKPOINTS])
 
@@ -81,8 +88,10 @@ def prepare(p):
     va = availability(test,vc,p['evaluation_first'],p['evaluation_last'])
     p = {**p,'training_availability':ta,'evaluation_availability':va}
     p.update(decision='ready' if ta['ready'] and va['ready'] else 'wait',
-             reason='recorded first-call coverage is sufficient' if ta['ready'] and va['ready']
-                    else 'insufficient recorded training or independent evaluation coverage')
+             reason=('recorded first-call coverage is sufficient' if ta['ready'] and va['ready'] else
+                'training window ends before the current-input record begins; no candidate was fitted'
+                if p['train_first']>p['fit_last'] else
+                'insufficient recorded training or independent evaluation coverage'))
     return p,train,test
 
 

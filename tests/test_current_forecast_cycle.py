@@ -60,6 +60,22 @@ def attached(day='2026-10-24',city='synthetic',cp='noon'):
     return out
 
 
+def test_empty_training_window_explains_zero_without_claiming_original_data_was_lost(monkeypatch):
+    plan=cycle.window('2026-11-03')
+    assert plan['train_first']>plan['fit_last']
+    monkeypatch.setattr(cycle,'load_window',lambda *a:([],dict(first_calls=0,excluded={})))
+    report,train,test=cycle.prepare(plan)
+    assert not train and not test and report['decision']=='wait'
+    available=report['training_availability']
+    assert available['window_first']==cycle.INPUTS_FROM
+    assert 'window_precedes_recorded_inputs' in available['unavailable_reasons']
+    assert 'no candidate was fitted' in report['reason']
+    gaps=cycle.availability([],dict(first_calls=12,excluded={'missing_current_receipt':12}),
+                            '2026-10-24','2026-11-01',True)
+    assert gaps['excluded_by_reason']=={'missing_current_receipt':12}
+    assert 'paired_input_coverage_below_minimum' in gaps['unavailable_reasons']
+
+
 def test_exact_primary_source_packet_and_independent_current_hash_are_required():
     call,p,truth=case()
     original=copy.deepcopy((call,p))

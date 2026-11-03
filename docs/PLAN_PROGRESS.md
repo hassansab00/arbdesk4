@@ -26,6 +26,16 @@ of rewriting their full JSON. Changed reports retain all evidence and use the
 existing bounded writer. Loading, preparation, payload writes and freshness
 updates are measured independently. Original calls and scores are untouched.
 
+## Partial weather recovery and explicit training readiness — 3 Nov
+
+The forward-only refresh retries unanswered cities in smaller cohorts and
+retains each independently received response when another city still fails.
+It keeps the existing request deadline and complete-local-day requirements;
+no historical call or learned parameter is changed. Replacement-cycle status
+now distinguishes a training window that predates recorded inputs from
+missing original calls, insufficient complete dates and missing input
+receipts. Eligibility thresholds and promotion gates remain unchanged.
+
 ## Miami day-ahead failure trace and input lineage — 31 Oct
 
 Read-only live queries of `v_day_max_original_calls`, `band_probabilities`,

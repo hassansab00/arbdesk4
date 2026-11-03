@@ -6,6 +6,7 @@ nightly coefficients, biases, widths and calibration remain unchanged. Frozen
 predictive calls are not read or written here.
 """
 import argparse
+import collections
 import datetime as dt
 import hashlib
 import json
@@ -115,9 +116,30 @@ def forecast_features(city, answer, received):
 def fetch(cities, started, rounds, features=None):
     """Reuse bounded batched requests, retaining only complete input days."""
     bm, md, missing = [], [], []
+    attempts=collections.Counter()
+    received={}
     def ask(chunk, part):
-        return hr.current_request(chunk, part, timeout_s=FORWARD_REQUEST_SECONDS, extra_hourly=EXTRA_HOURLY)
+        key=(tuple(c['city_key'] for c in chunk),part)
+        attempts[key]+=1
+        pending=[c for c in chunk if (c['city_key'],part) not in received]
+        # A repeatedly slow multi-city request must not strand every city in
+        # it. Retry only unanswered places, in progressively smaller groups.
+        size=max(1,hr.CHUNK//(2**(attempts[key]-1)))
+        for i in range(0,len(pending),size):
+            left=hr._left()
+            if left is not None and left<hr.MIN_LEFT:break
+            subset=pending[i:i+size]
+            answers=hr.current_request(subset,part,timeout_s=FORWARD_REQUEST_SECONDS,extra_hourly=EXTRA_HOURLY)
+            if answers is None:continue
+            if len(answers)!=len(subset):raise ValueError('forward weather response changed city identities')
+            for city,answer in zip(subset,answers):
+                if answer is not None:received[city['city_key'],part]=answer
+        return [received[c['city_key'],part] for c in chunk] if all((c['city_key'],part) in received for c in chunk) else None
     for city, (heating, models) in hr.fetch_each(ask, cities, rounds):
+        # Keep independently received cities even if another place in the
+        # original chunk still failed when the parent retry window ended.
+        heating=heating or received.get((city['city_key'],'heating'))
+        models=models or received.get((city['city_key'],'models'))
         if features is not None:
             features.extend(forecast_features(city, heating, started))
         timezone = city["timezone"]
