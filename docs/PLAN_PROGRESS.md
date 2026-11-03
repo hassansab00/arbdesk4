@@ -3,6 +3,28 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Shared weather forward experiment — 3 Nov
+
+One fixed global bounded model augments the original early forecast with
+hourly weather actually received before its decision. No market or outcome
+features, city-model selection, historical call rewrites or unbounded fits.
+Fitted artifacts and research exports stay private. Public source and tests
+carry no fitted coefficients or private research inputs.
+
+The separate new storage keeps server-stamped original candidate calls and
+immutable scores. Existing prediction tables, constraints, triggers, grants,
+trading settings and schedules are unchanged. A fixed cohort and twenty-date
+window bound collection; the normal nightly mirror retains safe call/score
+evidence. Morning collection needs saved seasonal and received forecast peak
+leads of at least one hour. These are as-of expectations, not realized peaks.
+
+The Predictive page shows the candidate separately, with local issue times,
+training cutoff, fixed future evaluation dates, coverage, pending labels,
+paired incumbent/market scores and heartbeat errors. Only actual future calls
+after private registration can count. Earlier live captures remain outside
+formal evaluation. No automatic production promotion or portfolio activation.
+Production deployment and verified capture receipts are recorded separately.
+
 ## Trade API retirement repair — 3 Nov
 
 Production follow-up: both trade collection paths reached the mandatory

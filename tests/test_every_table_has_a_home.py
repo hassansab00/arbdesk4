@@ -15,7 +15,7 @@ import re
 import mirror_to_repo as m
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-CREATE = re.compile(r"create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?\"?(\w+)", re.I)
+CREATE = re.compile(r"create\s+table\s+(?:if\s+not\s+exists\s+)?(?:(public|arbdesk_private)\.)?\"?(\w+)", re.I)
 
 # In the live database on 23 Sep, created by no file in this repository.
 LIVE_ONLY = {"regimes", "ensemble_forecasts"}
@@ -25,7 +25,7 @@ def repo_tables():
     names = set(LIVE_ONLY)
     for path in list((ROOT / "sql").glob("*.sql")) + list((ROOT / "supabase" / "migrations").glob("*.sql")):
         text = re.sub(r"--[^\n]*", "", path.read_text())   # a comment is not a table
-        names.update(CREATE.findall(text))
+        names.update((schema+"." if schema and schema != "public" else "")+name for schema,name in CREATE.findall(text))
     return names
 
 

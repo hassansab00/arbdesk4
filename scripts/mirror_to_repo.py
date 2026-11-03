@@ -150,6 +150,8 @@ TABLES = {
     # WP3 (11 Oct): every live input the tick had, as it arrived; kept two
     # days in Postgres, the older rows in data/archive/live_capture
     "live_capture":                  append("captured_at", "capture_id"),
+    "shared_weather_calls":          append("frozen_at", "call_id"),
+    "shared_weather_scores":         append("scored_at", "call_id"),
     "weather_forecasts":             append("observed_at", "forecast_id"),
     "weather_forecast_models":       append("observed_at", "city_key", "model", "run_at", "for_date"),
     "weather_forecast_features":     append("captured_at", "city_key", "for_date", "run_at"),
@@ -242,6 +244,8 @@ TABLES = {
 # Every public table the mirror does NOT copy, and why. A table in neither
 # TABLES nor here fails tests/test_every_table_has_a_home.py.
 NOT_MIRRORED = {
+    "arbdesk_private.shared_weather_models": "Private fitted artifact and fixed registration; backed up with private research evidence, never exported to the public repository.",
+    "arbdesk_private.shared_weather_status": "Rebuildable latest-run health receipt; original candidate calls and settled scores are mirrored independently.",
     "derived_wx_city_calibration": "Current city/phase and early-correction working state; nightly versions and input digests are committed under data/eval/wxpredict/city_calibration; used parameters are frozen on each checkpoint.",
     "derived_city_prediction_validation": "Rebuildable summary of mirrored immutable calls, outcomes and day reviews; no unique research content.",
     "research_captures": "JSON copies of six mirrored tables; the archive exports it at 2 days",

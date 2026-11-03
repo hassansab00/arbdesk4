@@ -114,6 +114,8 @@ export const SQL_OWNER: Record<string, string> = {
   "s10_day1_inputs": "supabase/migrations/20260927090000_s10_shadow_observe.sql",
   "s10_shadow_checkpoints": "supabase/migrations/20260927090000_s10_shadow_observe.sql",
   "settings": "ad4_00_preflight.sql",
+  "shared_weather_calls": "ad4_shared_weather_forward.sql",
+  "shared_weather_scores": "ad4_shared_weather_forward.sql",
   "signals": "ad4_00_preflight.sql",
   "strategies": "ad4_00_preflight.sql",
   "strategy_config_history": "supabase/migrations/20260923100000_a_retired_desk_stays_retired.sql",

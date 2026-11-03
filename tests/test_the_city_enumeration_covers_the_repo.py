@@ -133,6 +133,8 @@ SQL_FILTERS = {
     "sql/ad4_34_trade_plan.sql":                "Active-city operational input",
 }
 SQL_RECORD = {
+    "sql/ad4_shared_weather_forward.sql",  # fixed registered cohort and historical scoring, never a fresh active roster
+
     "supabase/migrations/20261018171559_monitoring_city_clocks_and_daily_maximum.sql",  
     "supabase/migrations/20261017170738_frozen_city_learning.sql",  
     "supabase/migrations/20261018084700_city_predictor_selection.sql",  
@@ -164,6 +166,9 @@ SQL_RECORD = {
 }
 
 MIGRATION_RECORD = {
+    "supabase/migrations/20261103170852_isolated_shared_weather_forward.sql":
+        "Fixed experiment cohort and original-call clock lookup; retired cities remain in historical scores",
+
     "supabase/migrations/20261030170828_day_max_original_early_calls.sql":
         "Clock lookup for a selected prospective city, not city enumeration",
     "supabase/migrations/20261030080013_day_max_prediction_paper.sql":

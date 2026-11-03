@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 const SECTIONS = [
   ["overview", "Overview"], ["filters", "Filters"], ["settlements", "Settlements"],
   ["cities", "City forecasts"], ["outlook", "Forward outlook"], ["clocks", "City clocks"],
-  ["accuracy", "City accuracy"], ["results", "Was it right?"], ["predictors", "Predictors"],
+  ["accuracy", "City accuracy"], ["results", "Was it right?"], ["shared-weather", "New weather model"], ["predictors", "Predictors"],
   ["convergence", "Convergence"], ["history", "Hit & miss"], ["errors", "Forecast errors"],
   ["decay", "Forecast decay"], ["scorecard", "Model scorecard"], ["returns", "Bankroll & scaling"],
 ] as const;

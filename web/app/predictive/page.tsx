@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { readAllRows } from "@/lib/readAll";
 import { DataState } from "@/components/DataState";
+import SharedWeatherForward from "@/components/SharedWeatherForward";
 import PredictiveSectionNav from "@/components/PredictiveSectionNav";
 import PredictiveAccuracyGuide from "@/components/PredictiveAccuracyGuide";
 import PredictionHindsight from "@/components/PredictionHindsight";
@@ -735,6 +736,7 @@ export default function PredictivePage() {
         moment={moment} setMoment={setMoment} />
       </div>
 
+      <SharedWeatherForward />
       <div id="predictive-predictors" className="scroll-mt-20" tabIndex={-1}>
         <PredictionLineup cities={selected} />
       </div>

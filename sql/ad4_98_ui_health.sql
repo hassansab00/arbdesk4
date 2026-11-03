@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 308 of them - and for each MISSING one names the
+-- and function the app reads - 310 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -125,6 +125,8 @@ with expected(rel, owner, used_by) as (values
     ('s10_day1_inputs', 'supabase/migrations/20260927090000_s10_shadow_observe.sql', ''),
     ('s10_shadow_checkpoints', 'supabase/migrations/20260927090000_s10_shadow_observe.sql', ''),
     ('settings', 'ad4_00_preflight.sql', '(GlobalBar), (ScheduleControl), /goals'),
+    ('shared_weather_calls', 'ad4_shared_weather_forward.sql', ''),
+    ('shared_weather_scores', 'ad4_shared_weather_forward.sql', ''),
     ('signals', 'ad4_00_preflight.sql', ''),
     ('strategies', 'ad4_00_preflight.sql', '/campaigns'),
     ('strategy_config_history', 'supabase/migrations/20260923100000_a_retired_desk_stays_retired.sql', ''),
@@ -455,6 +457,8 @@ begin
     ('s10_day1_inputs', 'supabase/migrations/20260927090000_s10_shadow_observe.sql', ''),
     ('s10_shadow_checkpoints', 'supabase/migrations/20260927090000_s10_shadow_observe.sql', ''),
     ('settings', 'ad4_00_preflight.sql', '(GlobalBar), (ScheduleControl), /goals'),
+    ('shared_weather_calls', 'ad4_shared_weather_forward.sql', ''),
+    ('shared_weather_scores', 'ad4_shared_weather_forward.sql', ''),
     ('signals', 'ad4_00_preflight.sql', ''),
     ('strategies', 'ad4_00_preflight.sql', '/campaigns'),
     ('strategy_config_history', 'supabase/migrations/20260923100000_a_retired_desk_stays_retired.sql', ''),
