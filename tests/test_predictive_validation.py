@@ -21,7 +21,10 @@ def test_report_writes_keep_all_evidence_and_bound_actual_encoded_requests(monke
         return len(batch)
     monkeypatch.setattr(v,'upsert_replace',write)
     assert v.publish_reports(rows)==len(rows)
-    assert [row for batch in batches for row in batch]==original==rows
+    published=[row for batch in batches for row in batch]
+    assert all(len(row['report'][v.REPORT_FINGERPRINT])==64 for row in published)
+    for row in published:row['report'].pop(v.REPORT_FINGERPRINT)
+    assert published==original==rows
     assert len(batches)>3, 'the byte bound must apply before the row-count bound'
     assert v.publish_reports([])==0
 
@@ -30,8 +33,53 @@ def test_oversized_report_fails_before_any_write_instead_of_dropping_evidence(mo
     writes=[]
     monkeypatch.setattr(v,'upsert_replace',lambda *a,**kw:writes.append(a))
     with pytest.raises(ValueError,match='byte budget'):
-        v.publish_reports([{'report':'small'},{'report':'x'*v.REPORT_BATCH_BYTES}])
+        v.publish_reports([{'report':{'text':'small'}},{'report':{'text':'x'*v.REPORT_BATCH_BYTES}}])
     assert not writes
+
+
+def test_identical_reports_only_touch_freshness_and_a_changed_hit_rewrites_the_payload(monkeypatch):
+    import copy
+    rows=[dict(city_key=city,checkpoint='morning',scope='served',as_of='2026-11-01T00:00:00Z',
+               report=dict(n=4,hits=2,proof={'original':'retained'})) for city in ('a','b')]
+    writes=[];touches=[]
+    monkeypatch.setattr(v,'upsert_replace',lambda table,batch,key,chunk:writes.extend(copy.deepcopy(batch)) or len(batch))
+    monkeypatch.setattr(v,'touch_reports',lambda groups:touches.append(groups) or sum(map(len,groups.values())))
+    assert v.publish_reports(rows)==2
+    prior=[dict(city_key=r['city_key'],checkpoint=r['checkpoint'],scope=r['scope'],as_of=r['as_of'],
+                payload_fingerprint=r['report'][v.REPORT_FINGERPRINT]) for r in writes]
+    writes.clear();touches.clear()
+    next_rows=copy.deepcopy(rows)
+    for r in next_rows:r['as_of']='2026-11-01T06:00:00Z'
+    next_rows[1]['report']['hits']=1
+    detail={}
+    assert v.publish_reports(next_rows,prior,detail)==2
+    assert len(writes)==1 and writes[0]['city_key']=='b' and writes[0]['report']['hits']==1
+    assert list(touches[0].values())==[{'a'}]
+    assert detail['report_payload_rows']==1 and detail['report_freshness_rows']==1
+    assert all(v.REPORT_FINGERPRINT not in r['report'] for r in rows+next_rows)
+    # A newer concurrent result cannot be overwritten by an older run.
+    writes.clear();touches.clear()
+    assert v.publish_reports(rows,[dict(r,as_of='2026-11-02T00:00:00Z') for r in prior])==0
+    assert not writes and touches==[{}]
+
+
+def test_freshness_patch_is_narrow_and_uses_the_inherited_request_deadline(monkeypatch):
+    import time
+    from types import SimpleNamespace
+    calls=[]
+    def patch(url,**kwargs):
+        calls.append((url,kwargs))
+        return SimpleNamespace(raise_for_status=lambda:None,json=lambda:[{'city_key':'city'}])
+    monkeypatch.setattr(v,'_session',lambda:SimpleNamespace(patch=patch))
+    monkeypatch.setattr(v,'_cfg',lambda:dict(url='https://fixture.invalid'))
+    monkeypatch.setattr(v,'_headers',lambda:{})
+    deadline=v._request_kwargs.__globals__['request_deadline']
+    with deadline(time.monotonic()+1):
+        assert v.touch_reports({('morning','served','old','new'):{'city'}})==1
+    params=dict(calls[0][1]['params'])
+    assert params['checkpoint']=='eq.morning' and params['scope']=='eq.served' and params['as_of']=='eq.old'
+    assert params['city_key']=='in.("city")' and params['select']=='city_key'
+    assert calls[0][1]['json']=={'as_of':'new'} and 0<calls[0][1]['timeout']<1
 
 
 def call(id='first',**kw):
@@ -231,7 +279,9 @@ def test_repeat_runs_replace_derived_answers_and_preserve_original_calls(tmp_pat
         if table=='derived_wx_city_calibration':
             return list(saved.get(table,{}).values())
         if table=='derived_city_prediction_validation':
-            return [r for r in saved.get(table,{}).values() if r['scope']=='served']
+            return [dict(city_key=r['city_key'],checkpoint=r['checkpoint'],scope=r['scope'],as_of=r['as_of'],
+                         payload_fingerprint=r['report'].get(v.REPORT_FINGERPRINT),model_selection=r['report'].get('model_selection'))
+                    for r in saved.get(table,{}).values()]
         return []
     def post(url,*,headers,params,data,**kw):
         table=url.rsplit('/',1)[-1]
@@ -246,6 +296,14 @@ def test_repeat_runs_replace_derived_answers_and_preserve_original_calls(tmp_pat
     monkeypatch.setattr(v,'get_cities',lambda **kw:CITIES)
     monkeypatch.setattr(v,'rest_all',read)
     monkeypatch.setattr(v,'log_run',lambda *a:None)
+    def touch(groups):
+        n=0
+        for (checkpoint,scope,old_asof,new_asof),cities in groups.items():
+            for city in cities:
+                row=saved['derived_city_prediction_validation'][city,checkpoint,scope]
+                if row['as_of']==old_asof:row['as_of']=new_asof;n+=1
+        return n
+    monkeypatch.setattr(v,'touch_reports',touch)
     # The suite loads common under several identities; patch the globals of
     # the actual bound writer rather than a separately imported module.
     wire=v.upsert_replace.__globals__

@@ -3,6 +3,29 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Trade API retirement repair — 3 Nov
+
+The trade collector and discovery-history reader migrate to Data API v2:
+condition cohorts, explicit response envelopes, exact cursor finality and
+client-side date windows. Partial collections retain their original mark and
+opaque cursor. A mandatory progress receipt precedes any insert, so a crash
+or failed final summary cannot advance the mark past unread trades. The
+research reader shares that protocol. Existing deduplication, workflow
+schedules and prediction freezes are preserved. Production recovery and
+verification are recorded separately from source validation.
+
+Resumed ranges include newly discovered conditions before advancing their
+completed prefix. A fixed upper timestamp separates collection cycles, and
+unread conditions remain retained even after their markets close or leave
+the rolling discovery window.
+
+Validation reports retain a canonical payload fingerprint. The scorer reads
+only prior metadata and model-selection state; identical derived reports
+refresh their as-of timestamp through an exact-row concurrency guard instead
+of rewriting their full JSON. Changed reports retain all evidence and use the
+existing bounded writer. Loading, preparation, payload writes and freshness
+updates are measured independently. Original calls and scores are untouched.
+
 ## Miami day-ahead failure trace and input lineage — 31 Oct
 
 Read-only live queries of `v_day_max_original_calls`, `band_probabilities`,

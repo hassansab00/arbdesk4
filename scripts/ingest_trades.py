@@ -9,15 +9,11 @@ the newest print in trades_observed was 24 Sep 09:42Z, and the last three runs
 reported the identical $119,846.20. It also cost 4 n8n executions a day.
 
 WHAT THIS DOES INSTEAD.
-  * Markets: every band of every OPEN market resolving yesterday or later
+  * Markets: every band of every recent market, including newly closed ones
     (1,045 condition ids on 25 Sep). Nothing is capped away.
-  * Requests: Polymarket's data API takes a comma-separated `market` list
-    (verified 25 Sep: three markets together returned exactly the 13 + 246 +
-    58 trades they return alone; and on 25 Sep one request for 100 markets
-    returned the same 992 trades as two requests for 50 over a shared 2.6 h
-    window). BATCH ids per request, newest first: 100 took all 1,045 markets
-    in 11 requests and 7.5 s from a cloud container, 50 took 21 and 14.5 s.
-  * Paging: `limit`/`offset`, stopping at the first page older than the
+  * Requests: Data API v2 accepts at most 20 comma-separated condition ids.
+    The retired v1 endpoint returned HTTP 410 during the incident below.
+  * Paging: opaque cursors, stopping at the first page older than the
     high-water mark - the newest trade already stored, less an overlap - so an
     hourly run reads roughly one page per batch.
   * Rows: the P0.4 mapping exactly (band by `asset` token; condition, city,
@@ -59,12 +55,12 @@ import time
 
 import requests
 
-from common import _cfg, _headers, _post, _retry_after, log_run, rest, rest_all, rpc
+from common import _cfg, _headers, _post, log_run, rest, rest_all, rpc, request_deadline
+import polymarket_trades as tape
 
-API = "https://data-api.polymarket.com/trades"
-BATCH = 100
-PAGE = 1000
-MAX_PAGES = 10               # the API refuses an offset over 10,000 (HTTP 400, measured 25 Sep)
+API = tape.API
+BATCH = tape.CONDITIONS
+PAGE = tape.PAGE
 BUDGET_S = 15.0
 # What a run needs besides its batches (loading the bands, refresh_derived,
 # the log): a light run took 5.6 s in all on 26 Sep 01:37Z (one batch, 40 new
@@ -99,7 +95,6 @@ def switched_on():
 def open_bands(today):
     rows = rest_all("bands", {
         "select": "band_id,token_yes,token_no,condition_id,markets!inner(city_key,resolution_date,closed)",
-        "markets.closed": "eq.false",
         "markets.resolution_date": f"gte.{today - dt.timedelta(days=1)}",
         "condition_id": "not.is.null"}, order="band_id.asc")
     return rows
@@ -115,11 +110,14 @@ def to_rows(trades, by_token, ingested_at):
     """P0.4's mapping, with the trade's transaction hash (R46 part 2). Returns (rows, unmatched)."""
     rows, unmatched = [], 0
     for t in trades:
+        t = tape.normalize(t)
         token = str(t.get("asset") or "")
         band = by_token.get(token)
         if band is None:
             unmatched += 1
             continue
+        if t.get('conditionId') and t['conditionId'] != band['condition_id']:
+            raise ValueError('trade token and condition name different markets')
         try:
             price, size = float(t["price"]), float(t["size"])
         except (KeyError, TypeError, ValueError):
@@ -172,16 +170,18 @@ def plan(hw, prev):
     carries no cursor: its cycle restarts from the start with its mark.
     """
     since = hw - OVERLAP if hw else None
+    if prev.get('complete') is True and prev.get('until'):
+        since = dt.datetime.fromisoformat(prev['until'])-OVERLAP
     cursor = ""
-    if prev.get("complete") is False and prev.get("since"):
-        prev_since = dt.datetime.fromisoformat(prev["since"])
-        since = prev_since if since is None else min(since, prev_since)
+    if prev.get("complete") is False and 'since' in prev:
+        prev_since = dt.datetime.fromisoformat(prev['since']) if prev['since'] else None
+        since = None if prev_since is None else (prev_since if since is None else min(since, prev_since))
         cursor = prev.get("cursor") or ""
     return since, cursor
 
 
 def fetch_batch(ids, since, get=requests.get, wait_until=None, stats=None,
-                sleep=time.sleep, clock=time.monotonic):
+                sleep=time.sleep, clock=time.monotonic, cursor=None, until=None):
     """Every trade on these markets newer than `since`, newest first, paged.
 
     A 429 IS WAITED OUT ONCE A PAGE (Wave 2.D, R8). In the 7 days to 9 Oct
@@ -192,29 +192,9 @@ def fetch_batch(ids, since, get=requests.get, wait_until=None, stats=None,
     RATE_LIMIT_MAX_WAIT_S), once, and only when the wait still ends before
     `wait_until` (the run's budget); otherwise the 429 is raised as before.
     `stats` counts the waits for the run's log row."""
-    out = []
-    for page in range(MAX_PAGES):
-        params = {"market": ",".join(ids), "limit": PAGE, "offset": page * PAGE}
-        r = get(API, params=params, headers=UA, timeout=20)
-        if getattr(r, "status_code", 200) == 429:
-            after = _retry_after(r)        # None when not sent; 0 is a valid "now" (Codex on #356)
-            wait = min(RATE_LIMIT_WAIT_S if after is None else max(0.0, after), RATE_LIMIT_MAX_WAIT_S)
-            if wait_until is None or clock() + wait < wait_until:
-                sleep(wait)
-                if stats is not None:
-                    stats["waits"] = stats.get("waits", 0) + 1
-                    stats["seconds"] = round(stats.get("seconds", 0.0) + wait, 1)
-                r = get(API, params=params, headers=UA, timeout=20)
-        r.raise_for_status()
-        got = r.json()
-        if not isinstance(got, list):
-            raise ValueError(f"trades API returned {type(got).__name__}, not a list")
-        out.extend(got)
-        if len(got) < PAGE:
-            break
-        if since is not None and min(float(t["timestamp"]) for t in got) < since.timestamp():
-            break
-    return out
+    return tape.walk(ids, since.timestamp() if since else None,
+                     until.timestamp() if until else None, cursor=cursor,
+                     get=get, wait_until=wait_until, stats=stats, sleep=sleep, clock=clock)
 
 
 def insert_new(rows):
@@ -234,6 +214,18 @@ def insert_new(rows):
             raise requests.HTTPError(f"insert_trade_prints -> HTTP {r.status_code}: {r.text[:300]}", response=r)
         new += len(r.json() or [])
     return new
+
+
+def preserve_progress(job, detail, deadline):
+    """Persist the old mark BEFORE inserts can move the table's high water.
+
+    Unlike the final best-effort summary, this acknowledgement is mandatory.
+    If the process dies or its final log fails after inserts, the next run
+    still resumes from this older mark/cohort rather than skipping the tail.
+    """
+    with request_deadline(deadline):
+        rpc('log_ingest', {'p_job':job,'p_status':'attention','p_rows':0,
+                          'p_detail':dict(detail,phase='collection_started')})
 
 
 def budget(budget_s, deadline=None, now_epoch=None):
@@ -258,7 +250,9 @@ def main(budget_s=BUDGET_S, now=None):
         prev = previous_run()
         detail = {"summary": "no time left before the tick's deadline: nothing read; resumes next hour",
                   "budget_s": round(budget_s, 1), "complete": bool(prev.get("complete", False)),
-                  "since": prev.get("since"), "cursor": prev.get("cursor") or ""}
+                  "since": prev.get("since"), "cursor": prev.get("cursor") or "",
+                  "api_continuation": prev.get('api_continuation'),"until":prev.get('until'),
+                  "cycle_conditions":prev.get('cycle_conditions',[])}
         log_run("P0.4_trade_history", "attention", 0, detail)
         print(detail["summary"])
         return {**detail, "status": "attention"}
@@ -269,46 +263,99 @@ def main(budget_s=BUDGET_S, now=None):
         log_run("P0.4_trade_history", "skipped", 0, detail)
         print(detail["summary"])
         return {**detail, "status": "skipped"}
-    bands = open_bands(now.date())
+    prev = previous_run()
+    cycle_until=(dt.datetime.fromisoformat(prev['until']) if prev.get('complete') is False and prev.get('until') else now)
+    hw = high_water()
+    since,cursor=plan(hw,prev)
+    # Recovery must still reach markets that closed during the outage, and
+    # a long cycle cannot age its unread conditions out of the date query.
+    coverage_day=min(now.date(),since.date()) if since else now.date()
+    bands = open_bands(coverage_day)
+    continuation = prev.get('api_continuation')
+    retained=set(prev.get('cycle_conditions',[])) if prev.get('complete') is False else set()
+    if continuation:
+        # A cursor's cohort is immutable, even if a market closed meanwhile.
+        carried_ids = continuation['ids']
+        if not carried_ids or len(carried_ids) > BATCH:
+            raise ValueError('invalid saved trade batch')
+        retained.update(carried_ids)
+    missing=sorted(retained-{b['condition_id'] for b in bands})
+    for i in range(0,len(missing),100):
+        bands += rest_all('bands', {'select': 'band_id,token_yes,token_no,condition_id,markets!inner(city_key,resolution_date,closed)',
+            'condition_id': 'in.('+','.join(missing[i:i+100])+')'}, order='band_id.asc')
     by_token = {}
     for b in bands:
         for k in ("token_yes", "token_no"):
             if b.get(k):
                 by_token[str(b[k])] = b
     ids = sorted({b["condition_id"] for b in bands})
-    hw = high_water()
-    since, cursor = plan(hw, previous_run())
+    if retained-set(ids):raise ValueError('retained trade cohort has lost its token mapping')
+    if continuation and (prev.get('complete') is not False or 'since' not in prev
+                         or (dt.datetime.fromisoformat(prev['since']) if prev['since'] else None) != since):
+        continuation = None
     todo = [c for c in ids if c > cursor]
     batches = [todo[i:i + BATCH] for i in range(0, len(todo), BATCH)]
+    held_count,range_done,range_end=0,set(),None
+    if continuation:
+        carried_ids = continuation['ids']
+        range_end=continuation.get('range_end',carried_ids[-1])
+        range_done=set(continuation.get('completed_ids',[]))
+        if (carried_ids != sorted(set(carried_ids)) or any(c <= cursor or c>range_end for c in carried_ids)
+                or any(c<=cursor or c>range_end for c in range_done) or range_done.intersection(carried_ids)):
+            raise ValueError('saved trade cohort is not after its completed prefix')
+        # Preserve the cursor cohort, but also read new conditions discovered
+        # inside its range before advancing the completed prefix past them.
+        gaps=[c for c in ids if cursor<c<=range_end and c not in range_done and c not in carried_ids]
+        held=[carried_ids]+[gaps[i:i+BATCH] for i in range(0,len(gaps),BATCH)]
+        held_count=len(held)
+        rest_ids = [c for c in ids if c > range_end]
+        batches = held+[rest_ids[i:i+BATCH] for i in range(0,len(rest_ids),BATCH)]
     ingested_at = now.isoformat()
     fetched = new = unmatched = batches_done = 0
     errors, truncated = [], []
+    next_api = continuation
     done_to, resume_at, stopped = cursor, None, False
     slowest = 0.0
     rate_limited = {"waits": 0, "seconds": 0.0}
-    for batch in batches:
+    preserve_progress('P0.4_trade_history',dict(complete=False,since=since.isoformat() if since else None,
+        cursor=cursor,api_continuation=continuation,until=cycle_until.isoformat(),cycle_conditions=ids),started+budget_s+RESERVE_S)
+    for batch_number,batch in enumerate(batches):
+        held=batch_number<held_count
+        api_cursor=continuation.get('cursor') if held and batch_number==0 else None
+        def pending(page_cursor):
+            return dict(ids=batch,cursor=page_cursor,range_end=range_end if held else batch[-1],
+                        completed_ids=sorted(range_done) if held else [])
         # Start a batch only if one as slow as the slowest so far still ends
         # inside the budget. Checking only the time already spent let a second
         # backlog batch start at 14 s of 15 on 25 Sep 10:36Z: the step took
         # 27.6 s and the tick job 58 s of its one billed minute.
         if time.monotonic() - started + slowest > budget_s:
+            if held and resume_at is None:next_api=pending(api_cursor)
             stopped = True
             break
         t0 = time.monotonic()
         try:
-            raw = fetch_batch(batch, since, wait_until=started + budget_s, stats=rate_limited)
-            if since is not None and len(raw) >= MAX_PAGES * PAGE and \
-                    min(float(t["timestamp"]) for t in raw) >= since.timestamp():
-                # Every page full and still newer than the mark: the API will
-                # not page deeper, so the trades between are out of reach.
-                # Said in the log, never silently skipped.
-                truncated.append(batch[0])
+            raw = fetch_batch(batch, since, wait_until=started + budget_s, stats=rate_limited,
+                              cursor=api_cursor,until=cycle_until)
             trades = [t for t in raw if since is None or float(t["timestamp"]) >= since.timestamp()]
-            rows, um = to_rows(trades, by_token, ingested_at)
+            rows, um = to_rows(trades, by_token, dt.datetime.now(dt.timezone.utc).isoformat())
             fetched += len(rows)
             unmatched += um
             new += insert_new(rows)
+            if getattr(raw, 'cursor', None) is not None:
+                if resume_at is None:
+                    resume_at = done_to
+                    next_api = pending(raw.cursor)
+                stopped = True
+                break
             batches_done += 1
+            if held:
+                range_done.update(batch)
+                if batch_number==held_count-1:
+                    done_to=range_end
+                    next_api=continuation=None
+            else:
+                done_to=batch[-1]
         except Exception as e:                       # noqa: BLE001 - counted and reported
             errors.append(f"after {done_to or 'the start'}: {str(e)[:160]}")
             # A failed batch is resumed like an unreached one: its gap must not
@@ -316,7 +363,11 @@ def main(budget_s=BUDGET_S, now=None):
             # it still run, and are read again next time (duplicates ignored).
             if resume_at is None:
                 resume_at = done_to
-        done_to = batch[-1]
+                next_api=pending(api_cursor)
+            if held:
+                stopped=True
+                break
+            done_to=batch[-1]
         slowest = max(slowest, time.monotonic() - t0)
     complete = resume_at is None and not stopped
     next_cursor = None if complete else (resume_at if resume_at is not None else done_to)
@@ -331,10 +382,13 @@ def main(budget_s=BUDGET_S, now=None):
     detail = {"markets": len(ids), "batches": f"{batches_done}/{len(batches)}", "high_water": hw.isoformat() if hw else None,
               "since": since.isoformat() if since else None, "complete": complete,
               "cursor": next_cursor, "truncated": truncated,
+              "api_continuation": next_api if not complete else None,
+              "until":cycle_until.isoformat(),
+              "cycle_conditions":ids if not complete else [],
               "fetched": fetched, "new": new, "unmatched": unmatched, "errors": errors[:5],
               "seconds": round(time.monotonic() - started, 1), "budget_s": round(budget_s, 1), "rollups": rollups,
               "rate_limited": rate_limited,
-              "summary": f"{new} new trades from {len(ids)} open markets "
+              "summary": f"{new} new trades from {len(ids)} recent markets "
                          f"({batches_done} of the {len(batches)} batches left in the cycle, {fetched} fetched since the mark)"}
     log_run("P0.4_trade_history", status, new, detail)
     print(detail["summary"], "| errors:", len(errors))
@@ -374,22 +428,19 @@ def main(budget_s=BUDGET_S, now=None):
 # reach, or failed on, are logged as `pending` and read FIRST by the next run,
 # whether or not they are still inside its window, so a slow spell cannot
 # leave a cohort's tail to age out unread. A pending market is carried for at
-# most BACKFILL_LOOKBACK after it was first seen. A window that reached the
-# offset cap is not retried: asking again gives the same answer.
+# most BACKFILL_LOOKBACK after it was first seen. An unfinished v2 window
+# retains its exact condition cohort and page cursor until it completes.
 #
 # THE WORKFLOWS PAGE'S SWITCH IS OBEYED (Codex on #365): with P0.4 off or
 # manual there, the backfill writes nothing, as the hourly run does.
 #
-# THE OFFSET CAP. The API refuses an offset over 10,000. A window whose answer
-# reaches it is asked again in halves with `start` and `end`, down to
-# BACKFILL_MAX_DEPTH halvings; one that still reaches it is logged, never
-# called whole.
+# V2 condition feeds ignore start/end. Filter dates locally while following
+# every cursor. Splitting a window by server-side dates would repeat pages.
 BACKFILL_JOB = "P0.4_trade_backfill"
 BACKFILL_HOURS = 13
 BACKFILL_FIRST_HOURS = 60
 BACKFILL_BUDGET_S = 240.0
 BACKFILL_LOOKBACK = dt.timedelta(days=7)    # the earliest a window starts: listed ~1-2 days before first sight
-BACKFILL_MAX_DEPTH = 12
 
 
 def recent_markets(since, pending=()):
@@ -417,39 +468,19 @@ def recent_markets(since, pending=()):
     return out
 
 
-def fetch_window(ids, start, end, get=requests.get, depth=0, sleep=time.sleep):
-    """Every trade on these markets with start <= timestamp <= end (unix s): (trades, whole).
+def fetch_window(ids, start, end, get=requests.get, depth=0, sleep=time.sleep,
+                 wait_until=None, cursor=None):
+    """Inclusive local window: complete cursor walk, or a resumable prefix.
 
-    `whole` is False only when a window still reaches the offset cap after
-    BACKFILL_MAX_DEPTH halvings. A 429 is waited out once a page, as
-    fetch_batch does (Retry-After, else RATE_LIMIT_WAIT_S, never more than
-    RATE_LIMIT_MAX_WAIT_S); a second one fails the market for this run."""
-    out = []
-    for page in range(MAX_PAGES + 1):              # offsets 0 to 10,000: all the API gives
-        params = {"market": ",".join(ids), "start": int(start), "end": int(end),
-                  "limit": PAGE, "offset": page * PAGE}
-        r = get(API, params=params, headers=UA, timeout=20)
-        if getattr(r, "status_code", 200) == 429:
-            after = _retry_after(r)
-            sleep(min(RATE_LIMIT_WAIT_S if after is None else max(0.0, after), RATE_LIMIT_MAX_WAIT_S))
-            r = get(API, params=params, headers=UA, timeout=20)
-        r.raise_for_status()
-        got = r.json()
-        if not isinstance(got, list):
-            raise ValueError(f"trades API returned {type(got).__name__}, not a list")
-        out.extend(got)
-        if len(got) < PAGE:
-            return out, True
-    # every page full up to the cap: ask again in halves
-    if depth >= BACKFILL_MAX_DEPTH or end - start < 2:
-        return out, False
-    mid = (int(start) + int(end)) // 2
-    a, wa = fetch_window(ids, start, mid, get, depth + 1, sleep)
-    b, wb = fetch_window(ids, mid + 1, end, get, depth + 1, sleep)
-    return a + b, wa and wb
+    `depth` remains a compatibility argument for old research callers; v2
+    windows cannot be repaired by recursive requests with ignored bounds.
+    """
+    out = tape.window(ids, start, end, get=get, sleep=sleep,
+                      wait_until=wait_until, continuation=cursor)
+    return out, out.continuation is None
 
 
-def previous_backfill():
+def previous_backfill(with_cursors=False):
     """(ever_ok, pending): whether a backfill has ever finished whole ('ok'),
     and the markets the last run that read anything left pending. Until one has
     finished whole, each run reads BACKFILL_FIRST_HOURS."""
@@ -458,7 +489,8 @@ def previous_backfill():
     last = rest("ingest_log", [("select", "detail"), ("job", f"eq.{BACKFILL_JOB}"),
                                ("status", "neq.skipped"), ("order", "logged_at.desc"), ("limit", "1")])
     pending = ((last[0].get("detail") or {}).get("pending") or []) if last else []
-    return bool(ok), [str(m) for m in pending]
+    result = bool(ok), [str(m) for m in pending]
+    return (*result, (last[0].get('detail') or {}).get('api_continuations', {}) if last else {}) if with_cursors else result
 
 
 def backfill(budget_s=BACKFILL_BUDGET_S, hours=None, now=None, get=requests.get):
@@ -472,7 +504,7 @@ def backfill(budget_s=BACKFILL_BUDGET_S, hours=None, now=None, get=requests.get)
         log_run(BACKFILL_JOB, "skipped", 0, detail)
         print(detail["summary"])
         return {**detail, "status": "skipped"}
-    ever_ok, carried = previous_backfill()
+    ever_ok, carried, continuations = previous_backfill(with_cursors=True)
     first_run = not ever_ok
     hours = hours if hours is not None else (BACKFILL_FIRST_HOURS if first_run else BACKFILL_HOURS)
     markets = recent_markets(now - dt.timedelta(hours=hours), carried)
@@ -482,9 +514,12 @@ def backfill(budget_s=BACKFILL_BUDGET_S, hours=None, now=None, get=requests.get)
     ingested_at = now.isoformat()
     done = fetched = new = unmatched = 0
     errors, capped, left, failed = [], [], [], []
+    next_api = {m: v for m,v in continuations.items() if m in markets}
     slowest = 0.0
     # the markets the last run did not finish come first, then the oldest first sight
     order = sorted(markets.items(), key=lambda kv: (str(kv[0]) not in carried, kv[1][0], str(kv[0])))
+    preserve_progress(BACKFILL_JOB,dict(pending=[str(mid) for mid,_ in order],api_continuations=next_api),
+                      started+budget_s+RESERVE_S)
     for market_id, (seen, bands) in order:
         if time.monotonic() - started + slowest > budget_s:
             left.append(market_id)
@@ -494,14 +529,19 @@ def backfill(budget_s=BACKFILL_BUDGET_S, hours=None, now=None, get=requests.get)
         ids = sorted({b["condition_id"] for b in bands})
         end = seen + OVERLAP
         try:
-            raw, whole = fetch_window(ids, (seen - BACKFILL_LOOKBACK).timestamp(), end.timestamp(), get=get)
+            raw, whole = fetch_window(ids, (seen - BACKFILL_LOOKBACK).timestamp(), end.timestamp(), get=get,
+                                     wait_until=started+budget_s, cursor=continuations.get(str(market_id)))
             if not whole:
-                capped.append(market_id)
-            rows, um = to_rows(raw, by_token, ingested_at)
+                failed.append(market_id)
+            rows, um = to_rows(raw, by_token, dt.datetime.now(dt.timezone.utc).isoformat())
             fetched += len(rows)
             unmatched += um
             new += insert_new(rows)
-            done += 1
+            if whole:
+                done += 1
+                next_api.pop(str(market_id), None)
+            else:
+                next_api[str(market_id)] = raw.continuation
         except Exception as e:                       # noqa: BLE001 - counted and reported
             errors.append(f"{market_id}: {str(e)[:160]}")
             failed.append(market_id)
@@ -512,10 +552,11 @@ def backfill(budget_s=BACKFILL_BUDGET_S, hours=None, now=None, get=requests.get)
             rollups = rpc("refresh_derived")
         except Exception as e:                       # noqa: BLE001
             errors.append(f"refresh_derived: {str(e)[:160]}")
-    status = "error" if errors and not done else ("attention" if errors or capped or left else "ok")
+    status = "error" if errors and not done else ("attention" if errors or failed or left else "ok")
     detail = {"hours": hours, "first_run": first_run, "markets": len(markets), "read": done,
               "carried": len(carried), "dropped": [str(m) for m in dropped],
               "left": len(left), "pending": [str(m) for m in failed + left],
+              "api_continuations": next_api,
               "capped": capped[:10], "fetched": fetched, "new": new,
               "unmatched": unmatched, "errors": errors[:5], "seconds": round(time.monotonic() - started, 1),
               "budget_s": budget_s, "rollups": rollups,

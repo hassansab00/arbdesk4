@@ -2,8 +2,7 @@
 for every trade of a settled event, and a short answer is never taken for a
 whole one.
 
-No network: the venue is a fake that pages like the data API, refuses an
-offset over 10,000 and filters by `start`/`end`."""
+No network: the fake follows v2 cursors and ignores market time bounds."""
 import json
 import pathlib
 import sys
@@ -23,11 +22,10 @@ class FakeVenue:
 
     def get(self, url, params):
         self.asked.append(dict(params))
-        if params["offset"] > th.MAX_OFFSET:
-            raise AssertionError("asked past the cap")
-        rows = [t for t in self.trades
-                if params.get("start", 0) <= t["timestamp"] <= params.get("end", 10**12)]
-        return rows[params["offset"]:params["offset"] + params["limit"]]
+        assert 'offset' not in params and 'market' not in params
+        rows=[t for t in self.trades if t['conditionId'] in params['condition'].split(',')]
+        offset=int(params.get('cursor','0'));end=offset+params['limit']
+        return dict(data=rows[offset:end],pagination=dict(has_more=end<len(rows),next_cursor=str(end) if end<len(rows) else None))
 
 
 def _trades(n, cid="0xa", t0=1_000_000):
@@ -35,11 +33,11 @@ def _trades(n, cid="0xa", t0=1_000_000):
             for i in range(n)]
 
 
-def test_an_answer_that_reaches_the_cap_is_not_called_whole():
+def test_a_deep_answer_is_complete_only_after_its_final_cursor():
     whole, ok = th.pages(FakeVenue(_trades(2_500)), {"market": "0xa"})
     assert len(whole) == 2_500 and ok
     capped, ok = th.pages(FakeVenue(_trades(12_000)), {"market": "0xa"})
-    assert len(capped) == 11_000 and not ok, "11 pages of 1,000 is all the API gives: short, and said so"
+    assert len(capped) == 12_000 and ok
 
 
 def test_a_bucket_over_the_cap_is_asked_in_halves_of_its_life_and_comes_back_whole():
@@ -47,7 +45,7 @@ def test_a_bucket_over_the_cap_is_asked_in_halves_of_its_life_and_comes_back_who
     got, ok = th.bucket_trades(venue, "0xa", 1_000_000, 1_030_000)
     assert ok and len(got) == 30_000
     assert len({t["timestamp"] for t in got}) == 30_000, "the halves meet without a gap or an overlap"
-    assert all("start" in a and "end" in a for a in venue.asked)
+    assert all('start' not in a and 'end' not in a for a in venue.asked)
 
 
 def test_three_kinds_of_bucket():
