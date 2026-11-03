@@ -433,7 +433,9 @@ def rpc(fn, params=None, timeout=120):
     if r.status_code >= 400:
         raise requests.HTTPError(f"{fn} -> HTTP {r.status_code}: {r.text[:400]}",
                                  response=r)
-    return r.json()
+    # PostgREST acknowledges void functions with HTTP 204 and no body.
+    # The write succeeded; JSON decoding must not turn it into a failure.
+    return None if r.status_code == 204 else r.json()
 
 
 def retired_cities_still_held(active):
