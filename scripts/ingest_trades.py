@@ -9,7 +9,7 @@ the newest print in trades_observed was 24 Sep 09:42Z, and the last three runs
 reported the identical $119,846.20. It also cost 4 n8n executions a day.
 
 WHAT THIS DOES INSTEAD.
-  * Markets: every band of every OPEN market resolving yesterday or later
+  * Markets: every band of every recent market, including newly closed ones
     (1,045 condition ids on 25 Sep). Nothing is capped away.
   * Requests: Data API v2 accepts at most 20 comma-separated condition ids.
     The retired v1 endpoint returned HTTP 410 during the incident below.
@@ -95,7 +95,6 @@ def switched_on():
 def open_bands(today):
     rows = rest_all("bands", {
         "select": "band_id,token_yes,token_no,condition_id,markets!inner(city_key,resolution_date,closed)",
-        "markets.closed": "eq.false",
         "markets.resolution_date": f"gte.{today - dt.timedelta(days=1)}",
         "condition_id": "not.is.null"}, order="band_id.asc")
     return rows
@@ -171,6 +170,8 @@ def plan(hw, prev):
     carries no cursor: its cycle restarts from the start with its mark.
     """
     since = hw - OVERLAP if hw else None
+    if prev.get('complete') is True and prev.get('until'):
+        since = dt.datetime.fromisoformat(prev['until'])-OVERLAP
     cursor = ""
     if prev.get("complete") is False and 'since' in prev:
         prev_since = dt.datetime.fromisoformat(prev['since']) if prev['since'] else None
@@ -180,7 +181,7 @@ def plan(hw, prev):
 
 
 def fetch_batch(ids, since, get=requests.get, wait_until=None, stats=None,
-                sleep=time.sleep, clock=time.monotonic, cursor=None):
+                sleep=time.sleep, clock=time.monotonic, cursor=None, until=None):
     """Every trade on these markets newer than `since`, newest first, paged.
 
     A 429 IS WAITED OUT ONCE A PAGE (Wave 2.D, R8). In the 7 days to 9 Oct
@@ -191,7 +192,8 @@ def fetch_batch(ids, since, get=requests.get, wait_until=None, stats=None,
     RATE_LIMIT_MAX_WAIT_S), once, and only when the wait still ends before
     `wait_until` (the run's budget); otherwise the 429 is raised as before.
     `stats` counts the waits for the run's log row."""
-    return tape.walk(ids, since.timestamp() if since else None, cursor=cursor,
+    return tape.walk(ids, since.timestamp() if since else None,
+                     until.timestamp() if until else None, cursor=cursor,
                      get=get, wait_until=wait_until, stats=stats, sleep=sleep, clock=clock)
 
 
@@ -249,7 +251,8 @@ def main(budget_s=BUDGET_S, now=None):
         detail = {"summary": "no time left before the tick's deadline: nothing read; resumes next hour",
                   "budget_s": round(budget_s, 1), "complete": bool(prev.get("complete", False)),
                   "since": prev.get("since"), "cursor": prev.get("cursor") or "",
-                  "api_continuation": prev.get('api_continuation')}
+                  "api_continuation": prev.get('api_continuation'),"until":prev.get('until'),
+                  "cycle_conditions":prev.get('cycle_conditions',[])}
         log_run("P0.4_trade_history", "attention", 0, detail)
         print(detail["summary"])
         return {**detail, "status": "attention"}
@@ -261,34 +264,52 @@ def main(budget_s=BUDGET_S, now=None):
         print(detail["summary"])
         return {**detail, "status": "skipped"}
     prev = previous_run()
-    bands = open_bands(now.date())
+    cycle_until=(dt.datetime.fromisoformat(prev['until']) if prev.get('complete') is False and prev.get('until') else now)
+    hw = high_water()
+    since,cursor=plan(hw,prev)
+    # Recovery must still reach markets that closed during the outage, and
+    # a long cycle cannot age its unread conditions out of the date query.
+    coverage_day=min(now.date(),since.date()) if since else now.date()
+    bands = open_bands(coverage_day)
     continuation = prev.get('api_continuation')
+    retained=set(prev.get('cycle_conditions',[])) if prev.get('complete') is False else set()
     if continuation:
         # A cursor's cohort is immutable, even if a market closed meanwhile.
         carried_ids = continuation['ids']
         if not carried_ids or len(carried_ids) > BATCH:
             raise ValueError('invalid saved trade batch')
+        retained.update(carried_ids)
+    missing=sorted(retained-{b['condition_id'] for b in bands})
+    for i in range(0,len(missing),100):
         bands += rest_all('bands', {'select': 'band_id,token_yes,token_no,condition_id,markets!inner(city_key,resolution_date,closed)',
-            'condition_id': 'in.('+','.join(carried_ids)+')'}, order='band_id.asc')
+            'condition_id': 'in.('+','.join(missing[i:i+100])+')'}, order='band_id.asc')
     by_token = {}
     for b in bands:
         for k in ("token_yes", "token_no"):
             if b.get(k):
                 by_token[str(b[k])] = b
     ids = sorted({b["condition_id"] for b in bands})
-    hw = high_water()
-    since, cursor = plan(hw, prev)
+    if retained-set(ids):raise ValueError('retained trade cohort has lost its token mapping')
     if continuation and (prev.get('complete') is not False or 'since' not in prev
                          or (dt.datetime.fromisoformat(prev['since']) if prev['since'] else None) != since):
         continuation = None
     todo = [c for c in ids if c > cursor]
     batches = [todo[i:i + BATCH] for i in range(0, len(todo), BATCH)]
+    held_count,range_done,range_end=0,set(),None
     if continuation:
         carried_ids = continuation['ids']
-        if carried_ids != sorted(set(carried_ids)) or any(c <= cursor for c in carried_ids):
+        range_end=continuation.get('range_end',carried_ids[-1])
+        range_done=set(continuation.get('completed_ids',[]))
+        if (carried_ids != sorted(set(carried_ids)) or any(c <= cursor or c>range_end for c in carried_ids)
+                or any(c<=cursor or c>range_end for c in range_done) or range_done.intersection(carried_ids)):
             raise ValueError('saved trade cohort is not after its completed prefix')
-        rest_ids = [c for c in ids if c > carried_ids[-1]]
-        batches = [carried_ids]+[rest_ids[i:i+BATCH] for i in range(0,len(rest_ids),BATCH)]
+        # Preserve the cursor cohort, but also read new conditions discovered
+        # inside its range before advancing the completed prefix past them.
+        gaps=[c for c in ids if cursor<c<=range_end and c not in range_done and c not in carried_ids]
+        held=[carried_ids]+[gaps[i:i+BATCH] for i in range(0,len(gaps),BATCH)]
+        held_count=len(held)
+        rest_ids = [c for c in ids if c > range_end]
+        batches = held+[rest_ids[i:i+BATCH] for i in range(0,len(rest_ids),BATCH)]
     ingested_at = now.isoformat()
     fetched = new = unmatched = batches_done = 0
     errors, truncated = [], []
@@ -297,22 +318,25 @@ def main(budget_s=BUDGET_S, now=None):
     slowest = 0.0
     rate_limited = {"waits": 0, "seconds": 0.0}
     preserve_progress('P0.4_trade_history',dict(complete=False,since=since.isoformat() if since else None,
-        cursor=cursor,api_continuation=continuation),started+budget_s+RESERVE_S)
-    for batch in batches:
+        cursor=cursor,api_continuation=continuation,until=cycle_until.isoformat(),cycle_conditions=ids),started+budget_s+RESERVE_S)
+    for batch_number,batch in enumerate(batches):
+        held=batch_number<held_count
+        api_cursor=continuation.get('cursor') if held and batch_number==0 else None
+        def pending(page_cursor):
+            return dict(ids=batch,cursor=page_cursor,range_end=range_end if held else batch[-1],
+                        completed_ids=sorted(range_done) if held else [])
         # Start a batch only if one as slow as the slowest so far still ends
         # inside the budget. Checking only the time already spent let a second
         # backlog batch start at 14 s of 15 on 25 Sep 10:36Z: the step took
         # 27.6 s and the tick job 58 s of its one billed minute.
         if time.monotonic() - started + slowest > budget_s:
+            if held and resume_at is None:next_api=pending(api_cursor)
             stopped = True
             break
         t0 = time.monotonic()
         try:
-            if continuation and batch == continuation['ids']:
-                raw = fetch_batch(batch, since, wait_until=started + budget_s, stats=rate_limited,
-                                  cursor=continuation['cursor'])
-            else:
-                raw = fetch_batch(batch, since, wait_until=started + budget_s, stats=rate_limited)
+            raw = fetch_batch(batch, since, wait_until=started + budget_s, stats=rate_limited,
+                              cursor=api_cursor,until=cycle_until)
             trades = [t for t in raw if since is None or float(t["timestamp"]) >= since.timestamp()]
             rows, um = to_rows(trades, by_token, dt.datetime.now(dt.timezone.utc).isoformat())
             fetched += len(rows)
@@ -321,12 +345,17 @@ def main(budget_s=BUDGET_S, now=None):
             if getattr(raw, 'cursor', None) is not None:
                 if resume_at is None:
                     resume_at = done_to
-                    next_api = {'ids': batch, 'cursor': raw.cursor}
+                    next_api = pending(raw.cursor)
                 stopped = True
                 break
             batches_done += 1
-            if continuation and batch == continuation['ids']:
-                next_api = continuation = None
+            if held:
+                range_done.update(batch)
+                if batch_number==held_count-1:
+                    done_to=range_end
+                    next_api=continuation=None
+            else:
+                done_to=batch[-1]
         except Exception as e:                       # noqa: BLE001 - counted and reported
             errors.append(f"after {done_to or 'the start'}: {str(e)[:160]}")
             # A failed batch is resumed like an unreached one: its gap must not
@@ -334,7 +363,11 @@ def main(budget_s=BUDGET_S, now=None):
             # it still run, and are read again next time (duplicates ignored).
             if resume_at is None:
                 resume_at = done_to
-        done_to = batch[-1]
+                next_api=pending(api_cursor)
+            if held:
+                stopped=True
+                break
+            done_to=batch[-1]
         slowest = max(slowest, time.monotonic() - t0)
     complete = resume_at is None and not stopped
     next_cursor = None if complete else (resume_at if resume_at is not None else done_to)
@@ -350,10 +383,12 @@ def main(budget_s=BUDGET_S, now=None):
               "since": since.isoformat() if since else None, "complete": complete,
               "cursor": next_cursor, "truncated": truncated,
               "api_continuation": next_api if not complete else None,
+              "until":cycle_until.isoformat(),
+              "cycle_conditions":ids if not complete else [],
               "fetched": fetched, "new": new, "unmatched": unmatched, "errors": errors[:5],
               "seconds": round(time.monotonic() - started, 1), "budget_s": round(budget_s, 1), "rollups": rollups,
               "rate_limited": rate_limited,
-              "summary": f"{new} new trades from {len(ids)} open markets "
+              "summary": f"{new} new trades from {len(ids)} recent markets "
                          f"({batches_done} of the {len(batches)} batches left in the cycle, {fetched} fetched since the mark)"}
     log_run("P0.4_trade_history", status, new, detail)
     print(detail["summary"], "| errors:", len(errors))

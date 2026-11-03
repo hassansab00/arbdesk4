@@ -145,7 +145,7 @@ def test_a_429_past_the_budget_or_twice_is_raised_as_before():
 def test_the_run_passes_its_budget_to_the_wait():
     import inspect
     src = inspect.getsource(it.main)
-    assert "fetch_batch(batch, since, wait_until=started + budget_s, stats=rate_limited)" in src
+    assert "fetch_batch(batch, since, wait_until=started + budget_s, stats=rate_limited," in src
     assert '"rate_limited": rate_limited' in src
 
 
@@ -236,7 +236,7 @@ def test_a_backlog_spread_over_runs_finishes_its_cycle(monkeypatch):
         runs.append((seen[:], prev["complete"]))
     assert runs[:3] == [([0], False), ([1], False), ([2], True)]
     assert runs[3][0] == [0]                               # the next cycle starts at the top
-    assert prev["since"] == "2026-09-24T08:42:45+00:00"     # from the stored mark, not the old one
+    assert prev["since"] == (NOW-it.OVERLAP).isoformat()  # the completed cycle's fixed upper bound
 
 
 def test_a_cycle_carries_on_after_its_cursor(monkeypatch):
@@ -253,7 +253,8 @@ def test_a_partial_batch_keeps_its_exact_cohort_and_cursor(monkeypatch):
     d = it.main(now=NOW)
     assert d['status']=='attention' and not d['complete']
     assert d['cursor']==f'0x{it.BATCH-1:04d}'
-    assert d['api_continuation']==dict(ids=[f'0x{i:04d}' for i in range(it.BATCH,2*it.BATCH)],cursor='next-page')
+    assert d['api_continuation']==dict(ids=[f'0x{i:04d}' for i in range(it.BATCH,2*it.BATCH)],cursor='next-page',
+        range_end=f'0x{2*it.BATCH-1:04d}',completed_ids=[])
     logged, seen = _wire(monkeypatch, 2 * it.BATCH,prev=d)
     resumed = it.main(now=NOW)
     assert seen==[1] and resumed['complete'] and resumed['api_continuation'] is None

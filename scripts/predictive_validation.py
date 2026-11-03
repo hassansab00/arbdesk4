@@ -6,14 +6,19 @@ No reads of blinded shadow experiments; no rewriting a call or outcome.
 import argparse
 import datetime as dt
 import json
+import hashlib
 import math
 import random
 import statistics
+import time
+import requests
 from collections import Counter, defaultdict
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from common import get_cities, log_run, rest_all, upsert_replace
+from common import _cfg, _headers, _session, _request_kwargs
+from common import TRANSIENT_WRITE_STATUS, _retry_after, _budget_sleep
 from tick import CHECKPOINTS, PEAK_OFFSETS_H, decision_times
 import wx_city_calibration as cal
 import city_model_selection as selector
@@ -27,17 +32,71 @@ SCOPES = ('served', 'wxrd3', 'wxrd3_raw')
 ROOT = Path(__file__).resolve().parents[1]
 REPORT_BATCH_BYTES = 512 * 1024  # request-memory bound, not a statistical parameter
 REPORT_BATCH_ROWS = 25
+REPORT_FINGERPRINT = '_payload_sha256'
 
 
-def publish_reports(rows):
+def touch_reports(groups):
+    """Refresh only proven unchanged cache rows, preserving their JSON/TOAST.
+
+    The old as-of value is a concurrency guard. A newer writer's row cannot
+    be marked with this run's older freshness stamp. No original fact is read
+    or changed by this path.
+    """
+    touched = 0
+    for (checkpoint,scope,old_asof,new_asof),cities in groups.items():
+        options=dict(headers={**_headers(),'Prefer':'return=representation'},
+                params=[('checkpoint','eq.'+checkpoint),('scope','eq.'+scope),('as_of','eq.'+old_asof),
+                        ('city_key','in.('+','.join(json.dumps(city) for city in sorted(cities))+')'),
+                        ('select','city_key')],json={'as_of':new_asof},timeout=20)
+        for attempt in range(2):
+            try:
+                response=_session().patch(_cfg()['url']+'/rest/v1/derived_city_prediction_validation',
+                                          **_request_kwargs(options))
+            except (requests.ConnectionError,requests.Timeout):
+                if attempt:raise
+                _budget_sleep(1)
+                continue
+            if not attempt and getattr(response,'status_code',200) in TRANSIENT_WRITE_STATUS:
+                delay=_retry_after(response)
+                _budget_sleep(min(10,1 if delay is None else max(0,delay)))
+                continue
+            break
+        response.raise_for_status()
+        result=response.json()
+        if not isinstance(result,list):
+            raise ValueError('validation freshness update returned no row receipt')
+        touched += len(result)
+    return touched
+
+
+def publish_reports(rows, prior=(), detail=None):
     """Keep every derived report; bound each idempotent write by UTF-8 bytes.
 
     A report holds nested evidence, so a row-count-only batch can send many
     megabytes in one request. Reject an oversized single report explicitly;
     never truncate its evidence or apply this writer to original facts.
     """
+    previous = {(r['city_key'],r['checkpoint'],r['scope']):r for r in prior}
+    groups,changed,skipped={},[],0
+    for original in rows:
+        report=original['report']
+        if not isinstance(report,dict):raise ValueError('validation report must be an object')
+        payload={k:v for k,v in report.items() if k!=REPORT_FINGERPRINT}
+        fingerprint=hashlib.sha256(json.dumps(payload,sort_keys=True,separators=(',',':'),
+            ensure_ascii=False,allow_nan=False).encode()).hexdigest()
+        old=previous.get(tuple(original.get(k) for k in ('city_key','checkpoint','scope')))
+        if (old and old.get('as_of') and original.get('as_of')
+                and cal.timestamp(old['as_of'])>cal.timestamp(original['as_of'])):
+            skipped+=1
+            continue
+        if (old and old.get('payload_fingerprint')==fingerprint and old.get('as_of')
+                and original.get('as_of') and cal.timestamp(old['as_of'])<=cal.timestamp(original['as_of'])):
+            key=(original['checkpoint'],original['scope'],old['as_of'],original['as_of'])
+            groups.setdefault(key,set()).add(original['city_key'])
+        else:
+            changed.append(dict(original,report=dict(payload,**{REPORT_FINGERPRINT:fingerprint})))
     batches, batch, size = [], [], 2
-    for row in rows:
+    for row in changed:
         row_size = len(json.dumps(row).encode('utf-8'))
         if row_size + 2 > REPORT_BATCH_BYTES:
             raise ValueError('city validation report exceeds its request byte budget')
@@ -49,8 +108,15 @@ def publish_reports(rows):
         size += added
     if batch:
         batches.append(batch)
-    return sum(upsert_replace('derived_city_prediction_validation', batch,
+    written=sum(upsert_replace('derived_city_prediction_validation', batch,
                'city_key,checkpoint,scope', chunk=len(batch)) for batch in batches)
+    touched=touch_reports(groups)
+    if detail is not None:
+        detail.update(report_payload_rows=written,report_freshness_rows=touched,
+                      report_write_batches=len(batches),report_touch_batches=len(groups),
+                      report_newer_rows_preserved=skipped,
+                      report_payload_bytes=sum(len(json.dumps(b).encode('utf-8')) for b in batches))
+    return written+touched
 
 
 def capture_timing(p, city):
@@ -511,6 +577,7 @@ def older_predictor_calls(root, as_of, report_first):
 
 
 def run(score_only=False, now=None):
+    started=time.monotonic()
     now=now or dt.datetime.now(dt.timezone.utc)
     first=(now.date()-dt.timedelta(days=30)).isoformat()
     cities=get_cities(require_coords=False,extra=('display_name',))
@@ -519,8 +586,10 @@ def run(score_only=False, now=None):
     da=rest_all('v_day_ahead_frozen_validation',[('select','*'),('for_date','gte.'+first)],order='city_key.asc,for_date.asc',page_size=1000)
     reviews=rest_all('derived_day_review',[('select','*'),('target_date','gte.'+first)],order='city_key.asc,target_date.asc',page_size=1000)
     states=[r['state'] for r in rest_all('derived_wx_city_calibration',[('select','state')],order='model_version.asc,city_key.asc,phase.asc',page_size=1000)]
-    prior_reports=rest_all('derived_city_prediction_validation',[('select','report'),('scope','eq.served')],order='city_key.asc,checkpoint.asc',page_size=1000)
-    selections=[r['report']['model_selection'] for r in prior_reports if r.get('report',{}).get('model_selection')]
+    prior_reports=rest_all('derived_city_prediction_validation',[
+        ('select','city_key,checkpoint,scope,as_of,payload_fingerprint:report->>'+REPORT_FINGERPRINT+',model_selection:report->model_selection')],
+        order='city_key.asc,checkpoint.asc,scope.asc',page_size=1000)
+    selections=[r['model_selection'] for r in prior_reports if r['scope']=='served' and r.get('model_selection')]
     early_states=rest_all('derived_mos_coefficients',[
         ('select','city_key,lead_days,as_of,computed_at,version,calibration')],
         order='city_key.asc,lead_days.asc',page_size=1000)
@@ -541,7 +610,8 @@ def run(score_only=False, now=None):
     for city,input_version in active_versions.items():
         version_cities.setdefault(input_version,[]).append(city)
     versions=tuple(sorted(version_cities))
-    detail={'score_only':score_only,'active_cities':len(cities),'capture_schedule_policy':'saved-city-clock-v1'}
+    detail={'score_only':score_only,'active_cities':len(cities),'capture_schedule_policy':'saved-city-clock-v1',
+            'load_seconds':round(time.monotonic()-started,3)}
     if not score_only:
         older_p, older_outcomes = [], []
         try:
@@ -580,7 +650,10 @@ def run(score_only=False, now=None):
                                else 'awaiting forward validation') if shadow else 'no challenger registered',
             challenger_available_at=(shadow or {}).get('available_at'),
             challenger_model_sha256=(shadow or {}).get('model_sha256'))
-    n=publish_reports(data)
+    publishing=time.monotonic()
+    detail['prepare_seconds']=round(publishing-started-detail['load_seconds'],3)
+    n=publish_reports(data,prior_reports,detail)
+    detail['publish_seconds']=round(time.monotonic()-publishing,3)
     log_run(JOB,'ok',n,detail)
     print(json.dumps(dict(rows=n,**detail)),flush=True)
     return detail

@@ -62,7 +62,70 @@ def test_failed_insert_cannot_advance_the_saved_page_cursor(monkeypatch):
     out=it.main(now=NOW)
     assert receipts[0][0]=='log_ingest'
     assert receipts[0][1]['p_detail']['complete'] is False
-    assert out['status']=='error' and out['cursor']=='' and out['api_continuation'] is None
+    assert out['status']=='error' and out['cursor']=='' and out['api_continuation']['cursor'] is None
+
+
+def test_new_conditions_inside_a_resumed_range_are_read_before_its_prefix_advances(monkeypatch):
+    prev=dict(complete=False,since='2026-09-24T00:00:00+00:00',cursor='0x0000',
+              until=NOW.isoformat(),api_continuation=dict(ids=['0x0001','0x0003'],cursor='next-page'))
+    _wire(monkeypatch,5,prev=prev)
+    calls=[]
+    def read(ids,since,**kw):
+        calls.append((ids,kw));return api.Tape()
+    monkeypatch.setattr(it,'fetch_batch',read)
+    result=it.main(now=NOW)
+    assert [ids for ids,_ in calls]==[['0x0001','0x0003'],['0x0002'],['0x0004']]
+    assert calls[0][1]['cursor']=='next-page' and calls[1][1]['cursor'] is None
+    assert result['complete']
+
+
+def test_a_budget_stop_between_the_saved_cohort_and_new_gaps_keeps_the_prefix(monkeypatch):
+    prev=dict(complete=False,since='2026-09-24T00:00:00+00:00',cursor='0x0000',
+              until=NOW.isoformat(),api_continuation=dict(ids=['0x0001','0x0003'],cursor='next-page'))
+    _wire(monkeypatch,5,prev=prev)
+    clock=[0.]
+    monkeypatch.setattr(it.time,'monotonic',lambda:clock[0])
+    def slow(*args,**kw):clock[0]+=9;return api.Tape()
+    monkeypatch.setattr(it,'fetch_batch',slow)
+    result=it.main(now=NOW,budget_s=15)
+    assert result['cursor']=='0x0000' and not result['complete']
+    assert result['api_continuation']==dict(ids=['0x0002'],cursor=None,range_end='0x0003',
+        completed_ids=['0x0001','0x0003'])
+    _wire(monkeypatch,5,prev=result)
+    seen=[]
+    monkeypatch.setattr(it,'fetch_batch',lambda ids,*a,**kw:seen.append(ids) or api.Tape())
+    assert it.main(now=NOW)['complete']
+    assert seen==[['0x0002'],['0x0004']]
+
+
+def test_cycle_bounds_survive_slow_recovery_and_an_unrelated_newer_high_water():
+    newer=NOW+dt.timedelta(days=1)
+    previous=dict(complete=True,until=NOW.isoformat())
+    assert it.plan(newer,previous)==(NOW-it.OVERLAP,'')
+
+
+def test_recent_closed_markets_are_not_excluded_from_recovery(monkeypatch):
+    requests=[]
+    monkeypatch.setattr(it,'rest_all',lambda table,params,order:requests.append(params) or [])
+    it.open_bands(NOW.date())
+    assert 'markets.closed' not in requests[0]
+    assert requests[0]['markets.resolution_date']=='gte.2026-09-24'
+
+
+def test_unread_cycle_conditions_survive_after_leaving_the_normal_discovery_window(monkeypatch):
+    prev=dict(complete=False,since='2026-09-24T00:00:00+00:00',cursor='',until=NOW.isoformat(),
+              cycle_conditions=['0x0000','0x0001'])
+    _wire(monkeypatch,2,prev=prev)
+    real=it.rest_all
+    seen=[]
+    def read(table,params,order):
+        rows=real(table,params,order)
+        if 'condition_id' in params and str(params['condition_id']).startswith('in.'):
+            seen.append(params['condition_id']);return rows[1:]
+        return rows[:1]
+    monkeypatch.setattr(it,'rest_all',read)
+    result=it.main(now=NOW)
+    assert seen==['in.(0x0001)'] and result['complete'] and result['fetched']==2
 
 
 def test_a_missing_durable_progress_receipt_prevents_all_trade_inserts(monkeypatch):
