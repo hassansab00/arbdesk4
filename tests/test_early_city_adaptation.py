@@ -81,6 +81,40 @@ def test_invalid_or_future_evidence_never_trains(change):
     assert not e.eligible([row],dt.date(2026,10,30))
 
 
+def test_eligibility_accounts_for_history_without_relaxing_original_evidence():
+    good=history()[0]
+    missing=copy.deepcopy(good);missing['target_date']='2026-10-27';missing['paired_context']={}
+    legacy=copy.deepcopy(good);legacy['target_date']='2026-10-26'
+    legacy['paired_context']['early_forecast_audit']['policy']=audit.POLICY
+    future=copy.deepcopy(good);future['target_date']='2026-10-25'
+    future['label_received_at']='2026-10-30T00:00:00Z'
+    unverified=copy.deepcopy(good);unverified['target_date']='2026-10-24';unverified['verified']=False
+    pending=copy.deepcopy(good);pending['target_date']='2026-10-23';pending['settled']=False
+    rows=[good,copy.deepcopy(good),missing,legacy,future,unverified,pending]
+    original=copy.deepcopy(rows);detail={}
+    eligible=e.eligible(rows,dt.date(2026,10,30),diagnostics=detail)
+    assert eligible==e.eligible(rows,dt.date(2026,10,30))
+    assert len(eligible)==1 and rows==original
+    assert detail['input_rows']==7 and detail['first_calls']==6 and detail['eligible_rows']==1
+    assert detail['exclusions']==dict(later_duplicate=1,missing_original_comparison=1,
+        legacy_comparison_recipe=1,invalid_input_freeze_or_label_timing=1,
+        missing_verified_freeze=1,missing_confirmed_label=1)
+    assert detail['eligible_rows']+sum(detail['exclusions'].values())==detail['input_rows']
+
+
+def test_held_fit_explains_recipe_incompatibility_and_has_no_approval_from_legacy_data():
+    rows=history()[:2]
+    legacy=copy.deepcopy(history()[2]);legacy['paired_context']['early_forecast_audit']['policy']=audit.POLICY
+    other=copy.deepcopy(history()[3]);packet=other['paired_context']['early_forecast_audit']
+    packet['station']='KJFK';packet['model_version']=e.family(packet['contract'],packet['station'],packet['unit'],packet['recipe'])
+    states=e.fit(rows+[legacy,other],'2026-10-30')
+    state=next(s for s in states if s['model_version']==FAMILY)
+    assert state['decision']=='held' and state['strength']==e.PRIOR
+    assert state['eligibility']['eligible_rows']==2
+    assert state['eligibility']['exclusions']==dict(legacy_comparison_recipe=1,incompatible_model_or_recipe=1)
+    assert not state['readiness']['sample_ready']
+
+
 def test_minimum_is_per_city_and_horizon_and_the_future_cannot_choose_the_training_candidate():
     rows=history(); original=e.fit(rows,'2026-10-30')[0]
     assert e.fit(rows[:10],'2026-10-30')[0]['strength']==1
