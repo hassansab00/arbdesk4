@@ -43,8 +43,9 @@ def test_proxy_wallet_is_never_null():
 
 
 class _Resp:
-    def __init__(self, data):
-        self.data = data
+    def __init__(self, data, next_cursor=None):
+        self.data = {'data': data, 'pagination': {'has_more': next_cursor is not None,
+                                                'next_cursor': next_cursor}}
 
     def raise_for_status(self):
         pass
@@ -59,22 +60,24 @@ def test_paging_stops_at_the_high_water_mark():
     calls = []
 
     def get(url, params, headers, timeout):
-        calls.append(params["offset"])
-        return _Resp(pages[params["offset"] // it.PAGE])
+        index = int(params.get('cursor', '0'))
+        calls.append(index)
+        assert 'offset' not in params and 'market' not in params
+        return _Resp(pages[index], str(index+1))
     since = dt.datetime.fromtimestamp(1500, dt.timezone.utc)
     got = it.fetch_batch(["0xc1", "0xc2"], since, get=get)
-    assert calls == [0, it.PAGE]                      # the second page reaches below the mark: stop
-    assert len(got) == 2 * it.PAGE
+    assert calls == [0, 1]  # the second page reaches below the mark: stop
+    assert len(got) == it.PAGE  # old rows are filtered locally
 
 
-def test_a_short_page_is_the_last():
+def test_a_final_cursor_ends_a_short_page():
     calls = []
 
     def get(url, params, headers, timeout):
-        calls.append(params["market"])
+        calls.append(params["condition"])
         return _Resp([_trade(5)])
-    assert len(it.fetch_batch(["0xa", "0xb"], None, get=get)) == 1
-    assert calls == ["0xa,0xb"]                       # one request for the whole batch
+    assert len(it.fetch_batch(["0xc1", "0xc2"], None, get=get)) == 1
+    assert calls == ["0xc1,0xc2"]
 
 
 class _Limited:
@@ -94,7 +97,7 @@ def test_a_429_is_waited_out_once_when_the_budget_allows():
     429. The page is asked again after Retry-After, and the wait is counted."""
     answers = [_Limited(after=3), _Resp([_trade(5)])]
     slept, stats = [], {}
-    got = it.fetch_batch(["0xa"], None, get=lambda *a, **k: answers.pop(0),
+    got = it.fetch_batch(["0xc1"], None, get=lambda *a, **k: answers.pop(0),
                          wait_until=100.0, stats=stats, sleep=slept.append, clock=lambda: 0.0)
     assert len(got) == 1 and slept == [3.0]
     assert stats == {"waits": 1, "seconds": 3.0}
@@ -103,12 +106,12 @@ def test_a_429_is_waited_out_once_when_the_budget_allows():
 def test_a_429_without_retry_after_waits_the_default_and_never_too_long():
     answers = [_Limited(), _Resp([_trade(5)])]
     slept = []
-    it.fetch_batch(["0xa"], None, get=lambda *a, **k: answers.pop(0), wait_until=100.0,
+    it.fetch_batch(["0xc1"], None, get=lambda *a, **k: answers.pop(0), wait_until=100.0,
                    sleep=slept.append, clock=lambda: 0.0)
     assert slept == [it.RATE_LIMIT_WAIT_S]
     answers = [_Limited(after=600), _Resp([_trade(5)])]
     slept = []
-    it.fetch_batch(["0xa"], None, get=lambda *a, **k: answers.pop(0), wait_until=100.0,
+    it.fetch_batch(["0xc1"], None, get=lambda *a, **k: answers.pop(0), wait_until=100.0,
                    sleep=slept.append, clock=lambda: 0.0)
     assert slept == [it.RATE_LIMIT_MAX_WAIT_S]
 
@@ -118,7 +121,7 @@ def test_a_retry_after_of_zero_is_asked_again_at_once():
     it became the 5 s default, spending budget for nothing."""
     answers = [_Limited(after=0), _Resp([_trade(5)])]
     slept = []
-    got = it.fetch_batch(["0xa"], None, get=lambda *a, **k: answers.pop(0), wait_until=1.0,
+    got = it.fetch_batch(["0xc1"], None, get=lambda *a, **k: answers.pop(0), wait_until=1.0,
                          sleep=slept.append, clock=lambda: 0.0)
     assert len(got) == 1 and slept == [0.0]
 
@@ -179,11 +182,11 @@ def _wire(monkeypatch, n_conditions, prev=None, fail_batches=(), deep_batches=()
         if j in fail_batches:
             raise RuntimeError("502 from the trades API")
         if j in deep_batches:                          # every page full, all newer than the mark
-            return [_trade(NOW.timestamp(), asset=f"y{int(ids[0][2:])}", cond=ids[0])] * (it.MAX_PAGES * it.PAGE)
+            return it.tape.Tape([_trade(NOW.timestamp(), asset=f"y{int(ids[0][2:])}", cond=ids[0])],cursor='next-page')
         return [_trade(NOW.timestamp(), asset=f"y{int(c[2:])}", cond=c) for c in ids]
     monkeypatch.setattr(it, "fetch_batch", fetch)
     monkeypatch.setattr(it, "insert_new", lambda rows: inserted.append(len(rows)) or len(rows))
-    monkeypatch.setattr(it, "rpc", lambda fn: {"ok": True})
+    monkeypatch.setattr(it, "rpc", lambda fn,*args: {"ok": True})
     monkeypatch.setattr(it, "log_run", lambda job, status, rows, detail: logged.update(job=job, status=status, rows=rows))
     return logged, seen
 
@@ -245,12 +248,16 @@ def test_a_cycle_carries_on_after_its_cursor(monkeypatch):
     assert seen == [1] and d["complete"]
 
 
-def test_a_batch_deeper_than_the_api_pages_is_reported(monkeypatch):
+def test_a_partial_batch_keeps_its_exact_cohort_and_cursor(monkeypatch):
     logged, seen = _wire(monkeypatch, 2 * it.BATCH, deep_batches={1})
     d = it.main(now=NOW)
-    assert d["truncated"] == [f"0x{it.BATCH:04d}"] and d["status"] == "attention" and d["complete"]
-    logged, seen = _wire(monkeypatch, 2 * it.BATCH)
-    assert it.main(now=NOW)["truncated"] == []
+    assert d['status']=='attention' and not d['complete']
+    assert d['cursor']==f'0x{it.BATCH-1:04d}'
+    assert d['api_continuation']==dict(ids=[f'0x{i:04d}' for i in range(it.BATCH,2*it.BATCH)],cursor='next-page')
+    logged, seen = _wire(monkeypatch, 2 * it.BATCH,prev=d)
+    resumed = it.main(now=NOW)
+    assert seen==[1] and resumed['complete'] and resumed['api_continuation'] is None
+    assert resumed['since']==d['since']
 
 
 @pytest.mark.parametrize("mode", ["off", "manual"])
@@ -422,7 +429,7 @@ SEEN = dt.datetime(2026, 10, 10, 3, 20, 57, tzinfo=dt.timezone.utc)
 
 
 class _Paged:
-    """The data API over a fixed list: start/end inclusive, newest first, capped at offset 10,000."""
+    """V2 condition feeds ignore time bounds and continue with opaque cursors."""
 
     def __init__(self, trades):
         self.trades = sorted(trades, key=lambda t: -t["timestamp"])
@@ -430,38 +437,44 @@ class _Paged:
 
     def __call__(self, url, params, headers, timeout):
         self.asked.append(dict(params))
-        assert params["offset"] <= it.MAX_PAGES * it.PAGE, "asked past the API's offset cap"
-        rows = [t for t in self.trades if params["start"] <= t["timestamp"] <= params["end"]]
-        return _Resp(rows[params["offset"]:params["offset"] + params["limit"]])
+        assert 'offset' not in params and 'start' not in params and 'end' not in params
+        offset = int(params.get('cursor', '0'))
+        rows = [t for t in self.trades if t['conditionId'] in params['condition'].split(',')]
+        next_offset = offset+params['limit']
+        return _Resp(rows[offset:next_offset],str(next_offset) if next_offset<len(rows) else None)
 
 
-def test_a_window_is_asked_with_start_and_end_and_a_short_page_ends_it():
+def test_a_window_filters_dates_locally_and_a_final_cursor_ends_it():
     api = _Paged([_trade(1000 + i) for i in range(1500)] + [_trade(5000)])
-    got, whole = it.fetch_window(["0xa", "0xb"], 1000, 2600, get=api)
+    got, whole = it.fetch_window(["0xc1", "0xc2"], 1000, 2600, get=api)
     assert whole and len(got) == 1500, "the trade after `end` is not read"
-    assert [a["offset"] for a in api.asked] == [0, it.PAGE]
-    assert all(a["market"] == "0xa,0xb" and a["start"] == 1000 and a["end"] == 2600 for a in api.asked)
+    assert [a.get('cursor') for a in api.asked]==[None,str(it.PAGE)]
+    assert all(a['condition']=='0xc1,0xc2' for a in api.asked)
 
 
-def test_a_window_over_the_cap_is_read_in_halves_and_comes_back_whole():
+def test_a_deep_window_follows_cursors_past_the_retired_offset_cap():
     n = 25_000
     api = _Paged([_trade(100_000 + i, size=1 + i % 7) for i in range(n)])
-    got, whole = it.fetch_window(["0xa"], 100_000, 100_000 + n, get=api)
+    got, whole = it.fetch_window(["0xc1"], 100_000, 100_000 + n, get=api)
     assert whole and len(got) == n
     assert len({t["timestamp"] for t in got}) == n, "the halves meet with no gap and no overlap"
 
 
-def test_a_window_still_over_the_cap_at_the_last_halving_is_not_called_whole(monkeypatch):
-    monkeypatch.setattr(it, "BACKFILL_MAX_DEPTH", 0)
+def test_a_window_budget_stop_preserves_a_resumable_prefix(monkeypatch):
+    clock=[0.]
     api = _Paged([_trade(100_000 + i) for i in range(12_000)])
-    got, whole = it.fetch_window(["0xa"], 100_000, 112_000, get=api)
-    assert not whole and len(got) == (it.MAX_PAGES + 1) * it.PAGE
+    def slow(*a,**kw):
+        answer=api(*a,**kw);clock[0]+=1;return answer
+    got=it.tape.window(['0xc1'],100_000,112_000,get=slow,wait_until=2,clock=lambda:clock[0])
+    assert got.continuation and len(got)==2*it.PAGE
+    rest=it.tape.window(['0xc1'],100_000,112_000,get=api,continuation=got.continuation)
+    assert rest.continuation is None and len(got)+len(rest)==12_000
 
 
 def test_a_429_in_a_window_is_waited_out_once():
     answers = [_Limited(after=2), _Resp([_trade(5)])]
     slept = []
-    got, whole = it.fetch_window(["0xa"], 0, 10, get=lambda *a, **k: answers.pop(0), sleep=slept.append)
+    got, whole = it.fetch_window(["0xc1"], 0, 10, get=lambda *a, **k: answers.pop(0), sleep=slept.append)
     assert whole and len(got) == 1 and slept == [2.0]
 
 
@@ -504,7 +517,7 @@ def _wire_backfill(monkeypatch, markets, ok_before=True, fail=(), pending=None, 
         return [_trade(end - 60, asset=f"{mid}-y0", cond=ids[0])], True
     monkeypatch.setattr(it, "fetch_window", fetch)
     monkeypatch.setattr(it, "insert_new", lambda rows: inserted.append(len(rows)) or len(rows))
-    monkeypatch.setattr(it, "rpc", lambda fn: {"ok": True})
+    monkeypatch.setattr(it, "rpc", lambda fn,*args: {"ok": True})
     monkeypatch.setattr(it, "log_run", lambda job, status, rows, detail: logged.update(job=job, status=status, rows=rows))
     return asked_since, windows, logged, inserted
 

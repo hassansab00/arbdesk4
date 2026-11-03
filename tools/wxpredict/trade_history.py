@@ -60,16 +60,17 @@ import time
 import requests
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+import polymarket_trades as tape
 EVENTS = os.path.join(ROOT, 'data', 'training', 'market_history', 'events.csv.gz')
 BANDS = os.path.join(ROOT, 'data', 'training', 'market_history', 'bands.csv.gz')
 OUT = os.path.join(ROOT, 'data', 'eval', 'wxpredict', 'trade_history_probe.json')
 GAMMA = 'https://gamma-api.polymarket.com/events'
-TRADES = 'https://data-api.polymarket.com/trades'
+TRADES = tape.API
 UA = {'User-Agent': 'arbdesk4-wxpredict/1.0', 'Accept': 'application/json'}
 EVENTS_PER_MONTH = 10
 SEED = 24
 PAGE = 1000
-MAX_OFFSET = 10000
 PAUSE_S = 0.25
 TIMEOUT = 30
 TOL = 0.01          # shares; Gamma's volume and the sizes are given to 6 decimals
@@ -101,27 +102,16 @@ class Session:
 
 
 def pages(sess, params):
-    """Every trade for `params`, or (trades, False) when the offset cap stops it."""
-    out, off = [], 0
-    while True:
-        js = sess.get(TRADES, {**params, 'limit': PAGE, 'offset': off})
-        out += js
-        if len(js) < PAGE:
-            return out, True
-        off += PAGE
-        if off > MAX_OFFSET:
-            return out, False
+    """Every cursor page, retaining the research's historical row vocabulary."""
+    ids=params['market'].split(',')
+    out=tape.window(ids,params.get('start',float('-inf')),params.get('end',float('inf')),
+                    fetch=lambda url,query,timeout:sess.get(url,query))
+    return out,out.continuation is None
 
 
 def bucket_trades(sess, cid, lo, hi, depth=0):
-    """Every trade of one bucket between lo and hi (unix s), halving on the cap."""
-    got, whole = pages(sess, {'market': cid, 'start': lo, 'end': hi})
-    if whole or depth >= 12 or hi - lo < 2:
-        return got, whole
-    mid = (lo + hi) // 2
-    a, wa = bucket_trades(sess, cid, lo, mid, depth + 1)
-    b, wb = bucket_trades(sess, cid, mid + 1, hi, depth + 1)
-    return a + b, wa and wb
+    """Every trade in the local window; v2 ignores server-side date bounds."""
+    return pages(sess, {'market':cid,'start':lo,'end':hi})
 
 
 def sample():
@@ -176,7 +166,7 @@ def summarise(rows, months):
         'trades_before_created': sum(r['before_created'] for r in rows),
         'trades_after_day_plus_1': sum(r['after_day_plus_1'] for r in rows),
         'per_month': per_month, 'events_in_record_per_month': months,
-        'priors': {'events_per_month': EVENTS_PER_MONTH, 'seed': SEED, 'page': PAGE, 'max_offset': MAX_OFFSET,
+        'priors': {'events_per_month': EVENTS_PER_MONTH, 'seed': SEED, 'page': PAGE, 'pagination': 'v2-cursor',
                    'pause_s': PAUSE_S, 'tol_shares': TOL},
     }
 
