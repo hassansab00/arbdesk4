@@ -10,7 +10,7 @@ import datetime as dt
 import hashlib
 import json
 import math
-from collections import defaultdict
+from collections import defaultdict, Counter
 from zoneinfo import ZoneInfo
 
 import wx_city_calibration as cal
@@ -168,28 +168,44 @@ def valid_packet(packet, served):
         return False
 
 
-def eligible(rows, as_of):
+def eligible(rows, as_of, *, diagnostics=None, model_version=None):
+    """Original comparison evidence only; explain every excluded first call.
+
+    The optional model identity scopes diagnostics to one fitted recipe. It
+    never makes legacy comparisons eligible for a newly recorded recipe.
+    """
     cutoff = dt.datetime.combine(as_of, dt.time(), dt.timezone.utc)
     out = []
     first = {}
+    excluded = Counter()
     for row in rows:
         key = (row['city_key'],row['target_date'],row['checkpoint'])
         if key not in first or str(row.get('frozen_at') or '') < str(first[key].get('frozen_at') or ''):
             first[key] = row
+    excluded['later_duplicate'] = len(rows)-len(first)
     for row in first.values():
         packet = (row.get('paired_context') or {}).get('early_forecast_audit') or {}
         try:
             day = dt.date.fromisoformat(row['target_date'])
-            if (not row['settled'] or not row['verified'] or row['checkpoint'] not in CHECKPOINTS
-                    or not as_of-dt.timedelta(days=PRIORS['window_days']) <= day < as_of
-                    or not valid_packet(packet, row['probs']) or row['checkpoint'] != packet['checkpoint']):
+            reason = ('missing_confirmed_label' if not row['settled'] else
+                      'missing_verified_freeze' if not row['verified'] else
+                      'unsupported_checkpoint' if row['checkpoint'] not in CHECKPOINTS else
+                      'outside_window' if not as_of-dt.timedelta(days=PRIORS['window_days']) <= day < as_of else
+                      'missing_original_comparison' if not packet else
+                      'legacy_comparison_recipe' if packet.get('policy') != POLICY else
+                      'incompatible_model_or_recipe' if model_version is not None and packet.get('model_version') != model_version else
+                      'invalid_original_comparison' if not valid_packet(packet, row['probs']) or row['checkpoint'] != packet['checkpoint'] else None)
+            if reason:
+                excluded[reason] += 1
                 continue
             timing = row.get('timing') or {}
             if row['checkpoint'] == 'morning' and (not timing.get('before_expected_peak')
                     or float(timing.get('minutes_before_expected_peak') or 0) < 60):
+                excluded['missing_or_too_late_morning_peak_proof'] += 1
                 continue
             frozen, issued = cal.timestamp(row['frozen_at']), cal.timestamp(packet['input_forecast_run'])
             if any(cal.timestamp(packet[k]) > frozen for k in ('rules_observed_at','rules_received_at') if packet.get(k)):
+                excluded['rules_received_after_freeze'] += 1
                 continue
             end = dt.datetime.combine(day+dt.timedelta(days=1), dt.time(), ZoneInfo(packet['timezone']))
             scheduled = cal.timestamp(packet['scheduled_at'])
@@ -197,12 +213,20 @@ def eligible(rows, as_of):
                     or not scheduled <= frozen <= scheduled+dt.timedelta(minutes=75)
                     or not frozen < cal.timestamp(row['settled_at']) <= cal.timestamp(row['label_received_at']) < cutoff
                     or row['winner'] not in row['probs']):
+                excluded['invalid_input_freeze_or_label_timing'] += 1
                 continue
             if packet['fitted_as_of'] and dt.date.fromisoformat(packet['fitted_as_of']) > day:
+                excluded['future_fit'] += 1
                 continue
             out.append(dict(row, packet=packet))
         except (KeyError, TypeError, ValueError):
+            excluded['invalid_fields'] += 1
             continue
+    if diagnostics is not None:
+        diagnostics.update(input_rows=len(rows), first_calls=len(first), eligible_rows=len(out),
+            exclusions={k:v for k,v in excluded.items() if v},
+            first_eligible_date=min((r['target_date'] for r in out), default=None),
+            last_eligible_date=max((r['target_date'] for r in out), default=None))
     return out
 
 
@@ -259,6 +283,10 @@ def fit(rows, as_of, previous=()):
                      reason='insufficient independent older training and later validation dates',validated_through=None,
                      train_dates=nt,validation_dates=nv,input_digest=digest,
                      readiness=cal.readiness(nt,nv,PRIORS))
+        eligibility = {}
+        eligible([r for r in rows if r['city_key'] == city and r['checkpoint'] == checkpoint],
+                 as_of, diagnostics=eligibility, model_version=model_version)
+        state['eligibility'] = eligibility
         if nt >= PRIORS['min_train_dates'] and nv >= PRIORS['min_validation_dates']:
             # Seasonal local loss, with prior pseudodates. No cross-city labels
             # substitute for a city's own independent minimum sample.
