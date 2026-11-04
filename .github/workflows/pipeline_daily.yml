@@ -99,7 +99,12 @@ jobs:
         env:
           OUTCOME_DAYS: ${{ inputs.outcome_days || '14' }}
           OUTCOME_CITIES: ${{ inputs.outcome_cities }}
-        run: python scripts/weather_outcomes.py --days "$OUTCOME_DAYS" --cities "$OUTCOME_CITIES"
+        run: |
+          if [ "$GITHUB_REF_NAME" = "codex/verify-weather-recovery-470" ]; then
+            python scripts/weather_outcomes.py --days "$OUTCOME_DAYS" --cities "$OUTCOME_CITIES" --max-city-days 2 --budget-seconds 75
+          else
+            python scripts/weather_outcomes.py --days "$OUTCOME_DAYS" --cities "$OUTCOME_CITIES"
+          fi
 
       # 3. Capture final venue truth. Gamma and CLOB must agree on condition,
       #    token identities and winner. This also settles matching paper
@@ -460,3 +465,17 @@ jobs:
             if git push origin HEAD:main; then exit 0; fi
           done
           exit 1
+
+  verify-weather-learning:
+    needs: daily
+    if: ${{ !cancelled() && needs.daily.result == 'success' && inputs.evidence_only == true && github.ref_name == 'codex/verify-weather-recovery-470' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install -r requirements.runtime.txt
+      - name: Verify production point-label learning without writes
+        if: ${{ !cancelled() }}
+        run: timeout --signal=TERM --kill-after=5s 150s python scripts/verify_weather_learning.py --lookback 30 --budget-seconds 120

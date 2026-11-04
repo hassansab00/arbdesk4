@@ -3,6 +3,16 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Bounded manual recovery verification — PR #470
+
+The one-off verification branch adds no schedule. It runs the merged collector
+with a city/target cap and a request deadline, then rehearses the merged
+point-label learner with a hard process limit and dry-run writes disabled.
+Only eligibility counts and source fingerprints enter the workflow output;
+fitted parameters stay in memory. Both phases require actual successful run
+receipts before this deployment acceptance is complete. The application
+sources under verification are identical to merged PR #470.
+
 ## Shared weather forward experiment — 3 Nov
 
 ### Weather-label completeness repair — source checkpoint, not deployed
