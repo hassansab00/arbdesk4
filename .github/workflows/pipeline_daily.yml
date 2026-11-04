@@ -477,5 +477,6 @@ jobs:
         with: { python-version: '3.11' }
       - run: pip install -r requirements.runtime.txt
       - name: Verify production point-label learning without writes
+        timeout-minutes: 3
         if: ${{ !cancelled() }}
         run: timeout --signal=TERM --kill-after=5s 150s python scripts/verify_weather_learning.py --lookback 30 --budget-seconds 120
