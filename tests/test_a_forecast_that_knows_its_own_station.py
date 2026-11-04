@@ -390,7 +390,7 @@ def test_the_pre_repair_reader_is_excluded_from_the_fit():
     finally:
         sys.modules.pop("common", None)
 
-    assert captured["table"] == "fact_forecast_outcome"
+    assert captured["table"] == "v_verified_fact_forecast_outcome"
     assert ("obs_source", f"neq.{fp.FALLBACK_OBS_SOURCE}") in captured["params"]
     assert ("obs_source", "not.is.null") in captured["params"]
 

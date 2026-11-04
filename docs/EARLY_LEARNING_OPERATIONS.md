@@ -1,5 +1,22 @@
 # Early learning and candidate registration handoff
 
+## Weather evidence source checkpoint — not deployed
+
+`weather_evidence_review.review` audits retained AWC envelopes against their
+own saved publication replies. Its dispute builder preserves original identity
+and proposes a superseding `disputed` record with a fresh database receipt;
+it does not write to production or recover an original maximum. Passing that
+narrow review does not establish full-day completeness. Review live changes
+and verify subsequent actual reader/learner runs separately.
+
+The collector's bounded-window proof is retained in the new evidence schema.
+It distinguishes successful empty windows from failed, stale, conflicting or
+unparseable retrievals, without assuming one report cadence for every airport.
+Post-processing reports how many verified facts were accepted as point labels
+or excluded for bucket-only/missing truth or mismatched readings. Historical
+facts and predictions stay immutable. The shared-weather candidate experiment
+and promotion gates remain unchanged.
+
 Private registration completed on 3 Nov. The existing bounded Tick step now
 has a registered candidate; capture receipts and prospective scores still
 require actual subsequent decisions and settlements. Registration does not

@@ -2,6 +2,7 @@
 import datetime as dt
 from decimal import Decimal
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -72,7 +73,17 @@ def collect(monkeypatch, target, following=FOLLOWING, now=NOW):
     calls = []
     def get(session, url, **kwargs):
         calls.append(url)
-        return SimpleNamespace(content=target if url == URL else following)
+        if url == URL:
+            return SimpleNamespace(content=target)
+        query = parse_qs(urlsplit(url).query)
+        if int(query['hours'][0]) > 7 or 'T05%3A10' in url:
+            return SimpleNamespace(content=following)
+        at = dt.datetime.fromisoformat(query['date'][0].replace('Z', '+00:00'))
+        # Model the real endpoint's window, including only parseable reports.
+        rows = metar.raw_reports(target, 'KLGA', at, strict=False)
+        left = at - dt.timedelta(hours=int(query['hours'][0]))
+        raw = '\n'.join(r['raw'] for r in rows if left <= r['when'] <= at).encode()
+        return SimpleNamespace(content=raw)
     monkeypatch.setattr(outcomes, "_get", get)
     result = outcomes.collect_with_fallback(object(), spec(), DAY, "America/New_York", now)
     return result, calls
@@ -92,7 +103,8 @@ def test_final_read_uses_routine_max_on_station_local_date_not_special_or_utc_da
     assert result.detail["eligible_readings"] == 3
     assert result.observed_max_c == Decimal("20.000000")
     assert result.observed_at == "2026-10-24T03:51:00+00:00"
-    assert calls[-1] == URL  # target read follows proof that next date published
+    assert calls[1] == URL  # target read follows proof that next date published
+    assert result.detail['completeness'] == 'bounded_windows_cross_checked'
     assert result.detail["finality"] == "following_routine"
 
 
@@ -160,13 +172,21 @@ def test_padded_contract_window_covers_day_without_counting_next_day_temperature
     calls=[]
     def get(session,url,**kwargs):
         calls.append(url)
-        return SimpleNamespace(content=target if url==padded else FOLLOWING)
+        if url == padded:
+            return SimpleNamespace(content=target)
+        query = parse_qs(urlsplit(url).query)
+        at = dt.datetime.fromisoformat(query['date'][0].replace('Z', '+00:00'))
+        if int(query['hours'][0]) > 7:
+            return SimpleNamespace(content=FOLLOWING)
+        left = at - dt.timedelta(hours=int(query['hours'][0]))
+        rows = metar.raw_reports(target, 'KLGA', at)
+        return SimpleNamespace(content='\n'.join(r['raw'] for r in rows if left <= r['when'] <= at).encode())
     monkeypatch.setattr(outcomes,'_get',get)
     s=outcomes.parse_rule_spec(RULES.replace(URL,padded),'F')
     result=outcomes.collect_awc(object(),s,DAY,'America/New_York',NOW+dt.timedelta(hours=4))
     assert result.detail['qualifying_max_c']=='18.3'
     assert result.detail['eligible_readings']==1
-    assert calls[-1]==padded
+    assert calls[1]==padded
 
 
 def test_window_validation_handles_a_daylight_saving_long_day_and_refuses_partial_coverage():

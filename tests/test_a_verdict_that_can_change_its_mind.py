@@ -49,6 +49,10 @@ class _Recorder:
 
     # -- the reader ------------------------------------------------------
     def rest_all(self, table, params, order=None, page_size=None):
+        if table == "v_venue_truth":
+            return [{"city_key": r["city_key"], "for_date": r["for_date"],
+                     "label_c": r["observed_max_c"], "source": "venue_reading"}
+                    for r in self._rows]
         return list(self._rows)
 
     # -- the two writers, one of which must never be used here -----------

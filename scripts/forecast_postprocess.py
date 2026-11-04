@@ -113,6 +113,7 @@ worse than the number it replaces without the measurement saying so first.
 """
 
 import argparse
+import json
 import datetime as dt
 import math
 import os
@@ -468,7 +469,7 @@ def _newest_per_run_key(rows):
     return out
 
 
-def load_evidence(lookback_days=365, verified_only=True):
+def load_evidence(lookback_days=365, verified_only=True, eligibility=None):
     """Settled days per (city, lead), station-authority evidence only.
 
     THE FILTER IS NOT OPTIONAL. 2,268 rows dated 26 Aug - 7 Sep carry
@@ -495,9 +496,36 @@ def load_evidence(lookback_days=365, verified_only=True):
     # The order has to be UNIQUE or pagination skips rows: the primary key is
     # (city_key, for_date, model, lead_days), and leaving `model` out of the
     # sort leaves ties for the server to break however it likes between pages.
-    rows = rest_all("fact_forecast_outcome", params,
+    rows = rest_all("v_verified_fact_forecast_outcome", params,
                     order="city_key.asc,for_date.asc,lead_days.asc,model.asc",
                     page_size=1000)
+    counts = {"verified_fact_rows": len(rows), "accepted_point_rows": 0,
+              "excluded_bucket_or_missing_truth": 0, "excluded_point_mismatch": 0}
+    if rows:
+        # The old fact is immutable. Its source name alone cannot certify it:
+        # a retained source response may contradict the independent venue proof.
+        # Bucket-derived labels remain useful interval evidence, never point
+        # temperatures for this error/width fit.
+        truth = rest_all("v_venue_truth", [
+            ("select", "city_key,for_date,label_c,source"),
+            ("for_date", f"gte.{since}"),
+        ], order="city_key.asc,for_date.asc", page_size=1000)
+        points = {(r["city_key"], str(r["for_date"])): float(r["label_c"])
+                  for r in truth if r.get("source") == "venue_reading"
+                  and r.get("label_c") is not None}
+        accepted = []
+        for r in rows:
+            key = r["city_key"], str(r["for_date"])
+            if key not in points:
+                counts["excluded_bucket_or_missing_truth"] += 1
+            elif abs(float(r["observed_max_c"]) - points[key]) > 0.01:
+                counts["excluded_point_mismatch"] += 1
+            else:
+                accepted.append(r)
+        rows = accepted
+    counts["accepted_point_rows"] = len(rows)
+    if eligibility is not None:
+        eligibility.update(counts)
     by_cell = defaultdict(list)
     for (city, _date, lead), day in _newest_per_run_key(rows).items():
         by_cell[(city, lead)].append(day)
@@ -582,10 +610,13 @@ def main():
 
     from common import upsert_replace, log_run
 
-    by_cell = load_evidence(args.lookback)
+    eligibility = {}
+    by_cell = load_evidence(args.lookback, eligibility=eligibility)
+    print("point-label eligibility: " + json.dumps(eligibility, sort_keys=True))
     if not by_cell:
         print("no station-authority settled days - nothing to fit", file=sys.stderr)
-        log_run("forecast_postprocess", "ok", 0, "no evidence")
+        log_run("forecast_postprocess", "ok", 0,
+                {"reason": "no evidence", "label_eligibility": eligibility})
         return 0
     pools = city_pools(by_cell)
     fittable = [(d, pools.get(c, [])) for (c, _l), d in by_cell.items()
@@ -596,7 +627,8 @@ def main():
     best, table = choose_shrinkage(fittable, folds=args.folds)
     if best is None:
         print("no cell could be cross-validated - nothing to fit", file=sys.stderr)
-        log_run("forecast_postprocess", "ok", 0, "no cross-validatable cell")
+        log_run("forecast_postprocess", "ok", 0,
+                {"reason": "no cross-validatable cell", "label_eligibility": eligibility})
         return 0
     for row in sorted(table, key=lambda r: r["crps"])[:5]:
         print(f"  k_cell={row['k_cell']:>5} k_city={row['k_city']:>5}  "
@@ -666,6 +698,7 @@ def main():
                    on_conflict="city_key,lead_days")
     log_run("forecast_postprocess", "ok", len(rows),
             {"applied": n_applied, "cells": len(rows), "k_cell": best["k_cell"],
+             "label_eligibility": eligibility,
              "k_city": best["k_city"], "k_per_block": {str(c): list(k) for c, k in chosen.items()},
              "gate": "forward RPS, day-block bootstrap 90% lower > 0, >= 20 days (P3.4)",
              "applied_gain_rps_per_day": agg["mean"], "applied_gain_lo": agg["lo"],
