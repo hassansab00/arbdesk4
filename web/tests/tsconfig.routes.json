@@ -18,6 +18,7 @@
     "../components/CityPredictionValidation.tsx",
     "../components/PredictiveAccuracyGuide.tsx",
     "../lib/readFetch.ts",
+    "../lib/visiblePolling.ts",
     "../components/CityTimingBadge.tsx",
     "../lib/cityManualGuide.ts",
     "../components/CityManualGuide.tsx",

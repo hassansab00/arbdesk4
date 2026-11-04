@@ -1,4 +1,5 @@
 "use client";
+import { startVisiblePolling } from "./visiblePolling";
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
@@ -153,9 +154,8 @@ export function useCityStats(pollMs = 60000): CityStatsResult {
       }
     }
 
-    load();
-    const t = pollMs > 0 ? setInterval(load, pollMs) : null;
-    return () => { cancelled = true; if (t) clearInterval(t); };
+    const stop = startVisiblePolling(load, pollMs > 0 ? pollMs : undefined);
+    return () => { cancelled = true; stop(); };
   }, [pollMs, tick]);
 
   return { rows, mode, reason, viewError, loading, error, refresh: () => setTick((n) => n + 1) };

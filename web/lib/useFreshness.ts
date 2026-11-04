@@ -3,6 +3,7 @@
 import { useMemo, useSyncExternalStore } from "react";
 import { supabase } from "@/lib/supabase";
 import { messageOf } from "@/lib/useQuery";
+import { startVisiblePolling } from "./visiblePolling";
 
 /**
  * IS THIS PANEL EMPTY, STALE, OR FINE?
@@ -59,7 +60,7 @@ const SERVER_SNAPSHOT: Snapshot = { data: null, loading: true, error: null };
 let snapshot: Snapshot = SERVER_SNAPSHOT;
 let fetchedAt = 0;
 let inflight: Promise<void> | null = null;
-let timer: ReturnType<typeof setInterval> | null = null;
+let stopPolling: (() => void) | null = null;
 const listeners = new Set<() => void>();
 
 function publish(next: Snapshot) {
@@ -96,14 +97,13 @@ function subscribe(listener: () => void) {
   if (listeners.size === 1) {
     // The first panel on a page starts the clock; a page navigated to within
     // the refresh window reuses what the last one read.
-    if (Date.now() - fetchedAt >= REFRESH_MS) void load();
-    timer = setInterval(() => void load(), REFRESH_MS);
+    stopPolling = startVisiblePolling(load, REFRESH_MS, Date.now() - fetchedAt >= REFRESH_MS);
   }
   return () => {
     listeners.delete(listener);
-    if (listeners.size === 0 && timer) {
-      clearInterval(timer);
-      timer = null;
+    if (listeners.size === 0 && stopPolling) {
+      stopPolling();
+      stopPolling = null;
     }
   };
 }
