@@ -1,0 +1,4 @@
+# Same scientific versions as the existing research runtime; live inference
+# needs neither package. Install for fitting and required CI fit contracts.
+numpy==2.4.6
+scipy==1.17.1

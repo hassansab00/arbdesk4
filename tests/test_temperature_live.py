@@ -1,0 +1,91 @@
+import copy
+import datetime as dt
+import json
+from pathlib import Path
+import sys
+import pytest
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
+from wxpredict import temperature_model as m,temperature_live as live,temperature_learning as learning,temperature_evaluation as evaluation,pre_day_pairs as pp
+import temperature_register
+from test_temperature_model import record,artifact
+from test_awc_weather_contract import RULES
+
+
+def packet():
+    r=record(day='2026-10-23',city='nyc',zone='America/New_York',unit='F')
+    context=r['hourly'];first=context['hours'][0]
+    weather=dict(capture_id=1,kind='hourly0',key='nyc|snapshot',captured_at=first['captured_at'],written_at=first['written_at'],
+        payload=dict(schema='nwp-current-snapshot-v1',request_location=dict(latitude=40.7,longitude=-73.9,timezone=r['timezone']),
+        hours={dt.datetime.fromtimestamp(h['utc'],dt.timezone.utc).strftime('%Y-%m-%dT%H:%M'):h['values'] for h in context['hours']}))
+    return dict(as_of=r['as_of'],checkpoint=r['checkpoint'],weather=weather,rules=dict(rules_text=RULES,received_at='2026-10-20T00:00:00Z'),
+        market=dict(market_id='synthetic-market',city_key='nyc',resolution_date=r['date'],unit='F'),
+        city=dict(city_key='nyc',icao='KLGA',latitude=40.7,longitude=-73.9,timezone=r['timezone']),
+        bands=[dict(band_id=b,lo=lo,hi=hi) for b,(lo,hi) in zip(r['band_ids'],r['bounds'])],
+        references=dict(raw_forecast_c=23,raw_sigma_c=1.5))
+
+
+def test_live_packet_preserves_original_hourly_input_and_private_references():
+    p=packet();before=copy.deepcopy(p)
+    row,why=live.prepare(p,artifact(),'2026-01-02T00:00:00Z',p['as_of'])
+    assert why is None and row['record']['station']=='KLGA'
+    assert row['record']['forecast_issued_at'] is None
+    assert row['record']['issuance_basis'].startswith('provider_initialization_not_supplied')
+    assert row['record']['hourly'] and m.validate(row['record'])
+    assert row['hourly_reference']==row['prediction']['probs']
+    assert sum(row['raw_normal_reference'].values())==pytest.approx(1.)
+    assert p==before
+
+
+@pytest.mark.parametrize('mutation,reason',[
+    (lambda p:p['rules'].update(received_at='2027-01-01T00:00:00Z'),'missing_as_of_rules_receipt'),
+    (lambda p:p['city'].update(icao='KJFK'),'unknown_or_mismatched_observation_contract'),
+    (lambda p:p['market'].update(unit='C'),'dated_contract_unit_mismatch'),
+    (lambda p:p['weather']['payload']['request_location'].update(latitude=42),'missing_or_mismatched_station_weather_location'),
+    (lambda p:p.update(weather=None),'missing_received_weather'),
+])
+def test_live_contract_and_source_gaps_are_named_exclusions(mutation,reason):
+    p=packet();mutation(p)
+    assert live.prepare(p,artifact(),'2026-01-02T00:00:00Z',p['as_of'])==(None,reason)
+
+
+def test_registration_roundtrips_private_coefficients_without_publication_or_capture():
+    a=artifact();cohort=[f'city{i}' for i in range(20)];called=[]
+    receipt=dict(model_sha256=a['sha256'],registered_at='2026-01-02T00:00:00Z',cohort=cohort)
+    def rpc(name,params=None,**kw):
+        called.append(name)
+        if name=='temperature_register':
+            assert params['p_protocol']==evaluation.specification();return receipt
+        assert name=='temperature_inputs'
+        return dict(artifact=json.loads(json.dumps(a)),registered_at=receipt['registered_at'],cohort=cohort,protocol=evaluation.specification())
+    assert temperature_register.register(a,cohort,rpc)['roundtrip_verified']
+    assert called==['temperature_register','temperature_inputs']
+
+
+def test_first_original_is_chosen_before_label_or_feature_eligibility():
+    r=record();c=dict(record=r,call_id='a',city_key=r['city'],target_date=r['date'],checkpoint=r['checkpoint'],frozen_at=r['as_of'])
+    later=copy.deepcopy(c);later.update(call_id='b',frozen_at=(pp.timestamp(c['frozen_at'])+dt.timedelta(seconds=1)).isoformat())
+    s=dict(winner_band_id='b',confirmed_at='2026-08-02T00:00:00Z',scored_at='2026-08-02T01:00:00Z')
+    rows,detail=learning.prepare([dict(call=later,score=s),dict(call=c,score=None)],'2026-08-03T00:00:00Z')
+    assert not rows and detail['first_calls']==1 and detail['exclusions']=={'pending_venue_outcome':1}
+
+
+def test_insufficient_learning_history_records_health_without_a_fit_or_serving_write():
+    calls=[]
+    def rpc(name,params=None,**kw):
+        calls.append(name)
+        if name=='temperature_learning_inputs':return dict(state='ready',calls=[],cutoff='2026-08-03T00:00:00Z')
+        assert name=='temperature_fit_report' and params['p_artifact'] is None
+    result=learning.run(rpc)
+    assert result['state']=='insufficient_legitimate_history' and result['reached_serving'] is False
+    assert calls==['temperature_learning_inputs','temperature_fit_report']
+
+
+def test_reference_or_unfinished_trial_cannot_be_promoted():
+    reg=dict(protocol=evaluation.specification(),cohort=[f'city{i}' for i in range(20)],evaluation_first='2026-10-01',evaluation_last='2026-10-20',
+        state='unfitted_reference',registered_at='2026-09-28T00:00:00Z',model_sha256='b'*64)
+    out=evaluation.evaluate_trial(reg,[],'2026-10-05T00:00:00Z')
+    assert not out['window_finished'] and not out['eligible_for_promotion'] and not out['distribution_gates_passed']
+    assert set(out['by_horizon'])==set(m.SLOTS)
+    assert all(r['expected']==400 and r['coverage']==0 for r in out['by_horizon'].values())
+    reg['protocol']['minimum_calls_per_horizon']=1
+    with pytest.raises(ValueError,match='preregistration'):evaluation.evaluate_trial(reg,[],'2026-11-01T00:00:00Z')
