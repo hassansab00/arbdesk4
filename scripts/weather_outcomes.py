@@ -34,7 +34,7 @@ from common import log_run, rest_all, upsert
 import metar_contract
 
 
-PARSER_VERSION = "weather-outcomes-v5"
+PARSER_VERSION = "weather-outcomes-v6"
 
 # How far back "recent" reaches. City-days inside this window are offered a
 # slot BEFORE the backlog, so yesterday is always attempted no matter how big
@@ -44,6 +44,7 @@ PARSER_VERSION = "weather-outcomes-v5"
 RECENT_DAYS = 3
 USER_AGENT = "ArbDesk4/2.0 (+https://github.com/hassansab00/arbdesk4)"
 MAX_RETRY_WAIT_S = 30  # Bounded recovery; longer provider waits defer to a later run.
+AWC_REQUEST_INTERVAL_S = 0.65  # Stay below AWC's 100 requests/minute per worker.
 WRH_KEY_URL = "https://www.weather.gov/source/wrh/apiKey.js"
 WRH_API_URL = "https://api.synopticdata.com/v2/stations/timeseries"
 HKO_DATA_URL = "https://www.weather.gov.hk/cis/dailyExtract/dailyExtract_{year}{month:02d}.xml"
@@ -60,6 +61,7 @@ class OutcomeError(RuntimeError):
         self.status = status
         self.source_authority = None
         self.source_url = None
+        self.detail = {}
 
 
 @dataclass(frozen=True)
@@ -201,6 +203,8 @@ def _get(session: requests.Session, url: str, **kwargs) -> requests.Response:
                 raise OutcomeError("source_unavailable", f"Provider cooldown active for {host}")
             if remaining_wait > 0:
                 common._budget_sleep(remaining_wait)
+            if host == "aviationweather.gov":
+                cooldowns[host] = time.monotonic() + AWC_REQUEST_INTERVAL_S
             response = session.get(url, headers=headers,
                                    **common._request_kwargs(dict(kwargs, timeout=45)))
             if response.status_code < 400:
@@ -528,6 +532,75 @@ def wu_fallback_cutoff(for_date: dt.date) -> dt.datetime:
                                ZoneInfo("America/New_York"))
 
 
+def _awc_complete_day(session, station, for_date, zone, now, known):
+    """Read the entire local day in bounded, non-future six-hour windows.
+
+    Completeness is a retrieval property, not an assumed airport cadence. A
+    successful empty window is retained as such. Each window must include every
+    report independently seen in that window; a stale/partial reply, cap, parse
+    error or conflicting revision cannot establish absence or enable fallback.
+    """
+    start = dt.datetime.combine(for_date, dt.time(), zone).astimezone(dt.timezone.utc)
+    end = dt.datetime.combine(for_date + dt.timedelta(days=1), dt.time(), zone).astimezone(dt.timezone.utc)
+    receipts, windows = [], []
+
+    def failure(status, message):
+        error = OutcomeError(status, message)
+        packed = json.dumps({"schema": "awc-incomplete-retrieval-v1", "station": station,
+                             "for_date": for_date.isoformat(), "windows": receipts},
+                            sort_keys=True, separators=(",", ":")).encode()
+        error.detail = {"incomplete_retrieval": _packed_raw(packed, "application/json")}
+        return error
+
+    left = start
+    while left < end:
+        right = min(left + dt.timedelta(hours=6), end)
+        # One hour of overlap includes midnight and non-integral UTC offsets.
+        hours = math.ceil((right - left).total_seconds() / 3600) + 1
+        url = "https://aviationweather.gov/api/data/metar?" + urlencode({
+            "ids": station, "format": "raw", "date": right.isoformat().replace("+00:00", "Z"),
+            "hours": hours})
+        try:
+            response = _get(session, url)
+        except OutcomeError as error:
+            raise failure(error.status, str(error)) from error
+        receipts.append({"source_url": url, "response": response.content.decode("utf-8-sig"),
+                         "received_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+                         "window_start": left.isoformat(), "window_end": right.isoformat()})
+        if len(response.content) > 100_000:
+            raise failure("parse_error", "AWC supplementary response exceeds the evidence bound")
+        skipped = []
+        try:
+            rows = metar_contract.raw_reports(response.content, station, right, strict=False, skipped=skipped)
+        except ValueError as error:
+            raise failure("parse_error", str(error)) from error
+        # An unknown timestamp or duplicate version could hide the maximum.
+        if skipped:
+            raise failure("parse_error", "AWC supplementary window contains unreadable or conflicting reports")
+        if any(not right - dt.timedelta(hours=hours) <= r["when"] <= right for r in rows):
+            raise failure("incomplete_source", "AWC supplementary response does not match its requested window")
+        if any(r["when"] > now for r in rows):
+            raise failure("parse_error", "AWC supplementary report is later than the collection clock")
+        windows.append((left, right, rows))
+        known.extend(rows)
+        left = right
+    for left, right, rows in windows:
+        available = {r["raw"] for r in rows}
+        if any(left <= r["when"] <= right and r["raw"] not in available for r in known):
+            raise failure("incomplete_source", "AWC window omits an independently published report")
+    # Cross-response revisions are never silently resolved by taking the highest
+    # temperature, response order, or a COR flag. Retain the conflict for review.
+    reports = {}
+    for row in known:
+        if row["when"].astimezone(zone).date() != for_date:
+            continue
+        key = (row["when"], row["routine"])
+        if key in reports and reports[key]["raw"] != row["raw"]:
+            raise failure("source_revised", "AWC reads disagree about the report at one observation time")
+        reports[key] = row
+    return sorted(reports.values(), key=lambda r: r["when"]), receipts
+
+
 def collect_awc(session, spec, for_date, timezone, now):
     """Read the named raw source AFTER its next-local-day publication check.
 
@@ -576,6 +649,12 @@ def collect_awc(session, spec, for_date, timezone, now):
                 if value is not None: uncertain.append(value)
         if uncertain and (not selected or max(uncertain)>max(r['temp_c'] for r in selected)):
             raise OutcomeError('parse_error','Unreadable observation time could change the qualifying maximum')
+        if 'conflicting observation time' in skipped:
+            raise OutcomeError('source_revised', 'AWC target contains conflicting report versions')
+        rows, supplementary = _awc_complete_day(
+            session, station, for_date, zone, check_at, rows + next_rows)
+        selected = [r for r in rows if r["routine"] and r["temp_c"] is not None
+                    and r["when"].astimezone(zone).date() == for_date]
         if not selected:
             if now < cutoff:
                 raise OutcomeError("not_final", "AWC has no qualifying temperature; awaiting the contract fallback deadline")
@@ -593,21 +672,36 @@ def collect_awc(session, spec, for_date, timezone, now):
         max_time = min(r["when"] for r in selected if r["temp_c"] == maximum)
         display = metar_contract.rounded_unit(maximum, spec.unit)
         max_c = Decimal(display) if spec.unit == "C" else (Decimal(display) - 32) * 5 / 9
-        canonical = {"schema": "awc-routine-metar-v1", "station_id": station,
+        canonical = {"schema": "awc-routine-metar-v2", "station_id": station,
                      "for_date": for_date.isoformat(), "timezone": timezone,
                      "source_url": spec.source_url, "target_response": response.content.decode("utf-8-sig"),
                      "publication_check_url": check_url, "publication_check_response": following_raw.decode("utf-8-sig"),
                      "first_following_routine": min(following).isoformat() if following else None,
-                     "read_at": now.isoformat(), "deadline": cutoff.isoformat()}
+                     "read_at": dt.datetime.now(dt.timezone.utc).isoformat(), "deadline": cutoff.isoformat(),
+                     "supplementary_windows": supplementary,
+                     "qualifying_max_c": str(maximum), "display_max": display, "display_unit": spec.unit,
+                     "completeness": "bounded_windows_cross_checked"}
         packed = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()
         return Outcome(max_c.quantize(Decimal("0.000001")), max_time.isoformat(), _sha(packed),
-                       _packed_raw(packed, "application/json; profile=awc-routine-metar-v1"),
+                       _packed_raw(packed, "application/json; profile=awc-routine-metar-v2"),
                        {"source_authority": spec.source_authority, "source_url": spec.source_url,
                         "source_timezone": timezone, "qualifying_max_c": str(maximum),
                         "eligible_readings": len(selected), "display_max": display, "display_unit": spec.unit,
                         "first_following_routine": canonical["first_following_routine"],
                         "nondecisive_unreadable_reports":len(skipped),
+                        "completeness": canonical["completeness"],
+                        "supplementary_windows": len(supplementary),
                         "finality": "following_routine" if following else "contract_deadline"})
+    except OutcomeError as exc:
+        if "response" in locals():
+            retained = {"schema": "awc-failed-collection-v1", "station": station,
+                        "for_date": for_date.isoformat(), "source_url": spec.source_url,
+                        "target_response": _packed_raw(response.content, "text/plain"),
+                        "publication_check_url": check_url,
+                        "publication_check_response": _packed_raw(following_raw, "text/plain")}
+            exc.detail["source_responses"] = _packed_raw(
+                json.dumps(retained, sort_keys=True, separators=(",", ":")).encode(), "application/json")
+        raise
     except (ValueError, UnicodeDecodeError, ZoneInfoNotFoundError) as exc:
         raise OutcomeError("parse_error", str(exc)) from exc
 
@@ -1101,6 +1195,7 @@ def _run(days, maximum, dry_run, cities, now, bounded=False):
         outcome: Outcome | None = None
         status = "captured"
         error: str | None = None
+        error_detail = {}
         failed_authority = failed_source_url = None
         try:
             spec = parse_rule_spec(market.get("rules_text"), market.get("unit"))
@@ -1123,6 +1218,7 @@ def _run(days, maximum, dry_run, cities, now, bounded=False):
             status = exc.status
             error = _safe_error(exc)
             failed_authority, failed_source_url = exc.source_authority, exc.source_url
+            error_detail = exc.detail
         except Exception as exc:  # A novel parser bug is recorded, never promoted to evidence.
             status = "parse_error"
             error = _safe_error(exc)
@@ -1155,6 +1251,7 @@ def _run(days, maximum, dry_run, cities, now, bounded=False):
             "payload_sha256": outcome.payload_sha256 if outcome else None,
             "parser_version": PARSER_VERSION,
             "detail": {
+                **error_detail,
                 **(outcome.detail if outcome else {}),
                 **({"error": error} if error else {}),
                 # The verdict is about this text, so the text is identified.

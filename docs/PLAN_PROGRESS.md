@@ -5,6 +5,27 @@ PR that advances a step.
 
 ## Shared weather forward experiment — 3 Nov
 
+### Weather-label completeness repair — source checkpoint, not deployed
+
+AWC collection reads bounded overlapping windows ending in the past and
+cross-checks them against independently seen reports. Partial/stale replies,
+conflicting versions and parser failures cannot certify absence or enable
+fallback. Successful replies and failed retrieval receipts retain provenance.
+A retained-response reviewer prepares append-only disputes without replacing
+the original response or inventing a recovered maximum. A clean narrow review
+does not certify full-day coverage.
+
+Forecast post-processing reads the verified forecast projection and requires
+a matching venue reading. A bucket-derived proxy is excluded from its point
+error/width fit, with eligibility counts in existing run reporting. Existing
+shared-weather experiment parameters, serving paths and schedules are unchanged.
+
+This checkpoint still needs the full required Python 3.11 suite, source PR
+checks, permitted deployment and a subsequent real collection/learning run.
+Local focused tests and database contracts alone do not establish deployment
+or improved accuracy. Live evidence reviews and their receipt verification are
+recorded separately from source deployment.
+
 One fixed global bounded model augments the original early forecast with
 hourly weather actually received before its decision. No market or outcome
 features, city-model selection, historical call rewrites or unbounded fits.
