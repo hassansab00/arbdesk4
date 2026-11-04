@@ -12,11 +12,13 @@ HORIZONS = ('day_ahead', 'd1_eve', 'morning')
 
 
 def specification():
-    return dict(policy=POLICY, horizons=list(HORIZONS), future_dates=MIN_DATES,
+    return dict(policy=POLICY, training_start='earliest registered future-window start; warmups retained but excluded',
+                future_window_start_policy='at least two UTC target dates ahead; every cohort day-ahead slot must follow registration', horizons=list(HORIZONS), future_dates=MIN_DATES,
                 minimum_cities=MIN_CITIES, minimum_calls_per_horizon=MIN_CALLS,
                 fixed_cohort_coverage=MIN_COVERAGE, date_cluster_bootstrap_replicates=2000,
                 confidence=.95, seed=470, primary='paired_date_mean_log_loss',
                 comparisons=['incumbent', 'raw_normal_reference', 'hourly_reference', 'market'],
+                market_quote_policy='all bands require both contemporaneous bid and ask; non-crossed normalized midpoints',
                 saved_raw_centre='additional controlled comparison where originally frozen; never reconstructed',
                 promotion='all_horizons_all_comparisons_positive_lower_log_loss_gain; no_hit_or_brier_regression',
                 point_metrics='MAE and CRPS only on independently verified complete source points',

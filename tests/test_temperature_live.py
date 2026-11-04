@@ -80,6 +80,12 @@ def test_insufficient_learning_history_records_health_without_a_fit_or_serving_w
     assert calls==['temperature_learning_inputs','temperature_fit_report']
 
 
+def test_warmups_stay_preserved_but_cannot_block_the_declared_full_training_window():
+    r=record();c=dict(record=r,call_id='a',city_key=r['city'],target_date=r['date'],checkpoint=r['checkpoint'],frozen_at=r['as_of'])
+    rows,detail=learning.prepare([dict(call=c,score=None)],'2026-08-05T00:00:00Z',training_first='2026-08-03')
+    assert rows==[] and detail['exclusions']=={'warmup_before_predeclared_training_start':1}
+
+
 def test_reference_or_unfinished_trial_cannot_be_promoted():
     reg=dict(protocol=evaluation.specification(),cohort=[f'city{i}' for i in range(20)],evaluation_first='2026-10-01',evaluation_last='2026-10-20',
         state='unfitted_reference',registered_at='2026-09-28T00:00:00Z',model_sha256='b'*64)

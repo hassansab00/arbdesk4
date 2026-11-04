@@ -9,5 +9,13 @@ if __name__ == '__main__':
     try:
         print(json.dumps(run(), sort_keys=True))
     except Exception as error:
-        print(json.dumps(dict(state='error', error=type(error).__name__+': '+str(error)[:200], changes_serving=False)), file=sys.stderr)
+        detail=dict(state='error', error=type(error).__name__+': '+str(error)[:200], changes_serving=False)
+        print(json.dumps(detail), file=sys.stderr)
+        try:
+            import time
+            import common
+            with common.request_deadline(time.monotonic()+2):
+                common.rpc('temperature_heartbeat', dict(p_detail=detail), timeout=1)
+        except Exception:
+            pass  # Database failure leaves the previous heartbeat stale and this job failed.
         raise SystemExit(1)

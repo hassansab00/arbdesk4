@@ -245,7 +245,10 @@ def predict(a, r, *, registered_at=None, now=None):
     mean, sigma = parameters(a, r)
     floor = r.get('floor_c')
     quantile = lambda p: max(floor if floor is not None else -math.inf, mean+sigma*NORMAL.inv_cdf(p))
+    maximum,_=vector(r)
     return dict(centre_c=mean, median_c=quantile(.5), sigma_c=sigma,
+                reference_c=maximum, location_adjustment_c=mean-maximum,
+                adjustment_version=a['sha256'], uncertainty_version=a['sha256'], model_state=a['state'],
                 q10_c=quantile(.1), q90_c=quantile(.9), probs=distribution(r, mean, sigma))
 
 

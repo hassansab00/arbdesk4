@@ -5,7 +5,7 @@ import time
 from wxpredict import temperature_model as model, pre_day_pairs as pp
 
 
-def prepare(items, cutoff):
+def prepare(items, cutoff, training_first=None):
     rows = []
     counts = collections.Counter()
     first = {}
@@ -16,6 +16,9 @@ def prepare(items, cutoff):
             first[key] = item
     for item in first.values():
         c, s = item['call'], item.get('score')
+        if training_first and c['target_date']<training_first:
+            counts['warmup_before_predeclared_training_start']+=1
+            continue
         if not s:
             counts['pending_venue_outcome'] += 1
             continue
@@ -25,6 +28,9 @@ def prepare(items, cutoff):
             if (not pp.timestamp(r['as_of']) <= pp.timestamp(r['frozen_at']) < pp.timestamp(s['confirmed_at']) <= pp.timestamp(s['scored_at']) < pp.timestamp(cutoff)
                     or s['winner_band_id'] not in r['band_ids']):
                 raise ValueError('invalid original label chronology')
+            hi=r['bounds'][r['band_ids'].index(s['winner_band_id'])][1]
+            if r.get('floor_c') is not None and hi is not None and model.edge(hi,r['unit'])<=r['floor_c']:
+                raise ValueError('winner contradicts received contractual floor')
         except (ValueError, KeyError, TypeError) as error:
             counts['invalid:'+str(error)[:100]] += 1
             continue
@@ -52,7 +58,7 @@ def run(rpc=None, *, plan=False):
             detail = dict(state=inputs['state'], changes_serving=False, validated=False, reached_serving=False)
             if not plan:rpc('temperature_fit_report', dict(p_artifact=None, p_detail=detail), timeout=3)
             return detail
-        rows, detail = prepare(inputs['calls'], inputs['cutoff'])
+        rows, detail = prepare(inputs['calls'], inputs['cutoff'], inputs.get('training_first'))
         if plan:
             return detail
         artifact = None

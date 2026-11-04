@@ -133,6 +133,7 @@ SQL_FILTERS = {
     "sql/ad4_34_trade_plan.sql":                "Active-city operational input",
 }
 SQL_RECORD = {
+    "sql/ad4_temperature_forward.sql",  # fixed registered cohort and immutable research history; active is checked at registration/capture, never used to erase scoring history
     "sql/ad4_shared_weather_forward.sql",  # fixed registered cohort and historical scoring, never a fresh active roster
 
     "supabase/migrations/20261018171559_monitoring_city_clocks_and_daily_maximum.sql",  
@@ -166,6 +167,7 @@ SQL_RECORD = {
 }
 
 MIGRATION_RECORD = {
+    "supabase/migrations/20261104171359_isolated_temperature_candidate.sql": "Fixed registered cohort, immutable research history, and private fits; active is enforced at capture, never used to erase scoring history.",
     "supabase/migrations/20261103170852_isolated_shared_weather_forward.sql":
         "Fixed experiment cohort and original-call clock lookup; retired cities remain in historical scores",
 

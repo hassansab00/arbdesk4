@@ -57,7 +57,9 @@ serving through that job.
 
 Registration validates the artifact and the database round trip. Coefficients
 use exact hexadecimal strings. A registered artifact has a separate twenty-date
-future window beginning two UTC dates after registration, with a fixed cohort.
+future window beginning at least two UTC target dates after registration, with a
+fixed cohort. Its start moves later if any cohort day-ahead slot already passed.
+Warmups stay preserved but training starts at that predeclared complete window.
 An unfitted reference collects evidence but cannot pass as a learned model.
 Every fitted challenger requires its own future registration/window.
 

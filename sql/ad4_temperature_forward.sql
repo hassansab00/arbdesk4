@@ -60,14 +60,26 @@ create policy temperature_calls_reader on public.temperature_calls for select to
 drop policy if exists temperature_scores_reader on public.temperature_scores;
 create policy temperature_scores_reader on public.temperature_scores for select to service_role using(true);
 
+-- Raw market metadata is deliberately separate from canonical unit/bounds.
+create or replace function arbdesk_private.temperature_rules(p_market uuid,p_at timestamptz)
+returns jsonb language sql stable set search_path='' as $$
+ select jsonb_build_object('rules_text',mk.rules_text,
+ 'receipt_id',case when rr.rules_text=mk.rules_text then rr.receipt_id end,
+ 'received_at',coalesce(mk.rules_fetched_at,case when rr.rules_text=mk.rules_text then rr.received_at end))
+ from public.markets mk left join lateral(select r.* from public.market_rule_receipts r
+ where r.market_id=mk.market_id and r.received_at<=p_at order by r.received_at desc,r.receipt_id desc limit 1)rr on true
+ where mk.market_id=p_market
+$$;
+revoke all on function arbdesk_private.temperature_rules(uuid,timestamptz) from public,anon,authenticated,service_role;
+
 create or replace function arbdesk_private.temperature_protocol() returns jsonb language sql immutable set search_path='' as $protocol$
- select $spec${"automatic_promotion":false,"calibration":"fixed probability bins and 80% intervals; bucket labels give coverage bounds","changes_serving":false,"comparisons":["incumbent","raw_normal_reference","hourly_reference","market"],"confidence":0.95,"date_cluster_bootstrap_replicates":2000,"fixed_cohort_coverage":0.9,"future_dates":20,"horizons":["day_ahead","d1_eve","morning"],"minimum_calls_per_horizon":200,"minimum_cities":20,"point_comparisons":["hourly_reference","raw_normal_reference"],"point_gate":"same date/city/call/coverage minima; positive lower 95% paired-date CRPS gain and no MAE regression","point_metrics":"MAE and CRPS only on independently verified complete source points","policy":"shared-temperature-evaluation-v1","primary":"paired_date_mean_log_loss","promotion":"all_horizons_all_comparisons_positive_lower_log_loss_gain; no_hit_or_brier_regression","saved_raw_centre":"additional controlled comparison where originally frozen; never reconstructed","seed":470}$spec$::jsonb
+ select $spec${"automatic_promotion":false,"calibration":"fixed probability bins and 80% intervals; bucket labels give coverage bounds","changes_serving":false,"comparisons":["incumbent","raw_normal_reference","hourly_reference","market"],"confidence":0.95,"date_cluster_bootstrap_replicates":2000,"fixed_cohort_coverage":0.9,"future_dates":20,"future_window_start_policy":"at least two UTC target dates ahead; every cohort day-ahead slot must follow registration","horizons":["day_ahead","d1_eve","morning"],"market_quote_policy":"all bands require both contemporaneous bid and ask; non-crossed normalized midpoints","minimum_calls_per_horizon":200,"minimum_cities":20,"point_comparisons":["hourly_reference","raw_normal_reference"],"point_gate":"same date/city/call/coverage minima; positive lower 95% paired-date CRPS gain and no MAE regression","point_metrics":"MAE and CRPS only on independently verified complete source points","policy":"shared-temperature-evaluation-v1","primary":"paired_date_mean_log_loss","promotion":"all_horizons_all_comparisons_positive_lower_log_loss_gain; no_hit_or_brier_regression","saved_raw_centre":"additional controlled comparison where originally frozen; never reconstructed","seed":470,"training_start":"earliest registered future-window start; warmups retained but excluded"}$spec$::jsonb
 $protocol$;
 revoke all on function arbdesk_private.temperature_protocol() from public,anon,authenticated,service_role;
 
 create or replace function public.temperature_register(p_artifact jsonb,p_cohort text[],p_protocol jsonb)
 returns jsonb language plpgsql security definer set search_path='' as $$
-declare m arbdesk_private.temperature_models;v_now timestamptz:=clock_timestamp();
+declare m arbdesk_private.temperature_models;v_now timestamptz:=clock_timestamp();first_day date;
 begin
  if (p_artifact->>'policy' is distinct from 'shared-temperature-normal-v1'
  or p_artifact->>'state' not in ('unfitted_reference','fitted_candidate')
@@ -88,8 +100,10 @@ begin
  or (select count(distinct x) from unnest(p_cohort) x)<>cardinality(p_cohort)
  or exists(select 1 from unnest(p_cohort) x where not exists(select 1 from public.cities c where c.city_key=x and c.status='active'))
  ) is not false then raise exception 'invalid temperature registration';end if;
+ first_day:=(v_now at time zone 'UTC')::date+2;
+ while exists(select 1 from public.cities c where c.city_key=any(p_cohort) and arbdesk_private.temperature_slot(first_day,c.timezone,'day_ahead')<v_now) loop first_day:=first_day+1;end loop;
  insert into arbdesk_private.temperature_models(model_sha256,artifact,protocol,cohort,evaluation_first,evaluation_last)
- values(p_artifact->>'sha256',p_artifact,p_protocol,p_cohort,(v_now at time zone 'UTC')::date+2,(v_now at time zone 'UTC')::date+21) on conflict do nothing;
+ values(p_artifact->>'sha256',p_artifact,p_protocol,p_cohort,first_day,first_day+19) on conflict do nothing;
  select * into strict m from arbdesk_private.temperature_models where model_sha256=p_artifact->>'sha256';
  if m.artifact<>p_artifact or m.protocol<>p_protocol or m.cohort<>p_cohort then raise exception 'temperature registration identity conflict';end if;
  return jsonb_build_object('model_sha256',m.model_sha256,'registered_at',m.registered_at,'cohort',m.cohort,
@@ -102,6 +116,18 @@ returns timestamptz language sql immutable set search_path='' as $$
  make_interval(hours=>case when horizon='d1_eve' then 18 else 9 end)) at time zone zone
 $$;
 revoke all on function arbdesk_private.temperature_slot(date,text,text) from public,anon,authenticated,service_role;
+
+create or replace function arbdesk_private.temperature_market(quotes jsonb,ladder jsonb)
+returns jsonb language plpgsql immutable set search_path='' as $$
+begin
+ if quotes is null or quotes='null'::jsonb or ladder is null or ladder='null'::jsonb then return null;end if;
+ if exists(select 1 from jsonb_each(ladder) b where
+ jsonb_typeof(quotes->b.key->'bid') is distinct from 'number' or jsonb_typeof(quotes->b.key->'ask') is distinct from 'number'
+ or (quotes->b.key->>'bid')::numeric not between 0 and 1 or (quotes->b.key->>'ask')::numeric not between 0 and 1
+ or (quotes->b.key->>'bid')::numeric>(quotes->b.key->>'ask')::numeric) then return null;end if;
+ return arbdesk_private.shared_weather_market(quotes,ladder);
+end $$;
+revoke all on function arbdesk_private.temperature_market(jsonb,jsonb) from public,anon,authenticated,service_role;
 
 -- All comparisons are available at this decision, not fetched after settlement.
 -- The raw normal reference is explicitly uncalibrated. A separately saved
@@ -140,7 +166,7 @@ begin
  'raw_forecast_c',case when probabilities is not null and raw.raw_min=raw.raw_max then raw.raw_min end,
  'raw_sigma_c',case when probabilities is not null and raw.sigma_min=raw.sigma_max and raw.sigma_min>0 then raw.sigma_min end,
  'raw_source_at',raw.newest,
- 'market',arbdesk_private.shared_weather_market(quotes,coalesce(original.probs,current_call.ladder,probabilities)),
+ 'market',arbdesk_private.temperature_market(quotes,coalesce(original.probs,current_call.ladder,probabilities)),
  'saved_raw_centre',original.predictive_context#>'{early_forecast_audit,raw_centre_probs}');
 end $$;
 revoke all on function arbdesk_private.temperature_references(text,date,uuid,text,timestamptz) from public,anon,authenticated,service_role;
@@ -153,20 +179,16 @@ begin
  if not found then return jsonb_build_object('state','not_registered','packets','[]'::jsonb);end if;
  with due as materialized (
  select cm.market_id,cm.city_key,cm.resolution_date,cm.unit,h.horizon,c,
- jsonb_build_object('receipt_id',case when rr.rules_text=mk.rules_text then rr.receipt_id end,'rules_text',mk.rules_text,
- 'received_at',coalesce(mk.rules_fetched_at,case when rr.rules_text=mk.rules_text then rr.received_at end)) rules
- from public.v_canonical_markets cm join public.markets mk using(market_id)
+ arbdesk_private.temperature_rules(cm.market_id,v_now) rules
+ from public.v_canonical_markets cm
  join public.cities c on c.city_key=cm.city_key
  cross join (values('day_ahead'),('d1_eve'),('morning')) h(horizon)
- left join lateral (select r.* from public.market_rule_receipts r where r.market_id=cm.market_id
- and r.received_at<=v_now order by r.received_at desc,r.receipt_id desc limit 1) rr on true
  where cm.city_key=any(m.cohort) and c.status='active' and not coalesce(cm.closed,false)
  and cm.resolution_date between (v_now at time zone c.timezone)::date and (v_now at time zone c.timezone)::date+1
  and v_now between arbdesk_private.temperature_slot(cm.resolution_date,c.timezone,h.horizon)
  and arbdesk_private.temperature_slot(cm.resolution_date,c.timezone,h.horizon)+interval '75 minutes'
  and cm.resolution_date<=m.evaluation_last
  and (m.artifact->'training'='null'::jsonb or cm.resolution_date>(m.artifact#>>'{training,through}')::date)
- and coalesce(mk.rules_fetched_at,case when rr.rules_text=mk.rules_text then rr.received_at end)<=v_now
  and not exists(select 1 from public.temperature_calls t where t.model_sha256=m.model_sha256 and t.city_key=cm.city_key and t.target_date=cm.resolution_date and t.checkpoint=h.horizon)
  order by cm.city_key,cm.resolution_date,h.horizon limit 64
  )
@@ -201,9 +223,7 @@ begin
  select * into strict c from public.cities where city_key=v->>'city';
  select * into strict cm from public.v_canonical_markets where market_id=(v->>'market_id')::uuid;
  select * into strict w from public.live_capture where capture_id=(v->>'weather_capture_id')::bigint;
- select mk.rules_text,coalesce(mk.rules_fetched_at,case when rr.rules_text=mk.rules_text then rr.received_at end) into rules,rules_at from public.markets mk
- left join lateral(select x.* from public.market_rule_receipts x where x.market_id=mk.market_id and x.received_at<=decided
- order by x.received_at desc,x.receipt_id desc limit 1) rr on true where mk.market_id=cm.market_id;
+ select doc->>'rules_text',(doc->>'received_at')::timestamptz into rules,rules_at from(select arbdesk_private.temperature_rules(cm.market_id,decided) doc)x;
  if (not c.city_key=any(m.cohort) or c.status<>'active' or cm.closed is true
  or cm.city_key is distinct from c.city_key or cm.resolution_date is distinct from (v->>'date')::date or cm.unit is distinct from v->>'unit'
  or v->>'contract' is distinct from 'awc-routine-v1' or v->>'station' is distinct from c.icao
@@ -297,10 +317,10 @@ begin
  'hourly_reference',arbdesk_private.shared_weather_metrics(t.comparisons->'hourly_reference',b.band_id::text),
  'saved_raw_centre',arbdesk_private.shared_weather_metrics(t.comparisons->'saved_raw_centre',b.band_id::text))
  from public.temperature_calls t join public.cities city using(city_key)
- join public.markets mk on mk.market_id=t.market_id
+ cross join lateral(select arbdesk_private.temperature_rules(t.market_id,clock_timestamp()) doc) rules
  join public.v_venue_band_resolution b on b.market_id=t.market_id and b.settled_yes is true and b.resolution_state='confirmed'
  join public.v_canonical_bands c on c.band_id=b.band_id
- where t.record->>'rules_sha256'=encode(sha256(convert_to(mk.rules_text,'UTF8')),'hex')
+ where t.record->>'rules_sha256'=encode(sha256(convert_to(rules.doc->>'rules_text','UTF8')),'hex')
  and (select jsonb_agg(jsonb_build_array(band_lo,band_hi) order by band_lo nulls first) from public.v_canonical_bands cb where cb.market_id=t.market_id)=t.record->'bounds'
  and t.target_date<(clock_timestamp() at time zone city.timezone)::date and b.confirmed_at>t.frozen_at and b.confirmed_at<=clock_timestamp()
  and t.prediction->'probs' ? b.band_id::text
@@ -334,6 +354,7 @@ begin
  from public.temperature_calls t left join public.temperature_scores s using(call_id)
  where t.frozen_at>=v_now-interval '30 days';
  return jsonb_build_object('state','ready','calls',result,'cutoff',v_now,
+ 'training_first',(select min(evaluation_first) from arbdesk_private.temperature_models),
  'last_fit',(select jsonb_build_object('evidence_sha256',artifact#>>'{training,evidence_sha256}','sources',artifact->'sources') from arbdesk_private.temperature_fits order by recorded_at desc limit 1));
 end $$;
 create or replace function public.temperature_export(p_model text default null)
@@ -348,7 +369,9 @@ begin
  join public.weather_resolution_evidence e using(evidence_id)
  where v.parser_version='weather-outcomes-v6' and exists(select 1 from public.temperature_calls t
  where t.model_sha256=m.model_sha256 and t.city_key=v.city_key and t.target_date=v.for_date);
- return jsonb_build_object('as_of',v_now,'registration',jsonb_build_object('model_sha256',m.model_sha256,
+ return jsonb_build_object('as_of',v_now,'artifact',m.artifact,
+ 'fits',(select coalesce(jsonb_agg(to_jsonb(f)),'[]'::jsonb) from arbdesk_private.temperature_fits f),
+ 'registration',jsonb_build_object('model_sha256',m.model_sha256,
  'state',m.artifact->>'state','registered_at',m.registered_at,'evaluation_first',m.evaluation_first,'evaluation_last',m.evaluation_last,
  'cohort',m.cohort,'protocol',m.protocol),'calls',calls,'points',points);
 end $$;
