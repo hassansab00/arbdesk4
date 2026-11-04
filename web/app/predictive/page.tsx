@@ -209,7 +209,7 @@ export default function PredictivePage() {
         .select("city_key,for_date,called_when,call_order,after_peak,called_at,predicted_band,predicted_pct,actual_band,observed_max_c,forecast_max_c,forecast_error_c,hit,market_band,market_hit,outcome_source,scheduled_local,engine_version,prob_on_winner")
         .order("for_date", { ascending: false }).order("city_key").order("called_when")
         .range(from, to), HINDSIGHT_MAX),
-    [], 300000, HINDSIGHT_MAX
+    [], 1800000, HINDSIGHT_MAX
   );
   // Each active city's status for its local today and tomorrow, at every moment.
   const statusQ = useQuery<StatusRow[]>(

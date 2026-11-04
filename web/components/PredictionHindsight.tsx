@@ -146,7 +146,7 @@ export default function PredictionHindsight({
   // The database's own total over every city, the reference the rows must add up to.
   const sq = useQuery<Summary[]>(
     () => supabase.from("v_prediction_hindsight_summary").select("*").order("call_order"),
-    [], 300000, 50);
+    [], 1800000, 50);
   const shown = useMemo(() => {
     const want = new Set(cities);
     return (allRows as Row[]).filter((r) => want.has(r.city_key));
@@ -205,6 +205,12 @@ export default function PredictionHindsight({
 
   return <section className="space-y-2">
     <h2 className="text-sm font-semibold">Was it right?</h2>
+    <p className="text-xs text-muted">
+      Full history refreshes every 30 minutes while this tab is visible.{" "}
+      <button type="button" className="underline" onClick={() => { onRetry(); sq.refresh(); }}>
+        Refresh history now
+      </button>
+    </p>
     <p className="max-w-3xl text-xs leading-relaxed text-muted">
       These are <strong>saved original calls</strong>, scored only
       after the day settled: the day-ahead call is the last pricing before the city&apos;s local day
