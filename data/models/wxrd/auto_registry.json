@@ -147,6 +147,13 @@
    "fitted": false,
    "night": "2026-11-04",
    "report": "data/eval/wxpredict/cycles/2026-11-04.json"
+  },
+  {
+   "action": "cycle",
+   "decision": "wait forward",
+   "fitted": false,
+   "night": "2026-11-05",
+   "report": "data/eval/wxpredict/cycles/2026-11-05.json"
   }
  ],
  "paused": false,
