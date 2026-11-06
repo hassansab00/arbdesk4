@@ -210,5 +210,23 @@ const KINDS = ['report', 'hourly', 'hourly2', 'models1', 'models2', 'books'];
   assert.equal((await put('hourly',T(0),[{key:'legacy-receipt',payload:[3]}])).new,1);
   assert.equal((await db.query(`select has_function_privilege('anon',
     'public.live_capture_put(text,timestamptz,jsonb)','execute') as allowed`)).rows[0].allowed,false);
+  const CURRENT_RECEIPTS = fs.readFileSync(path.join(__dirname,'..','..','supabase','migrations',
+    '20261106121214_current_forecast_poll_receipts.sql'),'utf-8');
+  await db.exec(CURRENT_RECEIPTS);
+  await db.exec(CURRENT_RECEIPTS);
+  // A second actual current-forecast poll is fresh evidence even if every
+  // value is unchanged. Retrying that exact response is still idempotent.
+  for (const kind of ['hourly0','models0']) {
+    const key = `fresh-${kind}|snapshot`, payload = {hours:{'2026-11-06T12:00':[21,15,20,100,5,0,1010]}};
+    const firstAt=T(2), secondAt=T(1);
+    assert.equal((await put(kind,firstAt,[{key,payload}])).new,1);
+    const original=(await one('select * from public.live_capture where kind=$1 and key=$2',[kind,key]))[0];
+    assert.equal((await put(kind,secondAt,[{key,payload,captured_at:secondAt}])).new,1);
+    const kept=await one('select * from public.live_capture where kind=$1 and key=$2 order by captured_at',[kind,key]);
+    assert.equal(kept.length,2);
+    assert.deepEqual(kept[0],original,'the original receipt and payload remain unchanged');
+    assert.equal((await put(kind,secondAt,[{key,payload,captured_at:secondAt}])).new,0);
+    await assert.rejects(put(kind,secondAt,[{key,payload:{different:true},captured_at:secondAt}]),/conflicting current forecast/);
+  }
   console.log('PASS: live-capture: a report or forecast value (best_match at leads 1 and 2, the seven models at both) stored once per change and again when it changes back, a books row every tick; a kind it does not keep refused by the function and the table, a future time and a non-list refused; the prune takes two-day-old rows only, only the verified count; request_reclaim may rewrite it; the switch seeded and kept; the archive watchdog row and the 03:05 backstop; closed to the browser; re-runnable');
 })().catch((e) => { console.error(e); process.exit(1); });
