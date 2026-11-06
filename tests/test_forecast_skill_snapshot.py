@@ -1,6 +1,5 @@
 import copy
 
-import common
 import probability_engine as pe
 
 
@@ -10,6 +9,9 @@ def row(city, lead=1, **kw):
 
 
 def test_snapshot_and_historical_prefetch_select_identical_inputs(monkeypatch):
+    # Other contracts replace sys.modules['common']; bind the runtime module
+    # that the engine will import, rather than retaining a collection-time one.
+    import common
     older = dict(row('a'), computed_at='2026-11-04T00:00:00+00:00')
     newer_unverified = dict(row('a'), mae_c=9, evidence_scope=None)
     newest_verified = dict(row('a'), computed_at='2026-11-05T00:00:00+00:00')
@@ -38,6 +40,7 @@ def test_snapshot_and_historical_prefetch_select_identical_inputs(monkeypatch):
 
 
 def test_bad_snapshot_cannot_leave_a_partial_cache(monkeypatch):
+    import common
     good = row('a')
     monkeypatch.setattr(pe, '_skill_cache', {})
     monkeypatch.setattr(common, 'rpc', lambda *a, **k: dict(policy='latest-forecast-skill-v1',
@@ -54,6 +57,7 @@ def test_bad_snapshot_cannot_leave_a_partial_cache(monkeypatch):
 
 
 def test_empty_snapshot_is_a_complete_result(monkeypatch):
+    import common
     monkeypatch.setattr(pe, '_skill_cache', {})
     monkeypatch.setattr(common, 'rpc', lambda *a, **k: dict(policy='latest-forecast-skill-v1',
         evidence_scope=pe.VERIFIED_EVIDENCE_SCOPE, pooled=[], models=[]))
