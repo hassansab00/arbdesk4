@@ -1,0 +1,31 @@
+name: One-off accepted temperature verification
+on:
+  pull_request:
+    types: [opened]
+permissions:
+  contents: read
+concurrency:
+  group: temperature-verification
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'codex/verify-temperature-recovery-20261106'
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      PYTHONPATH: scripts
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c02c1904509144495002411cec52a1959578f43d
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11', cache: 'pip', cache-dependency-path: 'requirements.runtime.txt' }
+      - name: Install accepted operational dependencies
+        timeout-minutes: 2
+        run: pip install -r requirements.runtime.txt
+      - name: Verify accepted research operations only
+        timeout-minutes: 2
+        run: timeout 90 python scripts/temperature_verify.py --write
