@@ -287,6 +287,13 @@ jobs:
             mv .venv-wx-build .venv-wx
           fi
           .venv-wx/bin/python tools/wxpredict/wxrd_live.py
+      # Complete independent capture and settlement work before reporting a
+      # research failure. continue-on-error above must not hide a failed run.
+      - name: Report research stage failures
+        if: ${{ !cancelled() && (steps.shared_weather.outcome == 'failure' || steps.temperature_research.outcome == 'failure') }}
+        run: |
+          echo "::error::A research stage failed; inspect Shared weather forward test and Temperature research forward capture."
+          exit 1
       - name: Trade prints, collected
         # Waits for the run started above: it stops starting batches at its
         # budget and before TICK_DEADLINE, so it has normally finished by now.
@@ -303,10 +310,3 @@ jobs:
             exit 0
           fi
           exit "$(cat "$RUNNER_TEMP/trades.rc")"
-      # Complete independent capture and settlement work before reporting a
-      # research failure. continue-on-error above must not hide a failed run.
-      - name: Report research stage failures
-        if: ${{ !cancelled() && (steps.shared_weather.outcome == 'failure' || steps.temperature_research.outcome == 'failure') }}
-        run: |
-          echo "::error::A research stage failed; inspect Shared weather forward test and Temperature research forward capture."
-          exit 1

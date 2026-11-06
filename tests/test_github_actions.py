@@ -924,7 +924,7 @@ def test_n8n_only_dispatches_workflows_that_exist():
 def test_research_failures_are_reported_after_independent_tick_work():
     doc = yaml.safe_load(open(os.path.join(WF_DIR, 'tick.yml')).read())
     steps = doc['jobs']['tick']['steps']
-    report = steps[-1]
+    report = next(s for s in steps if s.get('name') == 'Report research stage failures')
     assert 'exit 1' in report['run']
     assert report.get('continue-on-error') is not True
     assert '!cancelled()' in report['if']
@@ -934,5 +934,6 @@ def test_research_failures_are_reported_after_independent_tick_work():
         assert f"steps.{name}.outcome == 'failure'" in report['if']
     assert ' || ' in report['if']
     settlement = next(s for s in steps if s.get('name') == 'Bank newly confirmed settlement ladders')
-    assert steps.index(settlement) < len(steps)-1
+    assert steps.index(settlement) < steps.index(report)
+    assert steps[-1]['name'] == 'Trade prints, collected'
     assert '!cancelled()' in settlement['if']
