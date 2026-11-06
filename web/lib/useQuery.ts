@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PostgrestError } from "@supabase/supabase-js";
+import { startVisiblePolling } from "./visiblePolling";
 
 /**
  * Every data fetch in AD4 has exactly three failure-adjacent states and
@@ -113,18 +114,13 @@ export function useQuery<T>(
       }
     }
     setLoading(true);
-    run();
+    const stop = startVisiblePolling(run, intervalMs);
     return () => {
       cancelled = true;
+      stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, tick]);
-
-  useEffect(() => {
-    if (!intervalMs) return;
-    const t = setInterval(() => setTick((n) => n + 1), intervalMs);
-    return () => clearInterval(t);
-  }, [intervalMs]);
+  }, [...deps, tick, intervalMs]);
 
   const refresh = useCallback(() => setTick((n) => n + 1), []);
   const SUPABASE_MAX_ROWS = 1000;

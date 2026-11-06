@@ -1,4 +1,5 @@
 "use client";
+import { startVisiblePolling } from "@/lib/visiblePolling";
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
@@ -85,9 +86,7 @@ export default function GlobalBar() {
         setError(msg);
       }
     }
-    load();
-    const t = setInterval(load, 60000);
-    return () => clearInterval(t);
+    return startVisiblePolling(load, 60000);
   }, []);
 
   async function saveBankroll() {

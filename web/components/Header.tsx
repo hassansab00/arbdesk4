@@ -1,4 +1,5 @@
 "use client";
+import { startVisiblePolling } from "@/lib/visiblePolling";
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
@@ -108,9 +109,7 @@ export default function Header() {
           what: "forecast runs — Open-Meteo Action and P1.3" },
       ]);
     }
-    load();
-    const t = setInterval(load, 60_000);
-    return () => clearInterval(t);
+    return startVisiblePolling(load, 60_000);
   }, []);
 
   const stale = (f: Feed) =>
