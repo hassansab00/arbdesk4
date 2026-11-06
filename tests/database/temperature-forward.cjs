@@ -33,6 +33,8 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  const before=await q(`select table_name,column_name,data_type from information_schema.columns where table_schema='public' and table_name in ('prediction_checkpoints','live_capture','markets') order by table_name,ordinal_position`);
  await db.exec(migration);await db.exec(migration);
  await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261106102043_temperature_score_empty_guard.sql'),'utf8'));
+ const receiptMigration=fs.readFileSync(path.join(root,'supabase/migrations/20261106214644_temperature_exact_comparison_receipts.sql'),'utf8');
+ await db.exec(receiptMigration);await db.exec(receiptMigration);
  // With no closed, unscored research calls, settlement history is irrelevant.
  // A missing venue surface must not stop the first capture/learning heartbeat.
  await db.exec('drop view v_venue_band_resolution');
@@ -66,7 +68,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  clock_timestamp()-interval '1 minute' returning capture_id,payload,captured_at,written_at`,[zone]))[0];
  await q(`insert into band_probabilities(band_id,computed_at,forecast_max_c,sigma_c,calibrated_prob,input_forecast_run,pricing_eligible)
  select band_id,now()-interval '1 hour',23,1.5,case when band_id=$2 then .4 else .6 end,now()-interval '2 hours',true from bands where market_id=$1`,[market,a]);
- await q(`insert into book_snapshots(band_id,observed_at,best_bid,best_ask) select band_id,clock_timestamp()-interval '1 minute',.49,.51 from bands where market_id=$1`,[market]);
+ await q(`insert into book_snapshots(band_id,observed_at,best_bid,best_ask) select band_id,clock_timestamp()-interval '1 minute',case when band_id=$2 then .19 else .49 end,case when band_id=$2 then .21 else .51 end from bands where market_id=$1`,[market,a]);
  await db.exec('set role service_role');
  const inputs=(await q('select temperature_inputs() r'))[0].r;
  assert.equal(inputs.packets.length,1);const packet=inputs.packets[0];
@@ -79,7 +81,15 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  band_ids:[a,b],bounds:[[null,22],[22,null]],floor_c:null,peak_reference:packet.peak_reference,
  hourly:{hours:Object.entries(weather.payload.hours).sort().map(([utc,values])=>({utc:new Date(utc+'Z').valueOf()/1000,values,captured_at:weather.captured_at,written_at:weather.written_at}))}},
  prediction:{centre_c:23,sigma_c:1.5,median_c:23,q10_c:21,q90_c:25,probs},references:packet.references,hourly_reference:probs,raw_normal_reference:probs};
+ // Numeric normalization produces recurring decimals. A JSON number decoded
+ // through JS/Python cannot be an exact PostgreSQL numeric receipt.
+ await assert.rejects(q('select temperature_freeze($1,$2)',[artifact.sha256,[row]]),/receipt changed/);
+ assert.equal(typeof packet.references_receipt,'string');
+ const exactReceipt=packet.references_receipt;
+ delete row.references;row.references_receipt=exactReceipt;
  assert.equal((await q('select temperature_freeze($1,$2) r',[artifact.sha256,[row]]))[0].r.new,1);
+ assert.equal((await q("select comparisons - 'hourly_reference' - 'raw_normal_reference' = $1::jsonb exact from temperature_calls",[exactReceipt]))[0].exact,true);
+
  assert.equal((await q('select temperature_freeze($1,$2) r',[artifact.sha256,[row]]))[0].r.new,0);
  const held=await q('select * from temperature_calls');
  assert.equal(held.length,1);assert.deepEqual(held[0].comparisons.incumbent,probs);
@@ -93,7 +103,9 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  await attempt(x=>x.record.peak_reference.peak_hour_local=9,/peak proof/);
  await attempt(x=>x.record.as_of=new Date(Date.now()-360000).toISOString(),/live evidence/);
  await attempt(x=>x.prediction.probs[a]=.99,/normalized/);
- await attempt(x=>x.references.incumbent[a]=.99,/receipt changed/);
+ await attempt(x=>{const r=JSON.parse(x.references_receipt);r.incumbent[a]=.99;x.references_receipt=JSON.stringify(r)},/receipt changed/);
+ await attempt(x=>x.references_receipt=JSON.stringify(packet.references),/receipt changed/);
+ await attempt(x=>x.references_receipt=packet.references,/receipt changed/);
  await attempt(x=>x.record.hourly.hours[0].values[0]=50,/differs from received/);
  await db.exec('reset role');
  await q(`update live_capture set payload=jsonb_set(payload,'{hours}',(payload->'hours')-(select min(key) from jsonb_each(payload->'hours'))) where capture_id=$1`,[weather.capture_id]);

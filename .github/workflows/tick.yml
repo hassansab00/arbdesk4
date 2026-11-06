@@ -177,11 +177,13 @@ jobs:
           LIVE_CAPTURE_IEM: ${{ runner.temp }}/iem_answer.txt
         run: .venv/bin/python scripts/tick.py
       - name: Shared weather forward test
+        id: shared_weather
         if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
         continue-on-error: true
         timeout-minutes: 1
         run: timeout 25 .venv/bin/python scripts/shared_weather_forward.py
       - name: Temperature research forward capture
+        id: temperature_research
         if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
         continue-on-error: true
         timeout-minutes: 1
@@ -301,3 +303,10 @@ jobs:
             exit 0
           fi
           exit "$(cat "$RUNNER_TEMP/trades.rc")"
+      # Complete independent capture and settlement work before reporting a
+      # research failure. continue-on-error above must not hide a failed run.
+      - name: Report research stage failures
+        if: ${{ !cancelled() && (steps.shared_weather.outcome == 'failure' || steps.temperature_research.outcome == 'failure') }}
+        run: |
+          echo "::error::A research stage failed; inspect Shared weather forward test and Temperature research forward capture."
+          exit 1

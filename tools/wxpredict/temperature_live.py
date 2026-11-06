@@ -2,6 +2,7 @@
 import collections
 import datetime as dt
 import hashlib
+import json
 import time
 
 from wxpredict import temperature_model as model, pre_day_hourly as hourly, pre_day_pairs as pp
@@ -65,8 +66,16 @@ def prepare(packet, artifact, registered_at, now):
     # pruning cannot break its future learning input. Never mirror this private
     # feature packet or fitted artifact into the public repository.
     saved = dict(r)
-    return dict(record=saved, prediction=prediction, references=references,
-                hourly_reference=model.distribution(r, maximum, model.PRIOR_SIGMA), raw_normal_reference=raw_normal), None
+    row = dict(record=saved, prediction=prediction,
+               hourly_reference=model.distribution(r, maximum, model.PRIOR_SIGMA), raw_normal_reference=raw_normal)
+    if 'references_receipt' in packet:
+        receipt = packet['references_receipt']
+        if not isinstance(receipt, str) or json.loads(receipt) != references:
+            raise ValueError('temperature comparison receipt differs from packet')
+        row['references_receipt'] = receipt
+    else:
+        row['references'] = references
+    return row, None
 
 
 def run(rpc=None, max_packets=64):

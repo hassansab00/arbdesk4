@@ -919,3 +919,20 @@ def test_n8n_only_dispatches_workflows_that_exist():
                         f"{ref}, which is not in .github/workflows/. Every "
                         f"dispatch to it 404s.")
     assert seen >= 3, f"expected to find the dispatch table, saw {seen} references"
+
+
+def test_research_failures_are_reported_after_independent_tick_work():
+    doc = yaml.safe_load(open(os.path.join(WF_DIR, 'tick.yml')).read())
+    steps = doc['jobs']['tick']['steps']
+    report = steps[-1]
+    assert 'exit 1' in report['run']
+    assert report.get('continue-on-error') is not True
+    assert '!cancelled()' in report['if']
+    for name in ('shared_weather', 'temperature_research'):
+        stage = next(s for s in steps if s.get('id') == name)
+        assert stage['continue-on-error'] is True
+        assert f"steps.{name}.outcome == 'failure'" in report['if']
+    assert ' || ' in report['if']
+    settlement = next(s for s in steps if s.get('name') == 'Bank newly confirmed settlement ladders')
+    assert steps.index(settlement) < len(steps)-1
+    assert '!cancelled()' in settlement['if']

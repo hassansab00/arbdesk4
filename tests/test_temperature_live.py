@@ -36,6 +36,22 @@ def test_live_packet_preserves_original_hourly_input_and_private_references():
     assert p==before
 
 
+def test_exact_decimal_reference_receipt_survives_json_transport():
+    from decimal import Decimal
+    p=packet()
+    receipt='{"raw_forecast_c":23,"raw_sigma_c":1.5,"market":{"a":0.18518518518518518519}}'
+    p['references']=json.loads(receipt)
+    p['references_receipt']=receipt
+    row,why=live.prepare(p,artifact(),'2026-01-02T00:00:00Z',p['as_of'])
+    sent=json.loads(json.dumps(row))
+    assert why is None and 'references' not in sent
+    assert sent['references_receipt']==receipt
+    assert json.loads(sent['references_receipt'],parse_float=Decimal)['market']['a']==Decimal('0.18518518518518518519')
+    p['references']['market']['a']=.5
+    with pytest.raises(ValueError,match='receipt differs'):
+        live.prepare(p,artifact(),'2026-01-02T00:00:00Z',p['as_of'])
+
+
 @pytest.mark.parametrize('mutation,reason',[
     (lambda p:p['rules'].update(received_at='2027-01-01T00:00:00Z'),'missing_as_of_rules_receipt'),
     (lambda p:p['city'].update(icao='KJFK'),'unknown_or_mismatched_observation_contract'),
