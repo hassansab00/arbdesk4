@@ -156,6 +156,27 @@ def _in_window(t, lo, hi):
     return lo < t <= hi
 
 
+def temperature_rule_days(now, markets, tz_of, grace_min=GRACE_MIN):
+    """Initial rules needed by D-1 09:00 research, before its actual receipt.
+
+    Evening and same-day morning already belong to the checkpoint writer.
+    This adds no price/checkpoint and retains its existing request cap/budget.
+    """
+    needed = set()
+    lo = now - dt.timedelta(minutes=grace_min)
+    for market in markets:
+        city = market['city_key']
+        timezone = tz_of.get(city)
+        if not timezone:
+            continue
+        target = dt.date.fromisoformat(str(market['resolution_date']))
+        slot = dt.datetime.combine(target-dt.timedelta(days=1), dt.time(9),
+                                   ZoneInfo(timezone)).astimezone(dt.timezone.utc)
+        if _in_window(slot, lo, now):
+            needed.add((city, target.isoformat()))
+    return needed
+
+
 # --------------------------------------------------------------------------
 # 3. the market beside the call
 # --------------------------------------------------------------------------
@@ -543,7 +564,8 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     if dry_run:
         rule_recovery = {'dry_run':True}
     else:
-        markets,rule_recovery = market_rules.recover(markets,{(c,t) for c,t,_,_ in candidates})
+        needed_rules = {(c,t) for c,t,_,_ in candidates} | temperature_rule_days(now, markets, tz_of)
+        markets,rule_recovery = market_rules.recover(markets, needed_rules)
     authority_inputs = contract_inputs.capture(markets, cities, dry_run=dry_run)
     held = _written({(c, t, k) for c, t, k, _ in candidates})
     due = [d for d in candidates if (d[0], d[1], d[2]) not in held]

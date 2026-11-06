@@ -73,6 +73,28 @@ def test_a_checkpoint_is_due_for_75_minutes_after_its_time():
     assert tick.due_checkpoints(at("2026-09-24T23:14"), MARKETS, TZ, PEAK, set())[0]
     assert not tick.due_checkpoints(at("2026-09-24T23:15"), MARKETS, TZ, PEAK, set())[0], (
         "75 minutes after is the first moment it is no longer due")
+
+
+@pytest.mark.parametrize('now,target,zone',[
+    ('2026-09-24T13:36','2026-09-25','America/New_York'),
+    ('2026-11-06T14:36','2026-11-07','America/New_York'),
+    ('2026-11-06T20:36','2026-11-08','Pacific/Auckland'),
+    ('2026-11-06T04:06','2026-11-07','Asia/Kolkata'),
+])
+def test_day_ahead_research_gets_rules_on_its_own_local_clock(now,target,zone):
+    market = dict(market_id='research',city_key='city',resolution_date=target)
+    assert tick.temperature_rule_days(at(now),[market,market],{'city':zone}) == {('city',target)}
+    # This evidence preflight must not create an extra served checkpoint.
+    assert not tick.due_checkpoints(at(now),[market],{'city':zone},{},set())[0]
+
+
+def test_day_ahead_rule_window_does_not_backdate_or_fetch_unrelated_days():
+    markets=[dict(city_key='nyc',resolution_date=d) for d in ('2026-11-06','2026-11-07','2026-11-08')]
+    assert tick.temperature_rule_days(at('2026-11-06T13:59'),markets,{'nyc':'America/New_York'}) == set()
+    assert tick.temperature_rule_days(at('2026-11-06T14:00'),markets,{'nyc':'America/New_York'}) == {('nyc','2026-11-07')}
+    assert tick.temperature_rule_days(at('2026-11-06T15:14'),markets,{'nyc':'America/New_York'}) == {('nyc','2026-11-07')}
+    assert tick.temperature_rule_days(at('2026-11-06T15:15'),markets,{'nyc':'America/New_York'}) == set()
+    assert tick.temperature_rule_days(at('2026-11-06T14:36'),markets,{}) == set()
     assert not tick.due_checkpoints(at("2026-09-24T21:59"), MARKETS, TZ, PEAK, set())[0], (
         "a checkpoint is never taken before its time")
 
@@ -877,3 +899,15 @@ def test_rule_recovery_precedes_authority_capture_and_failures_stay_visible(worl
     tick.run(now=at('2026-09-24T22:35'))
     assert steps==['rules','authority'] and world['logged'][0][1]=='attention'
     assert world['written'], 'a recovery failure must not suppress independent valid calls'
+
+
+def test_tick_recovers_day_ahead_research_rules_without_creating_served_calls(world,monkeypatch):
+    import market_rules
+    needed=[]
+    def recover(markets,keys):
+        needed.append(keys)
+        return markets,dict(world['rule_recovery'])
+    monkeypatch.setattr(market_rules,'recover',recover)
+    tick.run(now=at('2026-09-24T13:36'))
+    assert needed == [{('nyc','2026-09-25')}]
+    assert not world['written'], 'research preflight does not add a served horizon'

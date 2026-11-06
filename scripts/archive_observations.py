@@ -1037,7 +1037,16 @@ def count_rows(blob):
     between a truncated upload and a permanent delete.
     """
     text = gzip.decompress(blob).decode()
-    return max(0, sum(1 for _ in csv.reader(io.StringIO(text))) - 1)
+    # Original source/log fields can exceed csv's 128 KiB default. The text
+    # is already in memory; no field can be longer than this verified input.
+    # Retain CSV parsing (quoted newlines are not extra rows) and restore the
+    # process-wide parser setting even if verification fails.
+    previous_limit = csv.field_size_limit()
+    csv.field_size_limit(max(previous_limit, len(text)))
+    try:
+        return max(0, sum(1 for _ in csv.reader(io.StringIO(text))) - 1)
+    finally:
+        csv.field_size_limit(previous_limit)
 
 
 def gh(repo, token, method, path, **kw):

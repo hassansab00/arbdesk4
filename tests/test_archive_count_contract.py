@@ -13,6 +13,27 @@ MIGRATION = (
 )
 
 
+def test_large_log_fields_keep_exact_csv_row_counts_and_restore_parser_limit():
+    import csv
+    import gzip
+    import io
+    from archive_observations import count_rows
+
+    original = csv.field_size_limit()
+    try:
+        csv.field_size_limit(131072)
+        text = io.StringIO()
+        writer = csv.writer(text)
+        writer.writerow(['id','detail'])
+        writer.writerow([1,'x'*140000+'\nquoted, "source response"'])
+        writer.writerow([2,'second record'])
+        blob = gzip.compress(text.getvalue().encode())
+        assert count_rows(blob) == 2
+        assert csv.field_size_limit() == 131072
+    finally:
+        csv.field_size_limit(original)
+
+
 def _normalized(path: Path) -> str:
     return " ".join(path.read_text(encoding="utf-8").lower().split())
 
