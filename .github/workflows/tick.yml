@@ -181,6 +181,11 @@ jobs:
         continue-on-error: true
         timeout-minutes: 1
         run: timeout 25 .venv/bin/python scripts/shared_weather_forward.py
+      - name: Temperature research forward capture
+        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
+        continue-on-error: true
+        timeout-minutes: 1
+        run: timeout 25 .venv/bin/python scripts/temperature_forward.py
       - name: Day Max Prediction paper entries
         if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
         timeout-minutes: 2

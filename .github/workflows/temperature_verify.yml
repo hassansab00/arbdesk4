@@ -1,0 +1,41 @@
+name: Bounded temperature research verification
+on:
+  workflow_dispatch:
+    inputs:
+      bootstrap:
+        description: Register an explicitly unfitted reference only if no temperature model is registered
+        type: boolean
+        default: false
+      write:
+        description: Allow research-only registration, up to three captures, scoring and an eligibility receipt
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: temperature-verification
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      PYTHONPATH: scripts
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      TEMP_BOOTSTRAP: ${{ inputs.bootstrap }}
+      TEMP_WRITE: ${{ inputs.write }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11', cache: 'pip', cache-dependency-path: 'requirements.runtime.txt' }
+      - name: Install operational dependencies
+        timeout-minutes: 2
+        run: pip install -r requirements.runtime.txt
+      - name: Verify bounded temperature research operations
+        timeout-minutes: 2
+        run: |
+          args=()
+          if [ "$TEMP_BOOTSTRAP" = true ]; then args+=(--bootstrap); fi
+          if [ "$TEMP_WRITE" = true ]; then args+=(--write); fi
+          timeout 90 python scripts/temperature_verify.py "${args[@]}"

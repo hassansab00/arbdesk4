@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 310 of them - and for each MISSING one names the
+-- and function the app reads - 312 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -135,6 +135,8 @@ with expected(rel, owner, used_by) as (values
     ('strategy_state', 'supabase/migrations/20260924100000_strategy_lifecycle.sql', ''),
     ('strategy_state_history', 'supabase/migrations/20260924100000_strategy_lifecycle.sql', ''),
     ('synthesis_thresholds', 'ad4_40_synthesis.sql', ''),
+    ('temperature_calls', 'ad4_temperature_forward.sql', ''),
+    ('temperature_scores', 'ad4_temperature_forward.sql', ''),
     ('trades_observed', 'ad4_00_preflight.sql', ''),
     ('v_anon_rpc_allowlist', 'supabase/migrations/20260923120000_revoke_public_execute.sql', ''),
     ('v_archive_by_city', 'ad4_35_databank_inventory.sql', '/databank'),
@@ -467,6 +469,8 @@ begin
     ('strategy_state', 'supabase/migrations/20260924100000_strategy_lifecycle.sql', ''),
     ('strategy_state_history', 'supabase/migrations/20260924100000_strategy_lifecycle.sql', ''),
     ('synthesis_thresholds', 'ad4_40_synthesis.sql', ''),
+    ('temperature_calls', 'ad4_temperature_forward.sql', ''),
+    ('temperature_scores', 'ad4_temperature_forward.sql', ''),
     ('trades_observed', 'ad4_00_preflight.sql', ''),
     ('v_anon_rpc_allowlist', 'supabase/migrations/20260923120000_revoke_public_execute.sql', ''),
     ('v_archive_by_city', 'ad4_35_databank_inventory.sql', '/databank'),

@@ -1599,3 +1599,13 @@ figures. Record the A11 projection here after P6.1.
 The first repaired live learning run (41183653389) exposed `ValueError: invalid literal for int() with base 10: 'False'` in `collect()`: the newly recovered archive facts are CSV strings while live outcome responses carry booleans/numbers. Decode the mirror's complete/hit flags, proper-score numbers and nullable timestamps before reusing the original scorer. Reject invalid boolean encodings; retain original predictions, outcome values and eligibility gates. Regression fixtures pass actual archive-shaped strings through the original scorer, including an incomplete market that must stay excluded from market comparison.
 
 Validation: 4,886 Python 3.11 tests passed, 9 skipped (364.31 s); database contracts passed. The corrected reader/scorer also processed the real hash-verified local mirror: 1,680 original calls and outcome rows, 1,607 scored original calls, 1,193 market comparisons. The first repaired intraday run (41183598544) passed all stages, with primary preparation 22.03 s inside its 40 s allowance; its durable page-cache refresh completed successfully. The learning rerun follows this correction's merge.
+
+
+### Direct shared temperature candidate engineering
+
+Added a separate received-hourly temperature location/scale model, immutable
+three-horizon research capture, private staged fitting and fixed future
+evaluation gates. Engineering validation and live deployment receipts belong in
+the private recovery checkpoint. No fitted weights/research exports are part of
+this source change; no city-card model, paper configuration or existing shared
+experiment is replaced. See docs/TEMPERATURE_CANDIDATE.md.

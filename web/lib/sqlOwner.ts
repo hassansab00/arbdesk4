@@ -124,6 +124,8 @@ export const SQL_OWNER: Record<string, string> = {
   "strategy_state": "supabase/migrations/20260924100000_strategy_lifecycle.sql",
   "strategy_state_history": "supabase/migrations/20260924100000_strategy_lifecycle.sql",
   "synthesis_thresholds": "ad4_40_synthesis.sql",
+  "temperature_calls": "ad4_temperature_forward.sql",
+  "temperature_scores": "ad4_temperature_forward.sql",
   "trades_observed": "ad4_00_preflight.sql",
   "v_anon_rpc_allowlist": "supabase/migrations/20260923120000_revoke_public_execute.sql",
   "v_archive_by_city": "ad4_35_databank_inventory.sql",

@@ -1,6 +1,6 @@
 # Early learning and candidate registration handoff
 
-## Weather evidence source checkpoint — not deployed
+## Weather evidence source checkpoint — deployed in PR #470
 
 `weather_evidence_review.review` audits retained AWC envelopes against their
 own saved publication replies. Its dispute builder preserves original identity
@@ -43,4 +43,11 @@ or incompatible comparisons cannot approve an adjustment. Historical calls
 remain unchanged. The broader correction review and fitted artifact remain
 private; retrospective attribution is not prospective model validation.
 
+
+# Separate temperature candidate
+
+The direct temperature/uncertainty candidate is documented in
+`docs/TEMPERATURE_CANDIDATE.md`. Its capture, eligibility reports, private staged
+fits and future validation are separate from production and the existing fixed
+shared-weather experiment. An unfitted reference is never labeled learned.
 

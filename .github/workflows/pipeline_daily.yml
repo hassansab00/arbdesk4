@@ -460,3 +460,30 @@ jobs:
             if git push origin HEAD:main; then exit 0; fi
           done
           exit 1
+
+
+  temperature_learning:
+    needs: daily
+    if: ${{ !cancelled() && inputs.evidence_only != true && github.ref_name == 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts
+            tools/wxpredict
+            requirements.runtime.txt
+            requirements.temperature.txt
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11', cache: 'pip', cache-dependency-path: 'requirements.temperature.txt' }
+      - name: Install bounded temperature fitting dependencies
+        timeout-minutes: 2
+        run: pip install -r requirements.runtime.txt -r requirements.temperature.txt
+      - name: Fit only eligible original temperature evidence
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        run: timeout 110 python scripts/temperature_learning.py

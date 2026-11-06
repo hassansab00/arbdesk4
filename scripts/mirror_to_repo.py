@@ -244,6 +244,12 @@ TABLES = {
 # Every public table the mirror does NOT copy, and why. A table in neither
 # TABLES nor here fails tests/test_every_table_has_a_home.py.
 NOT_MIRRORED = {
+    "temperature_calls": "Private temperature research packets and freezes. Retained without pruning; export only in a private research bundle, never the public source mirror.",
+    "temperature_scores": "Private matched experiment outcomes, retained without pruning and exported only with the private research record.",
+    "arbdesk_private.temperature_models": "Private fixed artifacts, registration and protocol; retained without pruning and backed up in private research bundles.",
+    "arbdesk_private.temperature_fits": "Private unregistered candidate coefficients; retained without pruning and never exported to the public repository.",
+    "arbdesk_private.temperature_status": "Rebuildable latest research capture heartbeat, distinct from immutable original calls.",
+    "arbdesk_private.temperature_learning_status": "Rebuildable eligibility and fitting receipt; no original weather or fitted coefficients in this projection.",
     "arbdesk_private.shared_weather_models": "Private fitted artifact and fixed registration; backed up with private research evidence, never exported to the public repository.",
     "arbdesk_private.shared_weather_status": "Rebuildable latest-run health receipt; original candidate calls and settled scores are mirrored independently.",
     "derived_wx_city_calibration": "Current city/phase and early-correction working state; nightly versions and input digests are committed under data/eval/wxpredict/city_calibration; used parameters are frozen on each checkpoint.",
