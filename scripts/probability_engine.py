@@ -1109,6 +1109,37 @@ _global_skill_cache = {}
 
 def _warm_skill_cache():
     """Load shared skill rows before parallel workers; newest verified wins."""
+    try:
+        # One database snapshot selects the same rows before transfer, rather
+        # than sending every historical fit to discard most of them here.
+        # Assemble privately first: a malformed or failed response must not
+        # leave part of a cache visible to the pricing workers.
+        import common
+        snapshot = common.rpc('forecast_skill_snapshot', timeout=5)
+        if (not isinstance(snapshot, dict)
+                or snapshot.get('policy') != 'latest-forecast-skill-v1'
+                or snapshot.get('evidence_scope') != VERIFIED_EVIDENCE_SCOPE):
+            raise ValueError('forecast skill snapshot contract mismatch')
+        selected = {}
+        for name, dimensions in [('pooled', ('city_key', 'lead_days')),
+                                 ('models', ('city_key', 'model', 'lead_days'))]:
+            rows = snapshot[name]
+            if not isinstance(rows, list):
+                raise ValueError('forecast skill snapshot rows required')
+            for row in rows:
+                if not isinstance(row, dict) or not all(k in row for k in
+                        (*dimensions, 'n_days', 'mae_c', 'bias_c', 'computed_at', 'evidence_scope')):
+                    raise ValueError('incomplete forecast skill snapshot row')
+                key = tuple(row[k] for k in dimensions)
+                if key in selected:
+                    raise ValueError('duplicate forecast skill snapshot key')
+                selected[key] = dict(row, verified=row['evidence_scope'] == VERIFIED_EVIDENCE_SCOPE)
+        _skill_cache.update(selected)
+        return
+    except Exception as exc:
+        # Rollout-safe: a database without the additive RPC retains the
+        # existing complete, paginated reads and identical selection below.
+        print(f'skill snapshot unavailable: {type(exc).__name__}; using paginated reads', file=sys.stderr)
     for table, dimensions in [('derived_forecast_skill', ('city_key', 'lead_days')),
                                ('derived_forecast_skill_model', ('city_key', 'model', 'lead_days'))]:
         columns = list(dimensions) + ['n_days', 'mae_c', 'bias_c', 'computed_at', 'evidence_scope']

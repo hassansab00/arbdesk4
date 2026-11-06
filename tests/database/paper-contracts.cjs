@@ -37,6 +37,14 @@ const assert = require('node:assert/strict');
       observed_at timestamptz,temp_c numeric,temp_f numeric,source text,station text);
     create table public.derived_weather_peak(city_key text not null,month int not null,
       peak_hour_local numeric,window_width_h numeric,n_days int,computed_at timestamptz default now(),primary key(city_key,month));
+    -- Created by preflight in production; the snapshot migration reads both
+    -- skill grains. Preserve its live column types, primary key and RLS here.
+    create table public.derived_forecast_skill(
+      city_key text not null,computed_at timestamptz not null default now(),lead_days int not null,
+      n_days int,mae_c numeric,bias_c numeric,p90_abs_err_c numeric,mae_bands numeric,
+      pct_within_one_band numeric,band_width_c numeric,evidence_scope text,
+      primary key(city_key,computed_at,lead_days));
+    alter table public.derived_forecast_skill enable row level security;
     create table public.derived_forecast_skill_model(
       city_key text not null,model text not null,computed_at timestamptz not null default now(),
       lead_days int not null,n_days int,mae_c numeric,bias_c numeric,p90_abs_err_c numeric,
