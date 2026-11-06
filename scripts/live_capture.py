@@ -36,13 +36,16 @@ public.live_capture (supabase/migrations/20261011210000_the_live_record.sql):
           the nightly record asks it (honest_record.previous_request).
   hourly0 and models0 keep the current forecast as actually received, for
           today's and tomorrow's complete local days, in those same requests. They never replace frozen
-          inputs. Receipt time is not a forecast model initialisation time.
+          inputs. Each actual poll is retained even when values are unchanged;
+          an exact retry of that response is not another poll. Receipt time
+          is not a forecast model initialisation time.
   report  every report the tick's own IEM read returned (tick.py asks once
           for every field the training reads and leaves the answer in
           LIVE_CAPTURE_IEM; no second request), each field as IEM gave it.
 
-A report or hourly value is stored once per change (live_capture_put), with
-the first time it was seen. Off or manual on the Workflows page
+Reports and previous-lead values are stored once per change (live_capture_put),
+with the first time each value was seen. Current forecasts keep actual poll
+receipts even when unchanged. Off or manual on the Workflows page
 (P2.12_live_capture) stores nothing. Each part's failure is recorded and stops
 nothing else; one ingest_log row a run. Never raises into the tick.
 
