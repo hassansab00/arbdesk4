@@ -191,11 +191,13 @@ begin
  and (m.artifact->'training'='null'::jsonb or cm.resolution_date>(m.artifact#>>'{training,through}')::date)
  and not exists(select 1 from public.temperature_calls t where t.model_sha256=m.model_sha256 and t.city_key=cm.city_key and t.target_date=cm.resolution_date and t.checkpoint=h.horizon)
  order by cm.city_key,cm.resolution_date,h.horizon limit 64
+ ), receipts as materialized (
+ select d.*,arbdesk_private.temperature_references(d.city_key,d.resolution_date,d.market_id,d.horizon,v_now) refs from due d
  )
  select coalesce(jsonb_agg(jsonb_build_object('as_of',v_now,'checkpoint',d.horizon,
  'market',jsonb_build_object('market_id',d.market_id,'city_key',d.city_key,'resolution_date',d.resolution_date,'unit',d.unit),
  'city',to_jsonb(d.c),'rules',d.rules,
- 'references',arbdesk_private.temperature_references(d.city_key,d.resolution_date,d.market_id,d.horizon,v_now),
+ 'references',d.refs,'references_receipt',d.refs::text,
  'weather',(select to_jsonb(w) from public.live_capture w where w.kind='hourly0' and w.key=d.city_key||'|snapshot'
  and greatest(w.captured_at,w.written_at)<=v_now and greatest(w.captured_at,w.written_at)>=v_now-interval '2 hours'
  order by greatest(w.captured_at,w.written_at) desc,w.capture_id desc limit 1),
@@ -205,7 +207,7 @@ begin
  'peak_reference',(select jsonb_build_object('city_key',p.city_key,'timezone',(d.c).timezone,'month',p.month,'computed_at',p.computed_at,'peak_hour_local',p.peak_hour_local)
  from public.derived_weather_peak p where p.city_key=d.city_key and p.month=extract(month from d.resolution_date)::int and p.computed_at<=v_now order by p.computed_at desc limit 1),
  'bands',(select jsonb_agg(jsonb_build_object('band_id',b.band_id,'lo',b.band_lo,'hi',b.band_hi)) from public.v_canonical_bands b where b.market_id=d.market_id)
- )),'[]'::jsonb) into packets from due d;
+ )),'[]'::jsonb) into packets from receipts d;
  return jsonb_build_object('state','registered','artifact',m.artifact,'registered_at',m.registered_at,
  'protocol',m.protocol,'cohort',m.cohort,'evaluation_first',m.evaluation_first,'evaluation_last',m.evaluation_last,'packets',packets);
 end $$;
@@ -214,7 +216,7 @@ create or replace function public.temperature_freeze(p_model text,p_rows jsonb)
 returns jsonb language plpgsql security definer set search_path='' set statement_timeout='5s' as $$
 declare m arbdesk_private.temperature_models;r jsonb;v jsonb;p jsonb;c public.cities;cm record;w public.live_capture;o public.live_capture;
  at timestamptz;decided timestamptz;ids text[];wanted text[];mass numeric;n int:=0;comparisons jsonb;original record;
- rules text;rules_at timestamptz;bounds jsonb;start_at timestamptz;end_at timestamptz;hours int;forecast_peak timestamptz;seasonal_peak timestamptz;
+ rules text;rules_at timestamptz;bounds jsonb;start_at timestamptz;end_at timestamptz;hours int;reference_receipt jsonb;forecast_peak timestamptz;seasonal_peak timestamptz;
 begin
  select * into strict m from arbdesk_private.temperature_models where model_sha256=p_model;
  if jsonb_typeof(p_rows) is distinct from 'array' or jsonb_array_length(p_rows)>64 then raise exception 'bounded temperature batch required';end if;
@@ -295,7 +297,14 @@ begin
  -- Frozen source checkpoints are the matched served comparison. A missing
  -- one stays null; a later quote or different checkpoint is never substituted.
  comparisons:=arbdesk_private.temperature_references(c.city_key,cm.resolution_date,cm.market_id,v->>'checkpoint',decided);
- if comparisons is distinct from r->'references' then raise exception 'temperature comparison receipt changed';end if;
+ -- Keep PostgreSQL numeric precision across the JSON/Python transport.
+  -- Legacy object clients still face the same exact equality check.
+  if r ? 'references_receipt' then
+   if jsonb_typeof(r->'references_receipt') is distinct from 'string' then
+    raise exception 'temperature comparison receipt changed';end if;
+   reference_receipt:=(r->>'references_receipt')::jsonb;
+  else reference_receipt:=r->'references';end if;
+  if comparisons is distinct from reference_receipt then raise exception 'temperature comparison receipt changed';end if;
  comparisons:=comparisons||jsonb_build_object('hourly_reference',r->'hourly_reference','raw_normal_reference',r->'raw_normal_reference');
  insert into public.temperature_calls(model_sha256,city_key,target_date,market_id,checkpoint,decided_at,frozen_at,record,prediction,comparisons)
  values(p_model,c.city_key,cm.resolution_date,cm.market_id,v->>'checkpoint',decided,at,v,p,comparisons) on conflict do nothing;

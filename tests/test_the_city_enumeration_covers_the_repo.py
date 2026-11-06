@@ -167,6 +167,7 @@ SQL_RECORD = {
 }
 
 MIGRATION_RECORD = {
+    "supabase/migrations/20261106214644_temperature_exact_comparison_receipts.sql": "Preserves exact comparison receipts for a fixed registered research cohort; active is enforced at capture without erasing original history.",
     "supabase/migrations/20261104171359_isolated_temperature_candidate.sql": "Fixed registered cohort, immutable research history, and private fits; active is enforced at capture, never used to erase scoring history.",
     "supabase/migrations/20261106102043_temperature_score_empty_guard.sql": "Score immutable research history for its original cities, including retired cities; return before venue reads when no closed unscored calls exist.",
     "supabase/migrations/20261103170852_isolated_shared_weather_forward.sql":
