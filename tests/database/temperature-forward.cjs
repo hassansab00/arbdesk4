@@ -32,6 +32,12 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  const migration=fs.readFileSync(path.join(root,'sql/ad4_temperature_forward.sql'),'utf8');
  const before=await q(`select table_name,column_name,data_type from information_schema.columns where table_schema='public' and table_name in ('prediction_checkpoints','live_capture','markets') order by table_name,ordinal_position`);
  await db.exec(migration);await db.exec(migration);
+ await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261106102043_temperature_score_empty_guard.sql'),'utf8'));
+ // With no closed, unscored research calls, settlement history is irrelevant.
+ // A missing venue surface must not stop the first capture/learning heartbeat.
+ await db.exec('drop view v_venue_band_resolution');
+ assert.equal((await q('select temperature_score() n'))[0].n,0);
+ await db.exec('create view v_venue_band_resolution as select * from venue_bands');
  assert.deepEqual(await q(`select table_name,column_name,data_type from information_schema.columns where table_schema='public' and table_name in ('prediction_checkpoints','live_capture','markets') order by table_name,ordinal_position`),before);
  const times=(await q(`select (clock_timestamp()-interval '1 hour')::text started,(clock_timestamp()-interval '30 minutes')::text available`))[0];
  const artifact={policy:'shared-temperature-normal-v1',sha256:'b'.repeat(64),changes_serving:false,eligible_for_promotion:false,

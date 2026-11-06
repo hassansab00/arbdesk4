@@ -308,6 +308,11 @@ create or replace function public.temperature_score()
 returns integer language plpgsql security definer set search_path='' set statement_timeout='4s' as $$
 declare n int;
 begin
+ -- Avoid planning or reading the global settlement surface before there is
+ -- a completed local day with an unscored research call.
+ if not exists(select 1 from public.temperature_calls t join public.cities city using(city_key)
+ where t.target_date<(clock_timestamp() at time zone city.timezone)::date
+ and not exists(select 1 from public.temperature_scores s where s.call_id=t.call_id)) then return 0;end if;
  insert into public.temperature_scores(call_id,winner_band_id,confirmed_at,winner_interval,metrics)
  select t.call_id,b.band_id::text,b.confirmed_at,jsonb_build_object('lo',c.band_lo,'hi',c.band_hi,'unit',t.record->>'unit'),
  jsonb_build_object('candidate',arbdesk_private.shared_weather_metrics(t.prediction->'probs',b.band_id::text),
