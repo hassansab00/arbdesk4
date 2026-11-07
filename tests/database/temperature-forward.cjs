@@ -35,6 +35,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261106102043_temperature_score_empty_guard.sql'),'utf8'));
  const receiptMigration=fs.readFileSync(path.join(root,'supabase/migrations/20261106214644_temperature_exact_comparison_receipts.sql'),'utf8');
  await db.exec(receiptMigration);await db.exec(receiptMigration);
+ await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261107090006_temperature_score_pending_markets.sql'),'utf8'));
  // With no closed, unscored research calls, settlement history is irrelevant.
  // A missing venue surface must not stop the first capture/learning heartbeat.
  await db.exec('drop view v_venue_band_resolution');
@@ -144,5 +145,42 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  const snapshot=(await q('select temperature_snapshot() r'))[0].r;assert.equal(snapshot.calls,2);assert.ok(!JSON.stringify(snapshot).includes('mean_coefficients'));
  await db.exec('reset role;set role anon');await assert.rejects(q('select temperature_inputs()'),/permission denied/);
  await assert.rejects(q('select * from temperature_calls'),/permission denied/);
+ // Use the actual production grouped proof view, not the convenient mock.
+ await db.exec('reset role;drop view v_venue_band_resolution;alter table bands add column condition_id text,add column token_yes text,add column token_no text');
+ await db.exec(`create table resolution_verdicts(proof_id uuid default gen_random_uuid(),condition_id text,token_yes text,token_no text,winning_token text,captured_at timestamptz);
+ create index proof_identity on resolution_verdicts(condition_id,token_yes,token_no,captured_at)`);
+ const proofMigration=fs.readFileSync(path.join(root,'supabase/migrations/20260924030000_the_verdicts_are_kept.sql'),'utf8');
+ const proofStart=proofMigration.indexOf('create or replace view public.v_venue_band_resolution');
+ await db.exec(proofMigration.slice(proofStart,proofMigration.indexOf(';',proofStart)+1));
+ const backlog=[];
+ for(let i=0;i<70;i++){
+  const mkt=(await q(`insert into markets values(gen_random_uuid(),'city2',current_date-$1::int,'C',false,'synthetic dated rules',clock_timestamp()-interval '120 days') returning market_id`,[i+2]))[0].market_id;
+  const low=(await q(`insert into bands(band_id,market_id,band_lo,band_hi,band_label,condition_id,token_yes,token_no) values(gen_random_uuid(),$1,null,22,'low','low-'||$2,'yes-low-'||$2,'no-low-'||$2) returning band_id`,[mkt,i]))[0].band_id;
+  const high=(await q(`insert into bands(band_id,market_id,band_lo,band_hi,band_label,condition_id,token_yes,token_no) values(gen_random_uuid(),$1,22,null,'high','high-'||$2,'yes-high-'||$2,'no-high-'||$2) returning band_id`,[mkt,i]))[0].band_id;
+  const id=(await q(`insert into temperature_calls(model_sha256,city_key,target_date,market_id,checkpoint,decided_at,frozen_at,record,prediction,comparisons)
+   values($1,'city2',current_date-$2::int,$3,'morning',clock_timestamp()-interval '100 days',clock_timestamp()-interval '100 days',$4,$5,'{}') returning call_id`,
+   [artifact.sha256,i+2,mkt,oldRecord,{centre_c:23,sigma_c:1.5,probs:{[low]:.4,[high]:.6}}]))[0].call_id;
+  backlog.push({id,mkt,low,high});
+  await q(`insert into resolution_verdicts(condition_id,token_yes,token_no,winning_token,captured_at) select condition_id,token_yes,token_no,token_yes,clock_timestamp()-interval '1 hour' from bands where band_id=$1`,[high]);
+ }
+ // One unresolved oldest call must not occupy the scoring limit forever.
+ await q('delete from resolution_verdicts where condition_id=(select condition_id from bands where band_id=$1)',[backlog[0].high]);
+ // A conflicting proof for one band is disputed, never a winner.
+ await q(`insert into resolution_verdicts(condition_id,token_yes,token_no,winning_token,captured_at) select condition_id,token_yes,token_no,token_no,clock_timestamp() from bands where band_id=$1`,[backlog[1].high]);
+ // Two confirmed YES bands remain ambiguous and cannot score.
+ await q(`insert into resolution_verdicts(condition_id,token_yes,token_no,winning_token,captured_at) select condition_id,token_yes,token_no,token_yes,clock_timestamp() from bands where band_id=$1`,[backlog[2].low]);
+ // A proof with a different NO-token identity does not count.
+ await q(`delete from resolution_verdicts where condition_id=(select condition_id from bands where band_id=$1)`,[backlog[3].high]);
+ await q(`insert into resolution_verdicts(condition_id,token_yes,token_no,winning_token,captured_at) select condition_id,token_yes,'wrong-no-token',token_yes,clock_timestamp() from bands where band_id=$1`,[backlog[3].high]);
+ const beforeBacklog=await q('select * from temperature_calls order by call_id');
+ await db.exec('set role service_role');
+ assert.equal((await q('select temperature_score() n'))[0].n,64);
+ assert.equal((await q('select temperature_score() n'))[0].n,2);
+ assert.equal((await q('select temperature_score() n'))[0].n,0);
+ assert.deepEqual(await q('select * from temperature_calls order by call_id'),beforeBacklog);
+ for(const b of backlog.slice(0,4))assert.equal((await q('select count(*) n from temperature_scores where call_id=$1',[b.id]))[0].n,0);
+ await db.exec('reset role');
+ const roleState=(await q(`select has_function_privilege('anon','temperature_score()','execute') anon,has_function_privilege('service_role','temperature_score()','execute') service`))[0];
+ assert.deepEqual(roleState,{anon:false,service:true});
  await db.close();console.log('temperature-forward: separate registry, immutable live calls, original receipts, matched baselines, local clocks, peak and completeness guards passed');
 })().catch(e=>{console.error(e);process.exit(1)});
