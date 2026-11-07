@@ -256,7 +256,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_peak_hour_coverage": "ad4_37_peak_hour.sql",
   "v_persistence_skill": "ad4_21_weather_features.sql",
   "v_prediction_contract": "supabase/migrations/20261004190000_one_prediction_contract.sql",
-  "v_prediction_hindsight": "supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql",
+  "v_prediction_hindsight": "ad4_verified_temperature_diagnostics.sql",
   "v_prediction_hindsight_summary": "supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql",
   "v_prediction_ladder": "ad4_31_predictive.sql",
   "v_prediction_ladder_bands": "ad4_68_prediction_ladder_outcomes.sql",

@@ -185,3 +185,5 @@ ad4_shared_weather_forward.sql
 ad4_temperature_forward.sql
 
 ad4_forecast_skill_snapshot.sql
+
+ad4_verified_temperature_diagnostics.sql

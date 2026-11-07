@@ -1350,7 +1350,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "edges",
     "bands",
     "markets",
-    "fact_band_outcome"
+    "fact_band_outcome",
+    "weather_resolution_evidence"
   ],
   "v_city_hit_history_live": [
     "band_probabilities",
@@ -1366,7 +1367,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "edges",
     "bands",
     "markets",
-    "fact_band_outcome"
+    "fact_band_outcome",
+    "weather_resolution_evidence"
   ],
   "v_city_ladder_edges": [
     "cities",
@@ -1462,6 +1464,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "band_probabilities",
     "edges",
     "fact_band_outcome",
+    "weather_resolution_evidence",
     "weather_forecast_models",
     "weather_forecasts",
     "weather_observations"
@@ -1856,7 +1859,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "cities",
     "edges",
     "markets",
-    "fact_band_outcome"
+    "fact_band_outcome",
+    "weather_resolution_evidence"
   ],
   "v_prediction_hindsight_summary": [
     "bands",
@@ -1866,7 +1870,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "cities",
     "edges",
     "markets",
-    "fact_band_outcome"
+    "fact_band_outcome",
+    "weather_resolution_evidence"
   ],
   "v_prediction_ladder": [
     "bands",

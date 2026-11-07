@@ -12,6 +12,7 @@ export default function PredictiveAccuracyGuide() {
     </p>
     <p className="mt-1 text-muted">
       <b>Likely / claimed</b> is forecast confidence, not historical accuracy.
+      {' '}Hindsight temperature errors use current verified complete station points; missing or disputed point truth is shown as unavailable. Winning-bucket grades retain their original venue results.
       Compare the platform and market on the <b>same days and checkpoint</b> using the paired counts.
       Reports show their scoring time; recent-window, full-history and paired samples can have different denominators.
     </p>
