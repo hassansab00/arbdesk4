@@ -9,6 +9,8 @@ export type Learning = { phase: string; as_of: string; decision: string; reason:
   train_dates: number; validation_dates: number; version: string; validated_through: string | null;
   eligibility?: { input_rows: number; eligible_rows: number; exclusions: Record<string,number> };
   active: boolean; effective_params: { temperature: number; tilt: number }; readiness?: Readiness };
+export type EnsembleLearning = { phase: string; as_of: string; decision: string; reason: string;
+  train_dates: number; learning_dates: number; validation_dates: number; source_ranking: string[]; changes_serving: false };
 export type Readiness = { sample_ready: boolean; validation_window_days: number; policy: string;
   counts: Array<{ name: string; available: number; required: number; missing: number }> };
 export type ModelSelection = { selected: string; decision: string; reason: string; fit_at: string;
@@ -31,6 +33,8 @@ export type CaptureTiming = { policy: string; calls: number; eligible_calls: num
     'dates' | 'pending' | 'verified' | 'legacy' | 'metrics' | 'baseline' | 'raw' | 'calibration_gap' | 'versions' | 'recent_dates' | 'market_comparison'>;
   recent_calls: CaptureCall[] };
 export type CityReport = { city: string; display_name: string; timezone: string; scope: string; horizon: string;
+  ensemble?: EnsembleLearning[];
+  ensemble_coverage?: { calls: number; captured: number; missing: Record<string,number> };
   n: number; hits: number; hit_rate: number | null; interval95: number[] | null; dates: number;
   pending: number | null; verified: number; legacy: number; calibration_gap: number | null;
   period_start: string; period_end: string;

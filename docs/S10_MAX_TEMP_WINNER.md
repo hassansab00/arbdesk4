@@ -38,7 +38,7 @@ listed with its reason, and never guessed.
 
 ## 2. Checkpoints are evaluation anchors, not trading times
 
-The six checkpoints are the ones the tick writes (`scripts/tick.py`,
+The six checkpoints are the original ones the tick writes (`scripts/tick.py`,
 `CHECKPOINTS`, on the **city's** wall clock):
 
 | checkpoint | decision time (local) |
@@ -126,3 +126,11 @@ on fewer than 20 days is reported with its n, and no conclusion is drawn.
 
 Whether S10 ever trades the portfolio account is Hassan's decision (P7.7,
 Rule 6). Shadow is free.
+
+## Prospective day-ahead addition — 10 November 2026
+
+Live Tick additionally freezes `day_ahead` at **09:00 on D-1**, in each city's
+local timezone. This prospective cohort is reported separately, with original
+receipts, and is never reconstructed for historical dates. The six-checkpoint
+`s10-contract-v1` replay above remains frozen; its historical reports and
+checkpoint enumeration are unchanged. See [city ensemble build](CITY_ENSEMBLE_BUILD.md).

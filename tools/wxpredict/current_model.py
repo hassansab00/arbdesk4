@@ -1,4 +1,4 @@
-"""A fixed weather-only band classifier using received current forecasts.
+"""A bounded city ensemble and market-aware classifier on frozen inputs.
 
 Targets are the venue's winning bucket, including open ends. No midpoint or
 unreported maximum is invented. The accepted predictor is a bounded correction
@@ -6,11 +6,12 @@ to the actually served incumbent; the new weather model must earn its weight.
 """
 import math
 import hashlib
+import json
 from pathlib import Path
 
-from wxpredict import current_calls, current_recipe
+from wxpredict import current_calls, current_recipe, ensemble_history
 
-RECIPE = 'current-band-v1'
+RECIPE = 'current-city-ensemble-v2'
 SEED, ROUNDS, BLEND = 20261024, 120, .10
 PARAMS = dict(objective='binary', learning_rate=.03, num_leaves=15,
               min_data_in_leaf=200, lambda_l2=20., feature_fraction=.8,
@@ -20,11 +21,11 @@ PARAMS = dict(objective='binary', learning_rate=.03, num_leaves=15,
 
 def source_hashes():
     names=('current_calls.py','current_cycle.py','current_model.py','current_recipe.py',
-           'current_forecasts.py','decision_inputs.py','remaining.py','features.py')
+           'current_forecasts.py','decision_inputs.py','remaining.py','features.py','ensemble_history.py')
     return {name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() for name in names}
 
 
-def matrix(records, labels=False):
+def matrix(records, labels=False, ensemble=None, legacy=False):
     import numpy as np
     import pandas as pd
     rows = [r['row'] for r in records]
@@ -36,6 +37,13 @@ def matrix(records, labels=False):
     base['station_id'] = pd.Series([r['row']['station'] for r in records], dtype='category')
     base['observation_source'] = pd.Series([r['row'].get('observation_contract') or 'legacy'
                                           for r in records], dtype='category')
+    if not legacy:
+        history=ensemble or dict(policy=ensemble_history.POLICY,rows=[])
+        learned=pd.DataFrame([ensemble_history.numeric(r,history) for r in records])
+        for col in learned:base[col]=learned[col]
+        for col in ('yday_max_c','clim_mean_c','clim_sd_c','clim_n','bias7_bm_c','bias30_bm_c','mae30_bm_c'):
+            base['city_history_'+col]=pd.to_numeric([r['row'].get(col) for r in records],errors='coerce')
+        base['market_entropy_saved']=[-sum(p*math.log(max(p,1e-6)) for p in r['market_probs'].values()) for r in records]
     selected, extras, targets, weights, sizes = [], [], [], [], []
     for i, record in enumerate(records):
         row = record['row']
@@ -51,12 +59,17 @@ def matrix(records, labels=False):
         sizes.append(len(edges))
         for j, ((lo, hi), bid) in enumerate(zip(edges, record['band_ids'])):
             selected.append(i)
-            extras.append(dict(band_lo_from_current=(lo-forecast)/step if lo is not None else np.nan,
+            extra=dict(band_lo_from_current=(lo-forecast)/step if lo is not None else np.nan,
                                band_hi_from_current=(hi-forecast)/step if hi is not None else np.nan,
                                band_lo_from_floor=(lo-floor)/step if lo is not None else np.nan,
                                band_hi_from_floor=(hi-floor)/step if hi is not None else np.nan,
                                band_open_low=int(lo is None), band_open_high=int(hi is None),
-                               band_count=len(edges), incumbent_raw_prob=record['raw_probs'][bid]))
+                               band_count=len(edges), incumbent_raw_prob=record['raw_probs'][bid])
+            if not legacy:
+                extra.update(saved_market_probability=record['market_probs'][bid],
+                             saved_incumbent_probability=record['incumbent_probs'][bid],
+                             model_market_gap=record['raw_probs'][bid]-record['market_probs'][bid])
+            extras.append(extra)
             if labels:
                 targets.append(int(j == record['winner']))
                 weights.append(1./len(edges))  # one first call has total weight one
@@ -66,15 +79,36 @@ def matrix(records, labels=False):
 
 def fit(records):
     import lightgbm as lgb
-    x, y, weights, _ = matrix(records, labels=True)
-    return lgb.train(PARAMS, lgb.Dataset(x, label=y, weight=weights), num_boost_round=ROUNDS)
+    history=ensemble_history.fit(records)
+    x, y, weights, _ = matrix(records, labels=True,ensemble=history)
+    booster=lgb.train(PARAMS, lgb.Dataset(x, label=y, weight=weights), num_boost_round=ROUNDS)
+    return AdaptiveModel(booster,ensemble_history.snapshot(records,history))
+
+
+class AdaptiveModel:
+    """Weights and their preprocessing travel in the hashed private artifact."""
+    def __init__(self,booster,history):self.booster,self.history=booster,history
+    def feature_name(self):return self.booster.feature_name()
+    def feature_importance(self,**kwargs):return self.booster.feature_importance(**kwargs)
+    def predict(self,*args,**kwargs):return self.booster.predict(*args,**kwargs)
+    def model_to_string(self):
+        return json.dumps(dict(recipe=RECIPE,booster=self.booster.model_to_string(),ensemble=self.history),sort_keys=True,allow_nan=False)
+
+
+def restore(raw):
+    import lightgbm as lgb
+    saved=json.loads(raw)
+    if saved.get('recipe')!=RECIPE or saved['ensemble'].get('policy')!='city-ensemble-snapshot-v1':
+        raise ValueError('unknown adaptive ensemble artifact')
+    return AdaptiveModel(lgb.Booster(model_str=saved['booster']),saved['ensemble'])
 
 
 def predict(model, records):
     import numpy as np
     if not records:
         return []
-    x, _, _, sizes = matrix(records)
+    adaptive=isinstance(model,AdaptiveModel)
+    x, _, _, sizes = matrix(records,ensemble=model.history if adaptive else None,legacy=not adaptive)
     if list(x.columns) != model.feature_name():
         raise ValueError('current model feature contract changed')
     values = np.asarray(model.predict(x, validate_features=True), dtype=float)

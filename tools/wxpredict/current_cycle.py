@@ -84,6 +84,13 @@ def prepare(p):
     through = dt.datetime.fromisoformat(p['night']).replace(tzinfo=common.UTC).timestamp()
     train, tc = load_window(p['train_first'],p['fit_last'],through)
     test, vc = load_window(max(INPUTS_FROM,p['evaluation_first']),p['evaluation_last'],through)
+    if test:
+        validation_start=min(calls.inputs.unix(r['input_as_of']) for r in test)
+        earlier=[r for r in train if calls.inputs.unix(r['label_received_at'])<validation_start]
+        tc=dict(tc,exclusions_note='training labels must precede the first original validation decision',
+                paired_rows=len(earlier),dataset_sha256=calls.digest(earlier),excluded=dict(tc.get('excluded',{})))
+        tc['excluded']['label_unavailable_at_validation_start']=len(train)-len(earlier)
+        train=earlier
     ta = availability(train,tc,p['train_first'],p['fit_last'],training=True)
     va = availability(test,vc,p['evaluation_first'],p['evaluation_last'])
     p = {**p,'training_availability':ta,'evaluation_availability':va}
@@ -93,6 +100,13 @@ def prepare(p):
                 if p['train_first']>p['fit_last'] else
                 'insufficient recorded training or independent evaluation coverage'))
     return p,train,test
+
+
+def supported_local(row):
+    return (row['training_dates']>=MIN_TRAIN_DATES and row['dates']>=10
+            and all(row['candidate_hits']>=row[ref+'_hits']
+                    and row['candidate_brier']<=row[ref+'_brier'] for ref in ('incumbent','market'))
+            and row['log_loss_gain_lower90']>0 and row['market_log_loss_gain_lower90']>0)
 
 
 def local_results(scores, training=()):
@@ -109,21 +123,22 @@ def local_results(scores, training=()):
         gains = [r['incumbent_nll']-r['candidate_nll'] for r in rs]
         rng = random.Random(model.SEED)
         boots = sorted(sum(rng.choices(gains,k=n))/n for _ in range(2000))
+        market_gains=[r['market_nll']-r['candidate_nll'] for r in rs]
+        market_boots=sorted(sum(rng.choices(market_gains,k=n))/n for _ in range(2000))
         current = dict(source_identity=identity,city=rs[0]['city'],checkpoint=cp,calls=n,
                        dates=len({r['date'] for r in rs}),training_dates=len(train[(identity,cp)]),
                        log_loss_gain_lower90=boots[99],
+                       market_log_loss_gain_lower90=market_boots[99],
                        candidate_hits=sum(r['candidate_hit'] for r in rs),
                        incumbent_hits=sum(r['incumbent_hit'] for r in rs),
                        market_hits=sum(r['market_hit'] for r in rs))
         for name in ('candidate','incumbent','market'):
             for metric in ('nll','brier'):
                 current[name+'_'+metric] = sum(r[name+'_'+metric] for r in rs)/n
-        current['supported'] = (current['training_dates']>=MIN_TRAIN_DATES and current['dates']>=10
-            and current['candidate_hits']>=current['incumbent_hits']
-            and current['candidate_brier']<=current['incumbent_brier'] and boots[99]>0)
+        current['supported'] = supported_local(current)
         current['reason'] = ('independent local improvement' if current['supported'] else
             'insufficient local dates' if current['training_dates']<MIN_TRAIN_DATES or current['dates']<10 else
-            'local improvement did not pass hit-rate, Brier and log-loss gates')
+            'local improvement did not beat incumbent and saved market on hit-rate, Brier and log loss')
         current.update(candidate_fixed_misses=sum(r['candidate_hit'] and not r['incumbent_hit'] for r in rs),
                        candidate_broke_hits=sum(r['incumbent_hit'] and not r['candidate_hit'] for r in rs),
                        incumbent_miss_current_point_correct=sum(not r['incumbent_hit'] and r['current_point_in_winner'] for r in rs),
@@ -143,6 +158,26 @@ def assess(records, predictions, expected, first, last, training=()):
     if brier_regressions:
         result['decision']='reject'
         result['reasons'].append('checkpoint Brier regression')
+    # The previous global gate compared only with the incumbent. A candidate
+    # that still loses to saved market probabilities cannot qualify here.
+    market_gains=collections.defaultdict(list)
+    market_regressions=[]
+    for cp in calls.CHECKPOINTS:
+        group=[r for r in scored if r['checkpoint']==cp]
+        if group and (sum(r['candidate_hit']-r['market_hit'] for r in group)<0
+                      or sum(r['candidate_brier']-r['market_brier'] for r in group)>1e-12
+                      or sum(r['candidate_nll']-r['market_nll'] for r in group)>1e-12):
+            market_regressions.append(cp)
+    for r in scored:
+        if r['checkpoint'] in legacy.PREPEAK_CHECKPOINTS:
+            market_gains[r['date']].append(r['market_nll']-r['candidate_nll'])
+    daily=[sum(v)/len(v) for _,v in sorted(market_gains.items())]
+    rng=random.Random(model.SEED)
+    lower=sorted(sum(rng.choices(daily,k=len(daily)))/len(daily) for _ in range(2000))[99] if daily else None
+    if market_regressions or lower is None or lower<=0:
+        result['decision']='reject'
+        result['reasons'].append('saved-market hit, Brier or date-clustered log-loss gate failed')
+    result.update(market_regressed_checkpoints=market_regressions,market_gain_lower90_by_date=lower)
     result.update(brier_regressed_checkpoints=brier_regressions,
                   city_horizons=local_results(scored,training),standalone_weather_weight=model.BLEND)
     return result
@@ -157,6 +192,9 @@ def fit_and_evaluate(p, train, test, work):
             or any(not p['evaluation_first']<=r['date']<=p['evaluation_last'] for r in test)
             or p['fit_last']>=p['evaluation_first']):
         raise ValueError('current training/evaluation overlap')
+    validation_start=min((calls.inputs.unix(t['input_as_of']) for t in test),default=float('inf'))
+    if any(calls.inputs.unix(r['label_received_at'])>=validation_start for r in train):
+        raise ValueError('training labels unavailable before independent validation')
     booster = model.fit(train)
     predictions = model.predict(booster,test)
     result = {**p,**assess(test,predictions,p['evaluation_availability']['first_calls'],
@@ -228,9 +266,7 @@ def forward(meta, available, night):
     result = assess(scored_records,predictions,coverage['first_calls'],first,last_eval)
     for row in result['city_horizons']:
         row['training_dates']=meta['training_dates'].get(row['source_identity']+'|'+row['checkpoint'],0)
-        row['supported']=(row['training_dates']>=MIN_TRAIN_DATES and row['dates']>=10
-                          and row['candidate_hits']>=row['incumbent_hits']
-                          and row['candidate_brier']<=row['incumbent_brier'] and row['log_loss_gain_lower90']>0)
+        row['supported']=supported_local(row)
         row['reason']=('independent local improvement' if row['supported'] else
                        'insufficient local training/validation dates or local improvement unproven')
     return {**p,**result,'decision':'forward validated' if result['decision']=='accept shadow' else 'forward rejected',

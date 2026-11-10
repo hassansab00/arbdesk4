@@ -41,6 +41,20 @@ async function refused(db,sql,params=[]){await assert.rejects(()=>db.query(sql,p
     values('retry',$1::date,'morning',$1::date+time '09:00','old','forecast','{"a":0.8,"b":0.2}','a',.8,clock_timestamp()-interval '1 hour'),
           ('too-old',$1::date,'morning',$1::date+time '09:00','old','forecast','{"a":0.8,"b":0.2}','a',.8,clock_timestamp()-interval '7 hours')`,[retryDay]);
   await db.exec(migration); await db.exec(migration);
+  const dayAhead=fs.readFileSync(root+'/supabase/migrations/20261110223147_seven_source_day_ahead_checkpoint.sql','utf8');
+  await db.exec('create temp table before_day_ahead as select * from prediction_checkpoints');
+  await db.exec(dayAhead); await db.exec(dayAhead);
+  assert.equal((await db.query(`select count(*)::int n from (
+    (select * from before_day_ahead except all select * from prediction_checkpoints)
+    union all (select * from prediction_checkpoints except all select * from before_day_ahead)) d`)).rows[0].n,0);
+  const earlyOffset=(new Date().getUTCHours()-9+12)%24-12;
+  const earlyZone=earlyOffset===0?'UTC':`Etc/GMT${earlyOffset>0?'+':''}${earlyOffset}`;
+  await db.query("insert into cities values('new-day-ahead',$1,'C')",[earlyZone]);
+  const realEarly=(await db.query(`insert into prediction_checkpoints(city_key,target_date,checkpoint,local_decision_time,engine_version,model_path,probs,top_band_id,top_prob)
+    select 'new-day-ahead', (clock_timestamp() at time zone $1)::date+1,'day_ahead',
+      (clock_timestamp() at time zone $1)::date+time '09:00','new','forecast','{"a":0.8,"b":0.2}','a',.8 returning frozen_at,target_date`,[earlyZone])).rows[0];
+  assert.ok(realEarly.frozen_at);
+  await refused(db,"update prediction_checkpoints set top_prob=.9 where city_key='new-day-ahead'");
   const paired=(await db.query("select model_version,probs,raw_probs,baseline_probs from v_city_predictor_pairs where city_key='paired-seed'")).rows[0];
   assert.equal(paired.model_version,'wxrd3:v3:seed');
   assert.deepEqual(paired.probs,{a:.2,b:.8}); assert.deepEqual(paired.raw_probs,{a:.8,b:.2});

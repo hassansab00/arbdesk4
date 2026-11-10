@@ -18,7 +18,7 @@ Each run:
   4. writes one row per checkpoint, ignoring a duplicate - the table refuses
      an edit, so a second tick in the same window can only add nothing.
 
-Checkpoints (local time): d1_eve 18:00 the day before; morning 09:00;
+Checkpoints (local time): day_ahead 09:00 and d1_eve 18:00 the day before; morning 09:00;
 noon 12:00; prepeak_2h / prepeak_1h / postpeak_1h around the city's measured
 peak hour for that month (derived_weather_peak). A city with no measured peak
 skips those three and says so - 15:00 would be a guess.
@@ -40,9 +40,9 @@ from zoneinfo import ZoneInfo
 
 from common import _post, get_cities, log_run, rest, rest_all, rpc, upsert
 
-CHECKPOINTS = ("d1_eve", "morning", "noon", "prepeak_2h", "prepeak_1h", "postpeak_1h")
+CHECKPOINTS = ("day_ahead", "d1_eve", "morning", "noon", "prepeak_2h", "prepeak_1h", "postpeak_1h")
 PEAK_OFFSETS_H = {"prepeak_2h": -2, "prepeak_1h": -1, "postpeak_1h": 1}
-FIXED_LOCAL = {"morning": (0, 9, 0), "noon": (0, 12, 0), "d1_eve": (-1, 18, 0)}
+FIXED_LOCAL = {"day_ahead": (-1, 9, 0), "morning": (0, 9, 0), "noon": (0, 12, 0), "d1_eve": (-1, 18, 0)}
 
 # A tick runs hourly at :36 (n8n's clock), so a decision time is normally 36-96 minutes old
 # when the first tick after it runs. 75 minutes catches every checkpoint once
@@ -342,6 +342,14 @@ def build_row(city, target, checkpoint, local_time, rows, reasons, books, readin
             row['reading_source']='wx_features'
         else:
             row['reading_at'],row['reading_source']=None,None
+    import early_city_adaptation
+    import ensemble_early
+    ensemble_diagnostic={}
+    proposal=ensemble_early.capture(row,bands,unit,early_city_adaptation.capture_context(city,target),diagnostics=ensemble_diagnostic)
+    if proposal:
+        row['predictive_context']=dict(row.get('predictive_context') or {},ensemble_early=proposal)
+    elif ensemble_diagnostic:
+        row['predictive_context']=dict(row.get('predictive_context') or {},ensemble_capture=ensemble_diagnostic)
     return row, None
 
 
