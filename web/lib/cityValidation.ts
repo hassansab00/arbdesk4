@@ -34,6 +34,9 @@ export type CityReport = { city: string; display_name: string; timezone: string;
   n: number; hits: number; hit_rate: number | null; interval95: number[] | null; dates: number;
   pending: number | null; verified: number; legacy: number; calibration_gap: number | null;
   period_start: string; period_end: string;
+  regression?: { status: string; flags: string[]; hit_rate_change: number | null;
+    recent: { n: number; hits: number; pending: number; start: string; end_exclusive: string };
+    prior: { n: number; hits: number }; comparable_dates_ready: boolean } | null;
   capture_timing?: CaptureTiming;
   observed_peak_timing?: { policy: string; calls: number; unknown_calls: number; pending_calls: number;
     before: { n: number; hits: number; hit_rate: number | null };
@@ -73,7 +76,7 @@ export function timingView(row: CityReport, strict: boolean): CityReport {
     // These diagnostics describe the complete scheduled cohort, not the subset.
     why: { missed_dates: 0, reviewed_dates: 0, weather: {}, mean_peak_shift_h: null,
       public_forecast_mae_c: null, public_forecast_bias_c: null },
-    paired_audit: undefined, early_comparison: undefined, observed_peak_timing: undefined,
+    paired_audit: undefined, early_comparison: undefined, observed_peak_timing: undefined, regression: undefined,
     market_comparison: score?.market_comparison };
 }
 export function readinessWords(r?: Readiness) {
