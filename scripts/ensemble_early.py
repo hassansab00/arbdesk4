@@ -37,6 +37,30 @@ def prepare(read,now,rows=None):
         pass  # no learned weights is the explicitly recorded uniform prior
 
 
+def saved_market(quotes,ids):
+    """Same bounded mark as Tick; incomplete markets never gate source capture."""
+    from tick import market_price
+    market={}
+    try:
+        for bid in ids:
+            q=quotes.get(bid) or {}
+            clean={k:None if q.get(k) is None else float(q[k]) for k in ('bid','ask','last')}
+            if any(v is not None and (not math.isfinite(v) or not 0<=v<=1) for v in clean.values()):
+                return None,'invalid saved quote'
+            if clean['bid'] is None and clean['ask'] is None:
+                return None,'missing saved quoted band'
+            if clean['bid'] is not None and clean['ask'] is not None and clean['bid']>clean['ask']:
+                return None,'crossed saved quote'
+            value=market_price(clean)
+            if value is None:return None,'saved quote has no comparable mark'
+            market[bid]=value
+        z=sum(market.values())
+        if z<=0:return None,'zero saved market mass'
+        return {k:v/z for k,v in market.items()},'complete saved ladder using bounded Tick marks'
+    except (TypeError,ValueError,KeyError,OverflowError):
+        return None,'malformed saved quote'
+
+
 def capture(row,bands,unit,context,now=None,diagnostics=None):
     import probability_engine as pe
     def refuse(reason):
@@ -58,15 +82,8 @@ def capture(row,bands,unit,context,now=None,diagnostics=None):
         sigma=float(row['sigma_c'])
         if not math.isfinite(sigma) or sigma<=0:return refuse('invalid original uncertainty')
         components={m:dict(pe.compute_band_probabilities(float(sources[m]),sigma,unit,bands,row.get('running_max_c'))) for m in MODELS}
-        ids=set(row['probs']);market={}
-        for bid in ids:
-            q=(row.get('market') or {}).get(bid) or {}
-            bidp,ask=q.get('bid'),q.get('ask')
-            if bidp is None or ask is None or not 0<=float(bidp)<=float(ask)<=1:return refuse('complete saved bid/ask market unavailable')
-            market[bid]=(float(bidp)+float(ask))/2
-        z=sum(market.values())
-        if z<=0:return refuse('zero saved market mass')
-        market={k:v/z for k,v in market.items()}
+        ids=set(row['probs'])
+        market,market_reason=saved_market(row.get('market') or {},ids)
         version=family(context['station'],unit)
         state=_states.get((row['city_key'],row['checkpoint'],version),{})
         age=(dt.date.fromisoformat(row['target_date'])-dt.date.fromisoformat(state.get('as_of',row['target_date']))).days
@@ -74,12 +91,13 @@ def capture(row,bands,unit,context,now=None,diagnostics=None):
         weights=state['weights'] if usable else {m:1/7 for m in MODELS}
         weighted={k:sum(weights[m]*components[m][k] for m in MODELS) for k in ids}
         # Magnitudes are bounded; one last-cycle winner never replaces the blend.
-        candidate={k:.8*row['probs'][k]+.1*weighted[k]+.1*market[k] for k in ids}
+        candidate={k:(.8 if market else .9)*row['probs'][k]+.1*weighted[k]+(.1*market[k] if market else 0.) for k in ids}
         return dict(policy=POLICY,model_version=version,station=context['station'],unit=unit,
             rules_sha256=context['rules_sha256'],rules_received_at=context['rules_received_at'],
             captured_at=now.isoformat(),input_oldest=oldest.isoformat(),input_newest=newest.isoformat(),
             source_probs=components,source_values_c=dict(sources),incumbent_probs=dict(row['probs']),
-            market_probs=market,candidate_probs=candidate,weight_version=state.get('version') if usable else 'uniform-prior',
+            market_probs=market,market_comparable=market is not None,market_reason=market_reason,
+            candidate_probs=candidate,weight_version=state.get('version') if usable else 'uniform-prior',
             training_dates=state.get('learning_dates',0) if usable else 0,weights_sha256=digest(weights),changes_serving=False)
     except (KeyError,ValueError,TypeError,OverflowError) as exc:return refuse('invalid original input: '+type(exc).__name__)
 
@@ -104,7 +122,7 @@ def eligible(rows,as_of):
             if (timestamp(p['captured_at'])-timestamp(p['input_oldest'])).total_seconds()>8*3600:continue
             if dt.date.fromisoformat(r['target_date'])>=as_of.date():continue
             if dt.date.fromisoformat(r['target_date'])<as_of.date()-dt.timedelta(days=90):continue
-            for q in [*p['source_probs'].values(),p['candidate_probs'],p['market_probs']]:
+            for q in [*p['source_probs'].values(),p['candidate_probs'],*([p['market_probs']] if p.get('market_probs') is not None else [])]:
                 if set(q)!=set(r['probs']) or abs(sum(q.values())-1)>1e-4 or any(not math.isfinite(v) or not 0<=v<=1 for v in q.values()):raise ValueError('bad original ladder')
             out.append(dict(r,packet=p))
         except (KeyError,ValueError,TypeError):continue
@@ -119,7 +137,7 @@ def fit(rows,as_of,previous=()):
     states=[];split=as_of-dt.timedelta(days=VALIDATION_DAYS)
     for (city,cp,version),mine in sorted(groups.items()):
         train=[r for r in mine if r['target_date']<str(split)]
-        val=[r for r in mine if r['target_date']>=str(split) and r['packet']['training_dates']>=MIN_TRAIN]
+        val=[r for r in mine if r['target_date']>=str(split) and r['packet']['training_dates']>=MIN_TRAIN and r['packet'].get('market_probs') is not None]
         losses={};local_dates=len({r['target_date'] for r in train})
         for m in MODELS:
             # Next-call shadow weights may use every label already received.

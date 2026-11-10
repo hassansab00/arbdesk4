@@ -510,7 +510,9 @@ def reports(rows,cities,reviews,states,now,model_version=None,selections=(),earl
                     active_model_version=active_version,
                     ensemble=[ensemble_early.summary(s) for s in states if s.get('policy')==ensemble_early.POLICY
                         and s['city_key']==city and s['phase']==horizon and scope=='served'],
-                    ensemble_coverage=dict(calls=len(chosen),captured=sum(bool(r.get('ensemble_packet')) for r in chosen),
+                    ensemble_coverage=dict(calls=len(chosen),
+                        market_comparable=sum((r.get('ensemble_packet') or {}).get('market_probs') is not None for r in chosen),
+                        captured=sum(bool(r.get('ensemble_packet')) for r in chosen),
                         missing=dict(Counter((r.get('ensemble_capture') or {}).get('reason','no original ensemble packet')
                             for r in chosen if not r.get('ensemble_packet')))),
                     learning=[dict(s,active=cal.usable(s,local_target,active_version),

@@ -34,7 +34,7 @@ export type CaptureTiming = { policy: string; calls: number; eligible_calls: num
   recent_calls: CaptureCall[] };
 export type CityReport = { city: string; display_name: string; timezone: string; scope: string; horizon: string;
   ensemble?: EnsembleLearning[];
-  ensemble_coverage?: { calls: number; captured: number; missing: Record<string,number> };
+  ensemble_coverage?: { calls: number; captured: number; market_comparable?: number; missing: Record<string,number> };
   n: number; hits: number; hit_rate: number | null; interval95: number[] | null; dates: number;
   pending: number | null; verified: number; legacy: number; calibration_gap: number | null;
   period_start: string; period_end: string;

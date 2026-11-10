@@ -39,7 +39,7 @@ def test_original_sources_and_market_freeze_without_changing_served_call(monkeyp
     assert p['incumbent_probs']==row['probs']
 
 
-@pytest.mark.parametrize('bad',['station','future_rules','stale','missing_source','partial_market','nan','ineligible'])
+@pytest.mark.parametrize('bad',['station','future_rules','stale','missing_source','nan','ineligible'])
 def test_missing_stale_or_mismatched_evidence_is_not_a_candidate(bad):
     r,c,n=original();inp=r['predictive_context']['forecast_input']['station_combination']
     if bad=='ineligible':r['inputs_ok']=False
@@ -47,7 +47,6 @@ def test_missing_stale_or_mismatched_evidence_is_not_a_candidate(bad):
     if bad=='future_rules':c['rules_received_at']=(n+dt.timedelta(seconds=1)).isoformat()
     if bad=='stale':inp['inputs_oldest_run_at']=(n-dt.timedelta(hours=9)).isoformat()
     if bad=='missing_source':inp['sources'].pop(e.MODELS[0])
-    if bad=='partial_market':r['market']['a']['ask']=None
     if bad=='nan':inp['sources'][e.MODELS[0]]=float('nan')
     assert e.capture(r,BANDS,'C',c,n) is None
 
@@ -90,3 +89,32 @@ def test_weight_steps_are_bounded_and_same_night_retry_is_idempotent(monkeypatch
     assert again==first
     next_=e.fit(rows,day+dt.timedelta(days=1),[first])[0]
     assert max(abs(next_['weights'][m]-first['weights'][m]) for m in e.MODELS)<=e.MAX_WEIGHT_STEP+1e-12
+
+
+def test_one_sided_quotes_use_the_existing_tick_mark_without_discarding_sources():
+    r,c,n=original();r['market']['a']=dict(bid=None,ask=.001,last=.999)
+    packet=e.capture(r,BANDS,'C',c,n)
+    assert packet['market_comparable'] and set(packet['source_probs'])==set(e.MODELS)
+    assert packet['market_probs']['a']==pytest.approx(.001/(.001+.3+.3))
+
+
+def test_missing_market_does_not_discard_source_learning_or_become_validation():
+    rows=[]
+    for i in range(20):
+        day=str(dt.date(2026,10,2)+dt.timedelta(days=i))
+        r,c,n=original(day);r['market']['a']=dict(bid=None,ask=.001,last=None)
+        packet=e.capture(r,BANDS,'C',c,n)
+        assert packet and packet['market_probs'] is None and not packet['market_comparable']
+        assert sum(packet['candidate_probs'].values())==pytest.approx(1)
+        packet['training_dates']=20
+        rows.append(dict(scored(day),ensemble_packet=packet))
+    assert len(e.eligible(rows,dt.datetime(2026,11,1,tzinfo=dt.timezone.utc)))==20
+    s=e.fit(rows,dt.date(2026,11,1))[0]
+    assert s['learning_dates']==20 and s['validation_dates']==0 and s['decision']=='held'
+
+
+@pytest.mark.parametrize('quotes',[{'bid':.5,'ask':.1,'last':.2}, {'bid':None,'ask':None,'last':.2}, {'bid':float('nan'),'ask':.4}])
+def test_invalid_or_unquoted_market_stays_uncomparable(quotes):
+    r,c,n=original();r['market']['a']=quotes
+    packet=e.capture(r,BANDS,'C',c,n)
+    assert packet and packet['market_probs'] is None and not packet['market_comparable']
