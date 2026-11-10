@@ -1120,7 +1120,7 @@ def _existing_evidence(days: int) -> dict[tuple[str, str], dict[str, Any]]:
     cutoff = (dt.date.today() - dt.timedelta(days=days)).isoformat()
     rows = rest_all(
         "weather_resolution_evidence",
-        [("select", "evidence_id,city_key,for_date,observed_max_c,record_status,payload_sha256,captured_at"),
+        [("select", "evidence_id,city_key,for_date,observed_max_c,record_status,payload_sha256,captured_at,parser_version,station_id,source_url"),
          ("for_date", f"gte.{cutoff}")],
         order="city_key.asc,for_date.asc,captured_at.asc,evidence_id.asc",
         page_size=500,
@@ -1171,7 +1171,7 @@ def _run(days, maximum, dry_run, cities, now, bounded=False):
     counts = {
         "targets": len(targets), "backlog_done": len(finalized), "already_final": 0, "captured": 0,
         "not_final": 0, "unsupported": 0, "failures": 0,
-        "needs_attention": 0, "dry_run": 0,
+        "needs_attention": 0, "reviewed_unresolved": 0, "dry_run": 0,
         # Visible in ingest_log, because a number that silently grows is how
         # the budget got eaten in the first place.
         "skipped_unparseable": len(unparseable),
@@ -1238,6 +1238,18 @@ def _run(days, maximum, dry_run, cities, now, bounded=False):
             run_id, run_attempt, market["market_id"], status,
             outcome.payload_sha256 if outcome else error or "no-detail",
         )
+        # A retained, explicit clock review already marks this historical
+        # maximum unknown. Continue collecting every day so a repaired source
+        # can become verified; keep the repeated defect visible as attention.
+        # A new failure, recent date, changed station or different source
+        # still fails the scheduled job.
+        reviewed_unresolved = (status == "parse_error"
+            and error == "AWC supplementary window contains unreadable or conflicting reports"
+            and prior is not None and prior.get("record_status") == "disputed"
+            and prior.get("parser_version") == "awc-clock-evidence-review-v1"
+            and prior.get("station_id") == station_id
+            and prior.get("source_url") == source_url
+            and dt.date.fromisoformat(market["resolution_date"]) < now.date() - dt.timedelta(days=7))
         attempt = {
             "attempt_id": attempt_id,
             "market_id": market["market_id"],
@@ -1254,6 +1266,8 @@ def _run(days, maximum, dry_run, cities, now, bounded=False):
                 **error_detail,
                 **(outcome.detail if outcome else {}),
                 **({"error": error} if error else {}),
+                **({"reviewed_unresolved": True, "review_evidence_id": prior["evidence_id"]}
+                   if reviewed_unresolved else {}),
                 # The verdict is about this text, so the text is identified.
                 # Without it the next run cannot tell an answer it already has
                 # from a question worth asking again.
@@ -1304,6 +1318,9 @@ def _run(days, maximum, dry_run, cities, now, bounded=False):
             # cannot make every scheduled run red forever. A named source is
             # never substituted or guessed merely to turn the check green.
             counts["unsupported"] += 1
+            counts["needs_attention"] += 1
+        elif reviewed_unresolved:
+            counts["reviewed_unresolved"] += 1
             counts["needs_attention"] += 1
         elif status not in {"unchanged"}:
             counts["failures"] += 1

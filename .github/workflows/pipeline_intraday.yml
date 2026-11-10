@@ -250,7 +250,16 @@ jobs:
         id: scoring
         if: ${{ !cancelled() }}
         timeout-minutes: 4
-        run: python scripts/run_stage.py --stage scoring --seconds 200 -- python scripts/predictive_validation.py --score-only
+        # Archive starts at the same 02:36 clock edge and runs this identical
+        # score-only writer after its evidence/day-review work. Running both
+        # against the 40 MB report table contends for the same 1,128 rows;
+        # the archive run and its watchdog own that overnight score receipt.
+        run: |
+          if [ "$(date -u +%H)" = "02" ]; then
+            echo 'Overnight city scoring is owned by Archive Observations (02:36 UTC); its score-only step and ingest receipt remain independently checked.'
+          else
+            python scripts/run_stage.py --stage scoring --seconds 200 -- python scripts/predictive_validation.py --score-only
+          fi
       - name: Queue the stored page refresh
         if: ${{ !cancelled() }}
         # This final display-only refresh is already a durable database job.
