@@ -96,6 +96,18 @@ def test_intraday_recovery_uses_existing_cadence_without_fitting():
     assert steps.index(step) > next(i for i,s in enumerate(steps) if s.get('name') == 'Bank the ladders just confirmed (P4.7, bands only)')
 
 
+def test_overnight_scoring_has_one_owner_and_other_slots_still_score():
+    import yaml
+    intraday=yaml.safe_load(open('.github/workflows/pipeline_intraday.yml'))
+    archive=yaml.safe_load(open('.github/workflows/archive_observations.yml'))
+    score=next(s for s in intraday['jobs']['intraday']['steps'] if s.get('id')=='scoring')
+    assert 'date -u +%H' in score['run'] and '"02"' in score['run']
+    assert 'run_stage.py --stage scoring --seconds 200' in score['run']
+    assert any(s.get('name')=='Score the original frozen city calls' and
+               'predictive_validation.py --score-only' in s.get('run','')
+               for job in archive['jobs'].values() for s in job['steps'])
+
+
 def test_budget_exhausted_during_a_city_is_deferred_without_a_false_source_verdict(monkeypatch):
     monkeypatch.setattr(w,'rest_all',lambda *a,**kw:[{'city_key':c,'timezone':'UTC'} for c in ('a','b')])
     monkeypatch.setattr(w,'_existing_evidence',lambda _: {})
@@ -184,6 +196,39 @@ def test_a_verified_first_publication_is_never_repolled_or_replaced(monkeypatch)
     monkeypatch.setattr(w,'upsert',lambda *a:pytest.fail('no historical evidence is rewritten'))
     monkeypatch.setattr(w,'log_run',lambda *a:None)
     assert w.run(now=dt.datetime(2026,10,22,tzinfo=dt.timezone.utc))['already_final']==1
+
+
+@pytest.mark.parametrize('review,source,day,expected_reviewed', [
+    ('awc-clock-evidence-review-v1', 'saved', '2026-10-27', 1),
+    ('weather-outcomes-v6', 'saved', '2026-10-27', 0),
+    ('awc-clock-evidence-review-v1', 'changed', '2026-10-27', 0),
+    ('awc-clock-evidence-review-v1', 'saved', '2026-11-08', 0),
+])
+def test_reviewed_historical_parse_failure_stays_visible_without_repeated_daily_exit(
+        monkeypatch, review, source, day, expected_reviewed):
+    target=dict(city_key='buenos_aires',resolution_date=day,market_id='m',rules_text='rules',unit='C')
+    monkeypatch.setattr(w,'rest_all',lambda *a,**kw:[{'city_key':'buenos_aires','timezone':'America/Argentina/Buenos_Aires'}])
+    monkeypatch.setattr(w,'_existing_evidence',lambda _: {('buenos_aires',day):dict(
+        evidence_id='retained-review',record_status='disputed',parser_version=review,
+        station_id='SAEZ',source_url='saved')})
+    monkeypatch.setattr(w,'_unparseable',lambda _: {})
+    monkeypatch.setattr(w,'_load_targets',lambda *a:[target])
+    monkeypatch.setattr(w,'parse_rule_spec',lambda *a:w.RuleSpec('aviation_weather_metar','AWC','SAEZ','saved','C',True))
+    def collect(*args):
+        exc=w.OutcomeError('parse_error','AWC supplementary window contains unreadable or conflicting reports')
+        exc.source_url=source
+        raise exc
+    monkeypatch.setattr(w,'collect_with_fallback',collect)
+    writes,logs=[],[]
+    monkeypatch.setattr(w,'upsert',lambda table,rows,key:writes.extend((table,r) for r in rows))
+    monkeypatch.setattr(w,'log_run',lambda *a:logs.append(a))
+    result=w.run(now=dt.datetime(2026,11,10,8,tzinfo=dt.timezone.utc))
+    assert result['reviewed_unresolved']==expected_reviewed
+    assert result['failures']==1-expected_reviewed and result['needs_attention']==1
+    assert logs[-1][1]=='attention'
+    assert [table for table,_ in writes]==['weather_resolution_attempts']
+    assert writes[0][1]['outcome_status']=='parse_error'
+    assert writes[0][1]['detail'].get('review_evidence_id')==('retained-review' if expected_reviewed else None)
 
 
 def test_evidence_only_workflow_never_fits_or_runs_heavy_steps():
