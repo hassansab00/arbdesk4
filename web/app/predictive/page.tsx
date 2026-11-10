@@ -661,6 +661,8 @@ export default function PredictivePage() {
       {/* ================================================ 0. EVERY CITY == */}
       <div id="predictive-cities" className="scroll-mt-20" tabIndex={-1}>
         <CityCards onPick={setCity} cities={selected} moment={moment}
+        dayAheadRecord={recentQ.loading || recentQ.error || recentQ.truncated || recent.n < 100 || recent.dates.length < 3
+          ? "unverified" : recent.modelHits < recent.marketHits ? "trailing" : "measured"}
         hindsight={!hindsightQ.loading&&!hindsightQ.error&&!hindsightQ.truncated ? hindsightQ.data ?? [] : []} status={statusQ.data ?? []}
         statusError={statusQ.error} onRefreshStatus={statusQ.refresh} scorecard={scoreQ.data ?? []} summary={hitSumQ.data ?? []} />
       </div>

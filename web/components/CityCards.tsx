@@ -53,8 +53,9 @@ const STRIP = ["day_ahead", "noon", "prepeak_1h"] as const;
  * are the page's own reads, handed to a city's popup.
  */
 export default function CityCards({ onPick, onRefreshStatus, cities, moment = "day_ahead", hindsight = [], status = [], statusError = null,
-                                    scorecard = [], summary = [] }: {
+                                    scorecard = [], summary = [], dayAheadRecord = "unverified" }: {
   onPick?: (city: string) => void; onRefreshStatus?: () => void; cities?: string[]; moment?: string;
+  dayAheadRecord?: "unverified" | "trailing" | "measured";
   hindsight?: HindsightRow[]; status?: StatusRow[]; statusError?: string | null;
   scorecard?: ScoreRow[]; summary?: HitSummaryRow[];
 }) {
@@ -174,6 +175,13 @@ export default function CityCards({ onPick, onRefreshStatus, cities, moment = "d
           Could not read {sideErrors.map(([n, e]) => `${n} (${e})`).join("; ")}. The cards show the rest.
         </p>
       )}
+      {moment === "day_ahead" && dayAheadRecord !== "measured" && (
+        <p className="rounded border border-warn/50 bg-warn/10 px-2 py-1 text-[11px] text-warn">
+          {dayAheadRecord === "trailing"
+            ? "Recent frozen day-ahead picks trail the saved market favourite. Quoted edges below are unvalidated model advantage."
+            : "Recent frozen day-ahead evidence is unavailable or too thin to validate an advantage. Quoted edges below need verification."}
+        </p>
+      )}
       <DataState
         relation="v_prediction_ladder"
         truncated={ladderQ.truncated}
@@ -186,6 +194,7 @@ export default function CityCards({ onPick, onRefreshStatus, cities, moment = "d
       >
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {cards.map((c) => <Card key={`${c.city_key}|${c.for_date}`} c={c} moment={moment}
+            dayAheadRecord={dayAheadRecord}
             frozen={selectedFrozenCall(frozenQ.data ?? [],c.city_key,c.for_date,moment)}
             frozenLoading={frozenQ.loading} frozenError={frozenQ.error}
             onPick={(city) => { onPick?.(city); setOpen(`${c.city_key}|${c.for_date}`); }}
@@ -221,14 +230,16 @@ const STATUS_TONE: Record<StatusRow["status"], string> = {
 const rateText = (e: CityEvidence) =>
   e.n ? `${e.hits}/${e.n} (${Math.round((e.hits / e.n) * 100)}%)` : "none settled";
 
-function Card({ c, onPick, moment, st, ev, strip, after, showRecord, frozen, frozenLoading, frozenError, timing, timingLoading, timingError }: {
+function Card({ c, onPick, moment, dayAheadRecord, st, ev, strip, after, showRecord, frozen, frozenLoading, frozenError, timing, timingLoading, timingError }: {
   c: CityCard; onPick?: (city: string) => void; moment: string; st: StatusRow | null;
+  dayAheadRecord: "unverified" | "trailing" | "measured";
   ev: CityEvidence; strip: ReadonlyArray<readonly [string, CityEvidence]>; after: CityEvidence; showRecord: boolean;
   frozen: FrozenCall | null; frozenLoading: boolean; frozenError: string | null;
   timing:ReturnType<typeof checkpointReference>;timingLoading:boolean;timingError:string|null;
 }) {
   const u = c.unit;
-  const trusted = st?.status === "candidate" && c.best && !c.best.against_market
+  const trusted = (moment !== "day_ahead" || dayAheadRecord === "measured")
+    && st?.status === "candidate" && c.best && !c.best.against_market
     && !c.disagrees && !c.stale && c.market_band !== null;
   return (
     <div className={`cursor-pointer rounded border bg-panel p-3 text-xs hover:border-accent ${trusted ? "border-accent/60" : "border-border"}`}
