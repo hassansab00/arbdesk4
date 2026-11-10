@@ -24,6 +24,7 @@ import wx_city_calibration as cal
 import city_model_selection as selector
 import early_forecast_audit
 import early_city_adaptation as early
+import predictive_regression
 
 JOB = 'P7.10_city_prediction_validation'
 HORIZONS = ('day_ahead', *CHECKPOINTS)
@@ -494,6 +495,7 @@ def reports(rows,cities,reviews,states,now,model_version=None,selections=(),earl
                     why=diagnostic(chosen,[r for r in reviews if r['city_key']==city]),
                     paired_audit=paired_diagnostic(chosen),
                     recent_dates=daily_scores(chosen),
+                    regression=predictive_regression.audit(chosen,local_target) if horizon!='overall' else None,
                     early_comparison=early_forecast_audit.summarize(chosen),
                     early_adaptation=[dict(s,active=early.usable(s,local_target,s['model_version'],s['phase']),
                         effective_strength=s['strength'] if early.usable(s,local_target,s['model_version'],s['phase']) else early.PRIOR)
@@ -651,10 +653,14 @@ def run(score_only=False, now=None):
             challenger_available_at=(shadow or {}).get('available_at'),
             challenger_model_sha256=(shadow or {}).get('model_sha256'))
     publishing=time.monotonic()
+    alerts=[dict(city=r['city_key'],checkpoint=r['checkpoint'],flags=r['report']['regression']['flags'])
+            for r in data if r['scope']=='served' and r['report'].get('regression',{} )
+            and r['report']['regression']['flags']]
+    detail['regression_watch']=dict(policy=predictive_regression.POLICY,attention_cells=len(alerts),alerts=alerts)
     detail['prepare_seconds']=round(publishing-started-detail['load_seconds'],3)
     n=publish_reports(data,prior_reports,detail)
     detail['publish_seconds']=round(time.monotonic()-publishing,3)
-    log_run(JOB,'ok',n,detail)
+    log_run(JOB,'attention' if alerts else 'ok',n,detail)
     print(json.dumps(dict(rows=n,**detail)),flush=True)
     return detail
 

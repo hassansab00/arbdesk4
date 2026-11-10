@@ -102,6 +102,14 @@ export default function CityPredictionValidation({ cities, moment, setMoment }: 
           <td className="whitespace-nowrap px-2 py-2">{num(r.metrics.log_loss)} / {num(r.metrics.brier)}</td>
           <td className="px-2 py-2" title="Weighted absolute difference between stated confidence and hit rate, grouped by confidence; smaller is better. This is not the signed calibration gap on the cards.">{pct(r.calibration_gap)}</td>
           <td className="min-w-72 px-2 py-2"><p>{strict ? (r.n ? 'Timing-qualified subset · compare the same horizon and city' : 'Awaiting timing-qualified settled calls') : evidenceWords(r)}</p>
+            {!strict && r.regression && <p className={`mt-1 ${r.regression.flags.length ? 'text-warn' : 'text-muted'}`}>
+              Regression watch: {r.regression.flags.length ? r.regression.flags.map(f=>f.replaceAll('_',' ')).join(' · ')
+                : r.regression.comparable_dates_ready ? 'no threshold triggered' : 'insufficient comparable dates'}.
+              {' '}Last 7 completed local dates: {r.regression.recent.hits}/{r.regression.recent.n} correct;
+              {' '}previous 14: {r.regression.prior.hits}/{r.regression.prior.n}.
+              {!!r.regression.recent.pending && <> {r.regression.recent.pending} known pending excluded.</>}
+              {' '}This is a descriptive alert; recipe changes and incomplete coverage require investigation.
+            </p>}
             {!strict && r.observed_peak_timing && <p className="mt-1 text-muted">
               Before reviewed high: {r.observed_peak_timing.before.hits}/{r.observed_peak_timing.before.n} correct · {pct(r.observed_peak_timing.before.hit_rate)}.
               {r.observed_peak_timing.before_60m && <> At least 1 h before: {r.observed_peak_timing.before_60m.hits}/{r.observed_peak_timing.before_60m.n} · {pct(r.observed_peak_timing.before_60m.hit_rate)}.</>}
