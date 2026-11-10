@@ -19,6 +19,7 @@ import CityCards from "@/components/CityCards";
 import CalibrationStatus from "@/components/CalibrationStatus";
 import FocusFilter, { type FocusSet } from "@/components/FocusFilter";
 import { selectedKeys, type HindsightRow, type Scope } from "@/lib/focus";
+import { recentReliability, type RecentHit } from "@/lib/recentReliability";
 import type { StatusRow } from "@/lib/cityCards";
 import { Freshness, FreshnessRow } from "@/components/Provenance";
 import { Empty, LineChart, Scatter } from "@/components/charts";
@@ -212,6 +213,17 @@ export default function PredictivePage() {
         .range(from, to), HINDSIGHT_MAX),
     [], 1800000, HINDSIGHT_MAX
   );
+  // Compact, independently refreshed frozen before-day results. Reading the
+  // whole historical hindsight table on each refresh was both stale and costly.
+  const recentQ = useQuery<RecentHit[]>(
+    () => supabase.from("v_city_hit_history")
+      .select("city_key,for_date,model_call,market_call,model_hit,market_hit,head_to_head")
+      .gte("for_date", new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10))
+      .order("for_date", { ascending: false }).order("city_key").limit(800),
+    [], 300000, 800
+  );
+  const recent = useMemo(() => recentReliability(recentQ.data ?? [], selected),
+    [recentQ.data, selected]);
   // Each active city's status for its local today and tomorrow, at every moment.
   const statusQ = useQuery<StatusRow[]>(
     () => supabase.from("v_city_status")
@@ -605,10 +617,7 @@ export default function PredictivePage() {
         <div className="mt-2">
           <FreshnessRow relations={["cities", "fact_forecast_outcome", "weather_forecasts", "bands", "markets", "edges", "band_probabilities", "fact_signal_outcome"]} />
         </div>
-        {/* WHETHER THE NUMBERS BELOW ARE CALIBRATED AT ALL. They are not, and
-            nothing on this page said so: a map has been fitted every day since
-            16 Sep and withheld every time, because the gate wants 30 distinct
-            settlement dates and the desk has 8. */}
+        {/* The global map and each city's current learner have separate gates. */}
         <div className="mt-3">
           <CalibrationStatus />
         </div>
@@ -620,6 +629,29 @@ export default function PredictivePage() {
         <FocusFilter scope={scope} setScope={setScope} custom={custom} setCustom={setCustom}
         moment={moment} setMoment={setMoment} cities={cities} focus={focus} shown={selected.length} />
       </div>
+
+      <section aria-label="Recent prediction reliability" className="rounded border border-warn/50 bg-warn/10 p-3 text-xs">
+        <h2 className="font-semibold">Recent day-ahead prediction quality</h2>
+        {recentQ.loading || recentQ.error || recentQ.truncated || !recent.n ? (
+          <p className="mt-1 text-warn">
+            {recentQ.loading ? "Loading the frozen result record."
+              : recentQ.error || recentQ.truncated ? "Result record unavailable or incomplete; recent accuracy cannot be verified."
+              : "No matched settled calls for this city selection yet."}
+          </p>
+        ) : (
+          <p className="mt-1 leading-relaxed">
+            {recent.dates.length} latest dates with settled calls ({recent.dates[recent.dates.length - 1]}–{recent.dates[0]}):
+            model <b>{recent.modelHits}/{recent.n}</b> ({Math.round(100 * recent.modelHits / recent.n)}%),
+            saved market favourite <b>{recent.marketHits}/{recent.n}</b> ({Math.round(100 * recent.marketHits / recent.n)}%) on the same calls.
+            {recent.disagreements > 0 && <>{" "}When the picks differed, model <b>{recent.modelDisagreementHits}/{recent.disagreements}</b>,
+              market <b>{recent.marketDisagreementHits}/{recent.disagreements}</b>.</>}
+            {recent.marketHits > recent.modelHits
+              ? " The model trails this benchmark; treat divergent picks as watch, not validated opportunities."
+              : " This short window alone does not establish a durable advantage."}
+            {" "}The newest date may still have pending cities. These are frozen before-day picks, not live reprices or returns.
+          </p>
+        )}
+      </section>
 
       <div id="predictive-settlements" className="scroll-mt-20" tabIndex={-1}>
         <SettlementStatus cities={cities.filter(c => selectedSet.has(c.city_key))}
