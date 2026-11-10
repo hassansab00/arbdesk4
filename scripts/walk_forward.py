@@ -135,8 +135,10 @@ def gate(diffs, min_days=MIN_GATE_DAYS, seed=0):
     elif applied:
         why = f"gain {mean:+.4f} RPS a day, 90% interval {lo:+.4f} to {hi:+.4f} over {n} day(s)"
     else:
+        verdict = ("the interval is entirely below zero; candidate worsens RPS"
+                   if hi < 0 else "the interval reaches zero")
         why = (f"gain {mean:+.4f} RPS a day, 90% interval {lo:+.4f} to {hi:+.4f} over {n} "
-               "day(s) - the interval reaches zero, stays in shadow")
+               f"day(s) - {verdict}, stays in shadow")
     return {"n": n, "mean": mean, "lo": lo, "hi": hi, "applied": applied, "reason": why}
 
 

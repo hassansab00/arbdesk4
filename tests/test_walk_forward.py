@@ -57,3 +57,16 @@ def test_the_gate_needs_the_whole_interval_above_zero():
 
 def test_one_date_is_one_piece_of_evidence():
     assert w.per_day([("2026-09-01", 1.0), ("2026-09-01", 3.0), ("2026-09-02", 0.0)]) == [2.0, 0.0]
+
+
+@pytest.mark.parametrize("bounds, explanation", [
+    ((-0.09, -0.02), "entirely below zero; candidate worsens RPS"),
+    ((-0.09, 0.02), "reaches zero"),
+    ((-0.09, 0.0), "reaches zero"),
+])
+def test_shadow_reason_distinguishes_harm_from_uncertainty(monkeypatch, bounds, explanation):
+    monkeypatch.setattr(w, "bootstrap_interval", lambda diffs, seed: bounds)
+    result = w.gate([-0.04] * 24)
+    assert result["applied"] is False
+    assert explanation in result["reason"]
+    assert "stays in shadow" in result["reason"]
