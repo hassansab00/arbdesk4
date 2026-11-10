@@ -264,6 +264,9 @@ def test_repeat_runs_replace_derived_answers_and_preserve_original_calls(tmp_pat
     metadata.parent.mkdir(parents=True)
     metadata.write_text(json.dumps(dict(version='wxrd-v3',model_sha256='a'*64,fit_last='2026-10-11')))
     monkeypatch.setattr(v,'ROOT',tmp_path)
+    # This fixture has no archive. Supply a successful empty history explicitly;
+    # an unavailable archive is now a failed learning run, tested separately.
+    monkeypatch.setattr(v,'older_predictor_calls',lambda *a:([],[]))
     original=call()
     input_version='wxrd3:v3:'+('a'*12)
     if contract_station:
@@ -332,6 +335,33 @@ def test_repeat_runs_replace_derived_answers_and_preserve_original_calls(tmp_pat
     assert all('merge-duplicates' in mode for _,mode in modes)
     assert original==preserved
     assert len(list((tmp_path/'data/eval/wxpredict/city_calibration').glob('*.json')))==2
+
+
+@pytest.mark.parametrize('failure',[OSError('unavailable'),ValueError('hash mismatch'),KeyError('through')])
+def test_missing_or_corrupt_history_cannot_refit_or_refresh_state(tmp_path,monkeypatch,failure):
+    import json
+    metadata=tmp_path/'data/models/wxrd/wxrd-v3_remaining.json'
+    metadata.parent.mkdir(parents=True)
+    metadata.write_text(json.dumps(dict(version='wxrd-v3',model_sha256='a'*64,fit_last='2026-10-11')))
+    monkeypatch.setattr(v,'ROOT',tmp_path)
+    monkeypatch.setattr(v,'get_cities',lambda **kw:CITIES)
+    monkeypatch.setattr(v,'rest_all',lambda *a,**kw:[])
+    def unavailable(*a,**kw):raise failure
+    monkeypatch.setattr(v,'older_predictor_calls',unavailable)
+    def forbidden(*a,**kw):raise AssertionError('incomplete history reached a fit or write')
+    monkeypatch.setattr(v.cal,'fit',forbidden)
+    monkeypatch.setattr(v.selector,'fit',forbidden)
+    monkeypatch.setattr(v.early,'fit',forbidden)
+    monkeypatch.setattr(v,'upsert_replace',forbidden)
+    monkeypatch.setattr(v,'publish_reports',forbidden)
+    logs=[]
+    monkeypatch.setattr(v,'log_run',lambda *a:logs.append(a))
+    with pytest.raises(RuntimeError,match='calibration state preserved') as caught:
+        v.run(now=NOW)
+    assert caught.value.__cause__ is failure
+    assert logs[-1][1:3]==('error',0)
+    assert logs[-1][3]['calibration_state_preserved'] is True
+    assert not (tmp_path/'data/eval/wxpredict/city_calibration').exists()
 
 
 def test_raw_comparison_keeps_misses_when_baseline_is_the_served_predictor():
