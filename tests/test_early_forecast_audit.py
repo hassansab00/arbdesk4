@@ -76,11 +76,14 @@ def test_tick_attaches_the_pair_only_to_the_original_evening_call():
     old, _ = tick.build_row(*args)
     captured, why = tick.build_row(*args, bands=bands, unit='C')
     assert why is None
-    assert captured.pop('predictive_context')['early_forecast_audit']['policy'] == audit.POLICY
+    context = captured['predictive_context']
+    assert context.pop('early_forecast_audit')['policy'] == audit.POLICY
+    if not context:
+        captured.pop('predictive_context')
     assert captured == old, 'capture metadata must not change a call or its probabilities'
     morning = list(args)
     morning[2] = 'morning'
-    assert 'predictive_context' not in tick.build_row(*morning, bands=bands, unit='C')[0]
+    assert 'early_forecast_audit' not in tick.build_row(*morning, bands=bands, unit='C')[0].get('predictive_context', {})
 
 
 def test_valid_blocked_forecasts_still_collect_comparisons_without_changing_trading_gates():
