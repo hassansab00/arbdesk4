@@ -25,9 +25,10 @@ import city_model_selection as selector
 import early_forecast_audit
 import early_city_adaptation as early
 import predictive_regression
+import ensemble_early
 
 JOB = 'P7.10_city_prediction_validation'
-HORIZONS = ('day_ahead', *CHECKPOINTS)
+HORIZONS = tuple(dict.fromkeys(('day_ahead', *CHECKPOINTS)))
 OVERALL = tuple(h for h in HORIZONS if h != 'postpeak_1h')
 SCOPES = ('served', 'wxrd3', 'wxrd3_raw')
 ROOT = Path(__file__).resolve().parents[1]
@@ -323,6 +324,9 @@ def collect(checkpoints, outcomes, day_ahead, cities, peaks, now):
                  raw_model_version=(p.get('predictive_context') or {}).get('raw_model_version') or p.get('priced_from'),
                  timing=capture_timing(p,c),
                  paired_context=p.get('predictive_context') or {},probs=probs,
+                 ensemble_packet=(p.get('predictive_context') or {}).get('ensemble_early'),
+                 ensemble_capture=(p.get('predictive_context') or {}).get('ensemble_capture'),
+                 station=p.get('station'),inputs_ok=p.get('inputs_ok'),
                  frozen_at=p.get('frozen_at'),settled_at=f.get('settled_at') if f else None,
                  label_received_at=f.get('banked_at') if f else None,
                  raw_probs=p.get('raw_probs'),baseline_probs=p.get('baseline_probs'),winner=winner)
@@ -337,6 +341,8 @@ def collect(checkpoints, outcomes, day_ahead, cities, peaks, now):
         out.append(r)
     for p in day_ahead:
         c=city_of.get(p['city_key'])
+        if (p['city_key'],p['for_date'],'day_ahead') in first:
+            continue  # a real frozen call owns its cohort, including a pending call
         if not c or not p.get('called_at') or p.get('hit') is None:
             continue
         start=dt.datetime.combine(dt.date.fromisoformat(p['for_date']),dt.time(),ZoneInfo(c['timezone']))
@@ -502,6 +508,11 @@ def reports(rows,cities,reviews,states,now,model_version=None,selections=(),earl
                         for s in states if s.get('policy') == early.POLICY and s['city_key'] == city
                         and scope == 'served' and horizon in (s['phase'],'overall')],
                     active_model_version=active_version,
+                    ensemble=[ensemble_early.summary(s) for s in states if s.get('policy')==ensemble_early.POLICY
+                        and s['city_key']==city and s['phase']==horizon and scope=='served'],
+                    ensemble_coverage=dict(calls=len(chosen),captured=sum(bool(r.get('ensemble_packet')) for r in chosen),
+                        missing=dict(Counter((r.get('ensemble_capture') or {}).get('reason','no original ensemble packet')
+                            for r in chosen if not r.get('ensemble_packet')))),
                     learning=[dict(s,active=cal.usable(s,local_target,active_version),
                                    readiness=(cal.readiness(s['train_dates'],s['validation_dates'],
                                        s.get('priors') or cal.PRIORS,s.get('pool_rows'),s.get('pool_dates'))
@@ -637,16 +648,20 @@ def run(score_only=False, now=None):
         detail['early_history'] = detail['learning_history']
         early_fitted=early.fit(collect(older_p+p,older_outcomes+outcomes,[],cities,{},now),now.date(),states)
         fitted.extend(early_fitted)
+        ensemble_fitted=ensemble_early.fit(collect(older_p+p,older_outcomes+outcomes,[],cities,{},now),now.date(),states)
+        fitted.extend(ensemble_fitted)
         path=ROOT/'data/eval/wxpredict/city_calibration'/f'{now.date()}.json'
         path.parent.mkdir(parents=True,exist_ok=True)
-        path.write_text(json.dumps(dict(as_of=now.isoformat(),policy=cal.POLICY,states=fitted,model_selection=selections),sort_keys=True,indent=2)+'\n')
+        public_states=[ensemble_early.summary(s) if s.get('policy')==ensemble_early.POLICY else s for s in fitted]
+        path.write_text(json.dumps(dict(as_of=now.isoformat(),policy=cal.POLICY,states=public_states,model_selection=selections),sort_keys=True,indent=2)+'\n')
         upsert_replace('derived_wx_city_calibration',[dict(model_version=s['model_version'],city_key=s['city_key'],phase=s['phase'],as_of=s['as_of'],version=s['version'],state=s) for s in fitted], 'model_version,city_key,phase')
-        states=[s for s in states if s['model_version'] not in versions and s.get('policy') != early.POLICY]+fitted
+        states=[s for s in states if s['model_version'] not in versions and s.get('policy') not in (early.POLICY,ensemble_early.POLICY)]+fitted
         detail.update(calibration_cells=len(fitted),decisions=dict(Counter(s['decision'] for s in fitted)),
                       eligible_learning_calls=sum(len(cal.eligible_rows(learning,now.date(),v)) for v in versions),
                       input_versions=list(versions))
         detail.update(selection_cells=len(selections),selection_decisions=dict(Counter(s['decision'] for s in selections)))
         detail.update(early_adaptation_cells=len(early_fitted),early_adaptation_decisions=dict(Counter(s['decision'] for s in early_fitted)))
+        detail.update(ensemble_cells=len(ensemble_fitted),ensemble_decisions=dict(Counter(s['decision'] for s in ensemble_fitted)))
     data=reports(collect(p,outcomes,da,cities,{},now),cities,reviews,states,now,version,selections,early_states,
                  model_versions=active_versions)
     from wxpredict import cycle_registry

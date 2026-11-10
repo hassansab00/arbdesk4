@@ -39,7 +39,7 @@ def record(report, meta=None, root=None):
         if (report.get('reasons') or report.get('nll_gain_ci90_by_date',[0])[0]<=0
                 or report.get('model_sha256')!=meta['model_sha256'] or report.get('changes_serving') is not False):
             raise ValueError('current candidate lacks independent acceptance evidence')
-        if (meta.get('recipe') != 'current-band-v1' or meta['fit_last'] >= report['evaluation_first']
+        if (meta.get('recipe') not in ('current-band-v1','current-city-ensemble-v2') or meta['fit_last'] >= report['evaluation_first']
                 or not re.fullmatch(r'wxrd-auto-[0-9]{8}-[a-f0-9]{12}', meta['version'])
                 or meta.get('evaluation_report')!=REPORTS+'/'+report['night']+'.json'):
             raise ValueError('invalid current candidate lineage')
@@ -81,7 +81,7 @@ def selected(root=None):
     if hashlib.sha256(raw).hexdigest() != pointer['metadata_sha256']:
         raise ValueError('current candidate metadata hash mismatch')
     meta = json.loads(raw)
-    if (meta['model_sha256'] != pointer['model_sha256'] or meta.get('recipe') != 'current-band-v1'
+    if (meta['model_sha256'] != pointer['model_sha256'] or meta.get('recipe') not in ('current-band-v1','current-city-ensemble-v2')
             or meta.get('blend') != .10):
         raise ValueError('current candidate weight or recipe mismatch')
     rel=meta.get('evaluation_report','')
@@ -103,4 +103,8 @@ def load(meta, budget_s=10):
     from wxpredict import model_artifacts
     path = model_artifacts.ensure(meta, budget_s=budget_s)
     with gzip.open(path, 'rt') as fh:
-        return lgb.Booster(model_str=fh.read())
+        raw=fh.read()
+    if meta.get('recipe')=='current-city-ensemble-v2':
+        from wxpredict import current_model
+        return current_model.restore(raw)
+    return lgb.Booster(model_str=raw)

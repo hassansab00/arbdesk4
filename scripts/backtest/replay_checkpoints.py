@@ -65,7 +65,8 @@ from model_promotion import bootstrap_interval  # noqa: E402
 from probability_engine import DEFAULT_Q_DOWN, DEFAULT_Q_UP  # noqa: E402
 
 CONTRACT = "s10-contract-v1"
-CHECKPOINTS = [c for c in tick.CHECKPOINTS if c != "d1_eve"]
+# Frozen s10-contract-v1 replay never reconstructs newly added early calls.
+CHECKPOINTS = ["morning", "noon", "prepeak_2h", "prepeak_1h", "postpeak_1h"]
 MARKET_MAX_AGE_S = 3 * 3600
 MARKET_AFTER_S = 3600
 THRESHOLDS = (0.4, 0.5, 0.6)

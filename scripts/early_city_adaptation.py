@@ -75,7 +75,7 @@ def prepare(markets, cities, now=None, read=None):
             continue
         local = now.astimezone(ZoneInfo(c['timezone']))
         day = dt.date.fromisoformat(str(m['resolution_date']))
-        for checkpoint, offset, hour in [('d1_eve', -1, 18), ('morning', 0, 9)]:
+        for checkpoint, offset, hour in [('day_ahead',-1,9),('d1_eve', -1, 18), ('morning', 0, 9)]:
             scheduled = dt.datetime.combine(day+dt.timedelta(days=offset), dt.time(hour), ZoneInfo(c['timezone']))
             if dt.timedelta(0) <= local-scheduled <= dt.timedelta(minutes=75):
                 _contexts[(m['city_key'], str(day))] = dict(checkpoint=checkpoint,
@@ -84,12 +84,20 @@ def prepare(markets, cities, now=None, read=None):
                     rules_sha256=m.get('rules_sha256'),rules_observed_at=now.isoformat(),rules_received_at=m.get('rules_received_at'))
     if not _contexts:
         return
+    import ensemble_early
+    ensemble_early.prepare(read,now,[])
     try:
-        cells = read('derived_wx_city_calibration', [('select','state'),('model_version','like.'+PREFIX+'*'),
+        cells = read('derived_wx_city_calibration', [('select','state'),
+                     ('or','(model_version.like.'+PREFIX+'*,model_version.like.'+ensemble_early.PREFIX+'*)'),
                      ('computed_at','lte.'+now.isoformat())], order='model_version.asc,city_key.asc,phase.asc', page_size=1000)
-        _states = {(s['state']['city_key'], s['state']['phase'], s['state']['model_version']): s['state'] for s in cells}
+        ensemble_early.prepare(read,now,cells)
+        _states = {(s['state']['city_key'], s['state']['phase'], s['state']['model_version']): s['state'] for s in cells if s['state'].get('policy')==POLICY}
     except Exception:
         _states = {}  # A failed learning-state read cannot block or alter pricing.
+
+
+def capture_context(city,target):
+    return _contexts.get((city,str(target)))
 
 
 def usable(state, target, model_version, checkpoint):
@@ -118,7 +126,7 @@ def distribution(pe, centre, sigma, unit, bands, floor, q_down, q_up):
 def price(pe, city, target, rows, bands, unit, raw_c, corrected_c, sigma, floor, q_down, q_up, recipe):
     """Return a pre-receipt packet and a replacement only with fresh validation."""
     context = _contexts.get((city, str(target)))
-    if not context or context['unit'] != unit:
+    if not context or context['unit'] != unit or context['checkpoint'] not in CHECKPOINTS:
         return None, None
     model_version = family(context['contract'], context['station'], unit, recipe)
     if not model_version or not all(math.isfinite(float(x)) for x in (raw_c, corrected_c, sigma)) or sigma <= 0:

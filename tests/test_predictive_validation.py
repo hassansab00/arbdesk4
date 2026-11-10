@@ -407,3 +407,15 @@ def test_displayed_active_parameters_expire_on_the_city_calendar():
              if r['checkpoint']=='noon' and r['scope']=='served')
     assert not row['model_selection']['effective']['active']
     assert not row['learning'][0]['active'] and row['learning'][0]['effective_params']==v.cal.IDENTITY
+
+
+@pytest.mark.parametrize('settled',[False,True])
+def test_real_day_ahead_call_owns_cohort_over_legacy_summary_even_when_pending(settled):
+    p=call(checkpoint='day_ahead',local_decision_time='2026-10-15T09:00:00',
+           decided_at='2026-10-15T09:36:00Z',frozen_at='2026-10-15T09:36:01Z')
+    legacy=dict(city_key='city',for_date='2026-10-16',called_at='2026-10-15T10:00:00Z',
+                hit=True,predicted_pct=100,prob_on_winner=1)
+    rows=v.collect([p],[outcome()] if settled else [],[legacy],CITIES,{},NOW)
+    assert len(rows)==1 and rows[0]['verified'] is True
+    assert rows[0]['settled'] is settled
+    assert rows[0]['metrics']['hit']==0 if settled else rows[0]['metrics'] is None

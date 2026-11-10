@@ -211,14 +211,14 @@ def test_real_fresh_forecast_fit_and_inference_preserve_labels_and_probability_b
     assert model_artifacts.validate_blob(pathlib.Path(path).read_bytes(),meta['model_sha256'])
     assert any('current_' in name for name in meta['features'])
     assert not any('mkt_' in name or name in decision_inputs.LABELS for name in meta['features'])
-    import lightgbm as lgb
-    booster=lgb.Booster(model_str=gzip.decompress(pathlib.Path(path).read_bytes()).decode())
+    booster=model.restore(gzip.decompress(pathlib.Path(path).read_bytes()).decode())
     old=model.predict(booster,test[:1])
     changed=copy.deepcopy(test[:1]);changed[0]['winner']=0
-    changed[0]['market_probs']={'a':1.,'b':0.,'c':0.}
     changed[0]['row']['future_outcome']=99
     changed[0]['row']['label_unit']=-99
     assert model.predict(booster,changed)==old
+    assert 'saved_market_probability' in meta['features']
+    assert any(name.startswith('ensemble_weight_') for name in meta['features'])
     assert old[0]['a']==0 and sum(old[0].values())==pytest.approx(1)
 
 
@@ -309,3 +309,34 @@ def test_forward_validation_uses_frozen_predictions_and_keeps_missing_calls(monk
     assert bad['decision']=='forward rejected' and bad['coverage']<1
     assert bad['expected_first_calls']==len(rows)
     assert cycle.forward(meta,available,'2026-11-05')['decision']=='wait forward'
+
+
+def test_incumbent_gain_that_still_loses_to_saved_market_cannot_qualify():
+    p,train,test=ready_fixture()
+    for r in test:r['market_probs']={'a':0.,'b':.1,'c':.9}
+    predictions=[{'a':0.,'b':.45,'c':.55} for r in test]
+    result=cycle.assess(test,predictions,len(test),p['evaluation_first'],p['evaluation_last'],train)
+    assert result['decision']=='reject'
+    assert result['market_gain_lower90_by_date']<0
+    assert result['market_regressed_checkpoints']
+    assert all(not r['supported'] for r in result['city_horizons'])
+    assert all(r['log_loss_gain_lower90']>0 for r in result['city_horizons'])
+
+
+def test_old_target_date_with_late_label_cannot_train_validation_model(tmp_path):
+    p,train,test=ready_fixture()
+    train[0]['label_received_at']=test[-1]['label_received_at']
+    with pytest.raises(ValueError,match='labels unavailable'):
+        cycle.fit_and_evaluate(p,train,test,str(tmp_path))
+
+
+def test_readiness_excludes_labels_received_during_validation(monkeypatch):
+    p,train,test=ready_fixture()
+    train[0]['label_received_at']=test[-1]['label_received_at']
+    def load(first,last,through):
+        xs=train if first==p['train_first'] else test
+        return xs,dict(first_calls=len(xs),excluded={})
+    monkeypatch.setattr(cycle,'load_window',load)
+    report,eligible,_=cycle.prepare(p)
+    assert train[0] not in eligible
+    assert report['training_availability']['excluded_by_reason']['label_unavailable_at_validation_start']==1

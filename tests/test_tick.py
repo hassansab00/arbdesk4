@@ -84,8 +84,9 @@ def test_a_checkpoint_is_due_for_75_minutes_after_its_time():
 def test_day_ahead_research_gets_rules_on_its_own_local_clock(now,target,zone):
     market = dict(market_id='research',city_key='city',resolution_date=target)
     assert tick.temperature_rule_days(at(now),[market,market],{'city':zone}) == {('city',target)}
-    # This evidence preflight must not create an extra served checkpoint.
-    assert not tick.due_checkpoints(at(now),[market],{'city':zone},{},set())[0]
+    due=tick.due_checkpoints(at(now),[market],{'city':zone},{},set())[0]
+    assert len(due)==1 and due[0][2]=='day_ahead'
+    assert due[0][3].hour==9 and due[0][3].date()<dt.date.fromisoformat(target)
 
 
 def test_day_ahead_rule_window_does_not_backdate_or_fetch_unrelated_days():
@@ -901,7 +902,7 @@ def test_rule_recovery_precedes_authority_capture_and_failures_stay_visible(worl
     assert world['written'], 'a recovery failure must not suppress independent valid calls'
 
 
-def test_tick_recovers_day_ahead_research_rules_without_creating_served_calls(world,monkeypatch):
+def test_tick_recovers_day_ahead_rules_and_freezes_the_real_pre_day_call(world,monkeypatch):
     import market_rules
     needed=[]
     def recover(markets,keys):
@@ -910,4 +911,6 @@ def test_tick_recovers_day_ahead_research_rules_without_creating_served_calls(wo
     monkeypatch.setattr(market_rules,'recover',recover)
     tick.run(now=at('2026-09-24T13:36'))
     assert needed == [{('nyc','2026-09-25')}]
-    assert not world['written'], 'research preflight does not add a served horizon'
+    rows=[r for table,batch,*_ in world['written'] if table=='prediction_checkpoints' for r in batch]
+    assert len(rows)==1 and rows[0]['checkpoint']=='day_ahead'
+    assert rows[0]['local_decision_time']=='2026-09-24T09:00'

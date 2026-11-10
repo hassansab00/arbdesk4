@@ -167,6 +167,7 @@ SQL_RECORD = {
 }
 
 MIGRATION_RECORD = {
+    "supabase/migrations/20261110223147_seven_source_day_ahead_checkpoint.sql": "Adds the pre-day city-clock slot while preserving immutable original history and existing trigger guards; the active capture roster is selected by Tick.",
     "supabase/migrations/20261107090006_temperature_score_pending_markets.sql": "Scores original closed research calls with scoped venue history; retired-city originals are preserved and eligible, never discarded by the active roster.",
     "supabase/migrations/20261106214644_temperature_exact_comparison_receipts.sql": "Preserves exact comparison receipts for a fixed registered research cohort; active is enforced at capture without erasing original history.",
     "supabase/migrations/20261104171359_isolated_temperature_candidate.sql": "Fixed registered cohort, immutable research history, and private fits; active is enforced at capture, never used to erase scoring history.",

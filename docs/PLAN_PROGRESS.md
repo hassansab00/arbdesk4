@@ -3,6 +3,16 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Integrated city ensemble build — 11 Nov
+
+The build in `docs/CITY_ENSEMBLE_BUILD.md` connects all-city pre-day capture,
+seven-source early candidates, private recency-weighted city learning,
+intraday source/weather/history/market features, stricter incumbent AND market
+gates, and visible capture/readiness status. Original calls and existing fixed
+trials are preserved. Production promotion and accuracy claims remain gated
+on later original forward calls, not source deployment. Acceptance results
+are recorded in the PR; the next normal capture/learning runs remain required.
+
 ## Learning history integrity — 10 Nov
 
 Calibration must not fit or replace state after the verified older-history

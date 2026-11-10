@@ -189,6 +189,8 @@ def plan(markets, peaks, date_from, date_to, ladders):
         day = m["date"]
         times = tick.decision_times(day, m["tz"], peaks.get((m["city"], day.month)))
         for cp in tick.CHECKPOINTS:
+            if cp == "day_ahead":
+                continue  # absent from the original frozen replay contract
             if cp in times:
                 events.append((int(times[cp][1].timestamp()), 0, "decide", m["market_id"], cp))
         end = dt.datetime.combine(day + dt.timedelta(days=1), dt.time(0), tzinfo=ZoneInfo(m["tz"]))
