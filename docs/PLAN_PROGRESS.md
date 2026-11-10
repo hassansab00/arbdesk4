@@ -3,6 +3,17 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Learning history integrity — 10 Nov
+
+Calibration must not fit or replace state after the verified older-history
+reader fails. Previously its error was recorded and fitting continued on the
+30-day reporting slice. The learner now fails before any fit, state write or
+report refresh; score-only runs retain their independent path. This does not
+relax chronological validation, infer missing inputs or activate held models.
+Current source history was readable during diagnosis; this failure path is not
+established as the cause of the present insufficient-date holds. PR CI and a
+subsequent normal learning run remain acceptance gates.
+
 ## Shared weather forward experiment — 3 Nov
 
 ### Weather-label completeness repair — source checkpoint, not deployed

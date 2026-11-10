@@ -621,6 +621,12 @@ def run(score_only=False, now=None):
             detail['learning_history'] = 'verified mirrored originals plus current original calls'
         except (OSError, ValueError, KeyError) as exc:
             detail['learning_history'] = 'older mirror unavailable: '+type(exc).__name__
+            # A 30-day reporting slice is not a substitute for the verified
+            # learning window. Never refresh/replace fitted state after an
+            # integrity, completeness or I/O failure in that history.
+            detail['calibration_state_preserved'] = True
+            log_run(JOB, 'error', 0, detail)
+            raise RuntimeError('Learning history unavailable; calibration state preserved') from exc
         learning = learning_pairs(older_p+p, older_outcomes+outcomes, cities)
         fitted=[]
         selected=[]
