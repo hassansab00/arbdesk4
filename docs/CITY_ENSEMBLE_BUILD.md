@@ -28,12 +28,17 @@ legacy evidence. A new original call owns its city/date cohort, including a
 pending call: a favourable legacy summary cannot replace it.
 
 Before freeze, `ensemble_early` records seven complete original corrected
-source distributions, the incumbent, a complete two-sided saved market and a
+source distributions, the incumbent, the saved market when complete and comparable, and a
 bounded weighted candidate. Only compatible dated station rules and fresh
 sources qualify. Missing inputs carry a reason and cannot become candidate
 losses. Components use the actual saved ladder, unit, uncertainty and floor.
 The candidate distribution is 80% incumbent, 10% learned source mixture and
-10% saved market; these are declared priors, not optimized on the latest day.
+10% saved market when comparable; without a complete comparable market it is
+90% incumbent and 10% source mixture. These are declared priors, not optimized
+on the latest day. Valid one-sided quotes use the existing Tick mark: the last
+trade bounded by the quoted side. Missing/invalid quotes are never imputed.
+Source learning retains its original packet even when the market is incomplete;
+that call cannot enter the promotion-validation market comparison.
 
 Nightly scoring reuses already-loaded calls/outcomes. City/station/unit/horizon
 weights update from labels available before that night's cutoff, using a
@@ -47,7 +52,7 @@ ladders. Fitted weight values stay in the existing service-only calibration
 store; public reports and nightly source snapshots retain summaries only.
 
 Forward validation requires 20 older independent training dates and at least
-10 later dates inside the fixed 14-day window. Validation uses ORIGINAL
+10 later dates inside the fixed 14-day window. Validation requires a complete comparable saved market and uses ORIGINAL
 candidate ladders frozen before outcomes, whose weights already had 20
 training dates. Candidate hits and Brier may not regress against either the
 incumbent or saved market, and paired-date log-loss gain must have a positive
@@ -106,3 +111,8 @@ This is inspected historical DEVELOPMENT, not untouched prospective evidence,
 not a day-ahead hit rate, and not a promotion. It fails the required training
 history and still loses to the market. It establishes a testable improvement
 hypothesis over the incumbent; the new market gate must keep it held.
+
+Live quote audit on 10 November: eight of ten latest early checkpoints lacked
+two-sided quotes on every band. Such ordinary market structure must not discard
+valid seven-source weather evidence. Research coverage reports source captures
+and comparable market captures separately.

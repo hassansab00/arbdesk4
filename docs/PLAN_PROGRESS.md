@@ -3,6 +3,15 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Sparse market source-learning guard — 11 Nov
+
+Live validation found 8/10 recent early calls lacked two-sided books on every
+band. Valid source evidence must still freeze and train. Complete market
+comparisons use the existing bounded Tick marks; incomplete/invalid markets
+stay uncomparable and cannot enter promotion validation. No original packet or
+production forecast is rewritten. Coverage distinguishes source and market
+availability. The integrated build remains held pending actual forward gains.
+
 ## Integrated city ensemble build — 11 Nov
 
 The build in `docs/CITY_ENSEMBLE_BUILD.md` connects all-city pre-day capture,
