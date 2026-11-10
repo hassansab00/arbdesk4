@@ -228,7 +228,8 @@ function Card({ c, onPick, moment, st, ev, strip, after, showRecord, frozen, fro
   timing:ReturnType<typeof checkpointReference>;timingLoading:boolean;timingError:string|null;
 }) {
   const u = c.unit;
-  const trusted = c.best && !c.best.against_market;
+  const trusted = st?.status === "candidate" && c.best && !c.best.against_market
+    && !c.disagrees && !c.stale && c.market_band !== null;
   return (
     <div className={`cursor-pointer rounded border bg-panel p-3 text-xs hover:border-accent ${trusted ? "border-accent/60" : "border-border"}`}
       onClick={() => onPick?.(c.city_key)}>
@@ -274,6 +275,9 @@ function Card({ c, onPick, moment, st, ev, strip, after, showRecord, frozen, fro
               : <span className="text-good">the same bucket, at {fmtPrice(c.market_price)}</span>
             : <span className="text-muted">no price</span>}
         </div>
+        {c.disagrees && <div className="mt-1 text-[11px] text-warn">
+          Watch: model and market favour different buckets. Check the frozen record and recent matched accuracy before relying on this pick.
+        </div>}
       </div>
       {/* PRICED AGAIN (plan v2.3 P4.9). The pick above is a ladder the hourly
           tick priced after the pricing run, and says so: when, why, and that the
@@ -341,7 +345,7 @@ function Card({ c, onPick, moment, st, ev, strip, after, showRecord, frozen, fro
             </dd>
           </>
         )}
-        <dt className="text-muted">Best trade</dt>
+        <dt className="text-muted">Largest quoted tradeable edge</dt>
         <dd className="tabular-nums">
           {c.best
             ? <><b className={c.best.against_market ? "text-muted" : pnlColor(c.best.edge)}>{fmtPp(c.best.edge)}</b>{" "}
