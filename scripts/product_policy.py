@@ -80,6 +80,7 @@ def source_trial(rows, as_of, state, old, original_rows=None):
         first = as_of+dt.timedelta(days=2)
         last = first+dt.timedelta(days=13)
         trial = dict(policy=POLICY, weights=state['weights'], fit_last=str(as_of-dt.timedelta(days=1)),
+                     weights_sha256=digest(state['weights']),
                      recipe_sha256=source_recipe_hash(),
                      city_key=state['city_key'], checkpoint=state['phase'],
                      training_dates=state['learning_dates'], validation_first=str(first),
@@ -126,12 +127,14 @@ def source_trial(rows, as_of, state, old, original_rows=None):
     if val:
         for name in ('candidate', 'incumbent', 'market'):
             key = 'production_candidate_probs' if name == 'candidate' else name+'_probs'
-            scores = [ensemble.metrics(r['packet'][key], r['winner']) for r in val]
+            scores = [ensemble.metrics(r['packet'].get('production_reference_probs',r['packet'][key])
+                      if name=='incumbent' else r['packet'][key], r['winner']) for r in val]
             proof[name+'_hits'] = sum(s['hit'] for s in scores)
             proof[name+'_brier'] = sum(s['brier'] for s in scores)/len(scores)
             proof[name+'_nll'] = sum(s['log_loss'] for s in scores)/len(scores)
         for ref in ('incumbent', 'market'):
-            gains = [ensemble.metrics(r['packet'][ref+'_probs'], r['winner'])['log_loss']
+            gains = [ensemble.metrics(r['packet'].get('production_reference_probs',r['packet'][ref+'_probs'])
+                     if ref=='incumbent' else r['packet'][ref+'_probs'], r['winner'])['log_loss']
                      - ensemble.metrics(r['packet']['production_candidate_probs'], r['winner'])['log_loss'] for r in val]
             rng = random.Random(20261111)
             proof[ref+'_gain_lower90'] = sorted(sum(rng.choices(gains, k=len(gains)))/len(gains)

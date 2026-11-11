@@ -30,7 +30,7 @@ def release(kind,city,checkpoint,station,unit,identity,payload,proof):
     if reason:raise ValueError(reason)
     r=dict(policy=POLICY,kind=kind,city_key=city,checkpoint=checkpoint,station=station,
            unit=unit,identity=identity,payload=payload,payload_sha256=digest(payload),
-           proof=proof,code_sha256=code_hash())
+           proof=proof,proof_sha256=digest(proof),code_sha256=code_hash())
     r['release_id']=digest(r)
     return r
 
@@ -152,7 +152,7 @@ def apply(city,target,result,bands,unit,books,station,checkpoint=None,now=None):
                 or r['proof']['validation_last']>=str(target)
                 or any(x.get('pricing_eligible',True) is not True for x in rows)):
             return hold('ineligible_station_unit_or_horizon')
-        packet=None
+        packet=None;serving_packet=None
         if r['kind']=='early_ensemble':
             import ensemble_early as ensemble
             import probability_engine as pe
@@ -165,6 +165,12 @@ def apply(city,target,result,bands,unit,books,station,checkpoint=None,now=None):
                 return hold('missing_original_sources_or_rule')
             served=packet.get('production_candidate_probs')
             if served is None:return hold('incomplete_saved_market')
+            serving_packet=packet
+            # Freeze the independently registered NEXT trial too. Its score
+            # benchmark is the incumbent actually served, while its inputs
+            # retain the same original pre-product weather prior.
+            packet=ensemble.capture(row,bands,unit,context,now) or serving_packet
+            packet=dict(packet,production_reference_probs=dict(served))
         else:
             from wxpredict import current_calls as calls,current_model,current_registry
             payload=primary.product_input(city,target,q)
@@ -202,11 +208,18 @@ def apply(city,target,result,bands,unit,books,station,checkpoint=None,now=None):
         provenance=dict(policy=POLICY,city_key=city,target_date=str(target),checkpoint=checkpoint,
                         receipt_id=receipt['receipt_id'],release_id=r['release_id'],kind=r['kind'],
                         recorded_at=receipt['recorded_at'],incumbent_probs=q,served_probs=served,
+                        incumbent_priced_from=next((s[len('priced_from:'):] for s in reasons if s.startswith('priced_from:')),None),
+                        incumbent_calibration_version=(lineage.get('calibration') or {}).get('version'),
                         proof_sha256=digest(r['proof']),payload_sha256=r['payload_sha256'])
         provenance['binding_sha256']=digest(provenance)
         ctx=dict(lineage.get('predictive_context') or {},product_release=provenance)
         if packet:ctx['ensemble_early']=packet
-        _lineage[(city,str(target),checkpoint)]=dict(lineage,predictive_context=ctx,served_probs=served)
+        if serving_packet:
+            ctx['product_ensemble_serving']={k:serving_packet[k] for k in (
+                'policy','model_version','production_trial_id','production_weights_sha256',
+                'production_candidate_probs','incumbent_probs','station','unit','captured_at',
+                'input_oldest','input_newest','rules_received_at','rules_sha256')}
+        _lineage[(city,str(target),checkpoint)]=dict(lineage,calibration=None,predictive_context=ctx,served_probs=served)
         _status['applied']=_status.get('applied',0)+1
         clean=[v for v in reasons if not v.startswith(('priced_from:','calibrated:','postprocessed:','station_correction:',
                     'station_width:','measurement_layer:','trajectory:','same-day-advance-width-prior-v1:'))]

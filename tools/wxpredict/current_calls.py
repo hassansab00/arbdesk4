@@ -116,7 +116,8 @@ def attach(call, packet, captured_at, written_at, outcome=None, through=None, *,
     merged.update(current_hourly_age_h=ages['hourly0'],current_models_age_h=ages['models0'])
     raw = distribution(call['raw_probs'], ids)
     from predictive_product import original_incumbent
-    served = distribution(original_incumbent(call), ids)
+    prior = distribution(original_incumbent(call), ids)
+    served = distribution(call['probs'], ids)
     quotes = object_of(call.get('market')) or {}
     prices = []
     for bid in ids:
@@ -136,7 +137,7 @@ def attach(call, packet, captured_at, written_at, outcome=None, through=None, *,
     record = dict(checkpoint_id=str(call.get('checkpoint_id','')), city=call['city_key'],
                   date=call['target_date'], checkpoint=call['checkpoint'], timezone=timezone,
                   source_identity=identity, version=version, row=merged, band_ids=ids,
-                  incumbent_probs=served, raw_probs=raw,
+                  incumbent_probs=served, pricing_prior_probs=prior, raw_probs=raw,
                   market_probs=dict(zip(ids, (v/sum(prices) for v in prices))),
                   frozen_at=call.get('frozen_at'), input_sha256=packet['row_sha256'],
                   current_sha256=packet['current_forecasts_sha256'],

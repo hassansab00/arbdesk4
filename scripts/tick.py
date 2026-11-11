@@ -333,7 +333,7 @@ def build_row(city, target, checkpoint, local_time, rows, reasons, books, readin
             comparison = early_forecast_audit.freeze(rows, bands, unit)
         if comparison:
             row['predictive_context'] = dict(row.get('predictive_context') or {}, early_forecast_audit=comparison)
-    if lineage and str(row.get('priced_from') or '').startswith('wxrd3:'):
+    if lineage and str(row.get('priced_from') or '').startswith(('wxrd3:','predictive-product:current_forecast:')):
         # The baseline may have a newer station report than the arrival-mode
         # vector. Name the report actually used, never borrow that newer stamp.
         context=lineage.get('predictive_context') or {}

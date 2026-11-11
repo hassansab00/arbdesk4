@@ -146,6 +146,7 @@ def capture(row,bands,unit,context,now=None,diagnostics=None,state_override=None
                 if z<=0:return refuse('no possible production bucket')
                 production={k:v/z for k,v in production.items()}
             packet.update(production_trial_id=trial['id'],production_weights_sha256=digest(pinned),
+                production_reference_probs=dict(row['probs']),
                 production_candidate_probs=distribution(production))
         return packet
     except (KeyError,ValueError,TypeError,OverflowError) as exc:return refuse('invalid original input: '+type(exc).__name__)
@@ -178,6 +179,8 @@ def eligible(rows,as_of,*,diagnostics=None):
                 excluded['label_not_available_at_cutoff']+=1;continue
             from predictive_product import original_incumbent
             if p['incumbent_probs']!=original_incumbent(r) or not (timestamp(p['input_oldest'])<=timestamp(p['input_newest'])<=timestamp(p['captured_at'])<=timestamp(r['frozen_at'])<timestamp(r['settled_at'])<=timestamp(r['label_received_at'])<as_of):
+                excluded['changed_original_or_invalid_chronology']+=1;continue
+            if p.get('production_reference_probs') is not None and p['production_reference_probs']!=r['probs']:
                 excluded['changed_original_or_invalid_chronology']+=1;continue
             if (timestamp(p['captured_at'])-timestamp(p['input_oldest'])).total_seconds()>8*3600:
                 excluded['stale_original_sources']+=1;continue

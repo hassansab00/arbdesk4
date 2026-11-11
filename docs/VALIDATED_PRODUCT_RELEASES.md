@@ -62,3 +62,22 @@ held until their original chronological trials pass. Confirm operation on
 later scheduled runs and newly settled forward calls before claiming repair
 or a production accuracy improvement. Paper-only settings are unchanged; no
 new scheduled job or paid database plan is introduced.
+
+## Native freeze compatibility
+
+The native trigger validates the current private release receipt, expiry and
+revocation, station/unit/source identity and exact served ladder. It preserves
+the primary input/selector lineage and checks that selector against the
+retained pre-product incumbent and its original label. Legacy calls keep their
+original checks. Database regressions insert raw-selected, baseline-selected
+and seven-source product rows through the actual trigger as service_role,
+then reject wrong receipts, revoked/expired releases, changed inputs, altered
+incumbents and post-settlement attempts. Installing the guard leaves existing
+frozen records unchanged.
+
+A served source release keeps a compact serving receipt separately from the
+next independently pinned source trial. New trial calls retain the actual
+served production distribution as their comparison benchmark. Current-model
+records likewise separate the causal pre-product feature prior from the actual
+served incumbent used for scoring. A challenger cannot qualify by beating an
+older weather prior while losing to the current production model.

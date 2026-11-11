@@ -7,7 +7,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  await db.exec(sql);await db.exec(sql);
  const day=(n)=>new Date(Date.now()+n*86400000).toISOString().slice(0,10);
  const proof={policy:'validated-product-v1',original_frozen_calls:true,as_of:day(0),fit_last:day(-30),validation_first:day(-16),validation_last:day(-3),training_dates:20,dates:14,calls:14,expected_calls:14,candidate_hits:10,incumbent_hits:7,market_hits:8,candidate_brier:.2,incumbent_brier:.3,market_brier:.25,candidate_nll:.3,incumbent_nll:.5,market_nll:.4,incumbent_gain_lower90:.1,market_gain_lower90:.05};
- const release={policy:'validated-product-v1',kind:'current_forecast',city_key:'synthetic',checkpoint:'noon',station:'TEST',unit:'C',release_id:'a'.repeat(64),payload_sha256:'b'.repeat(64),code_sha256:'c'.repeat(64),payload:{metadata:{model_sha256:'d'.repeat(64)}},proof};
+ const release={policy:'validated-product-v1',kind:'current_forecast',city_key:'synthetic',checkpoint:'noon',station:'TEST',unit:'C',release_id:'a'.repeat(64),payload_sha256:'b'.repeat(64),code_sha256:'c'.repeat(64),proof_sha256:'d'.repeat(64),payload:{metadata:{model_sha256:'d'.repeat(64)}},proof};
  await db.exec('set role anon');
  assert.deepEqual(await q('select * from predictive_product_status()'),[]);
  await assert.rejects(q('select publish_predictive_product($1)',[release]),/permission denied/);

@@ -319,3 +319,52 @@ def test_private_artifact_roundtrip_checks_both_hashes_size_and_readback(tmp_pat
     with pytest.raises(ValueError,match='reference'):private.ensure(dict(meta,asset_url='https://public.invalid/model'))
     monkeypatch.setattr(private,'MAX_COMPRESSED',1)
     with pytest.raises(ValueError,match='budget'):private.publish(str(path),'synthetic',sha)
+
+
+def test_next_source_trial_captures_while_an_approved_release_is_served(monkeypatch):
+    row,ctx,now,receipt,base=setup_source(monkeypatch)
+    active=trial();active['id']='b'*64
+    active['weights']={m:(.25 if i==0 else .125) for i,m in enumerate(ensemble.MODELS)}
+    active['weights_sha256']=policy.digest(active['weights'])
+    state=dict(policy=ensemble.POLICY,model_version=ensemble.family('TEST','C'),city_key='city',phase='d1_eve',
+               as_of='2026-09-30',weights=active['weights'],learning_dates=20,version='next-weights',production_trial=active)
+    monkeypatch.setattr(ensemble,'_states',{('city','d1_eve',state['model_version']):state})
+    got=product.apply('city',row['target_date'],base,BANDS,'C',row['market'],'TEST',checkpoint='d1_eve',now=now)
+    q={r['band_id']:r['calibrated_prob'] for r in got[0]}
+    frozen,why=tick.build_row('city',row['target_date'],'d1_eve',now,got[0],got[2],row['market'],None,'synthetic',station='TEST',bands=BANDS,unit='C')
+    assert why is None
+    context=frozen['predictive_context'];future=context['ensemble_early']
+    assert context['product_ensemble_serving']['production_trial_id']==trial()['id']
+    assert future['production_trial_id']==active['id']
+    assert future['production_reference_probs']==q
+    assert future['production_candidate_probs']!=q
+    assert future['incumbent_probs']==row['probs']
+
+
+def test_source_gate_does_not_replace_a_stronger_current_production_model():
+    tr=trial();tr.pop('proof');tr['decision']='waiting'
+    rows=[]
+    for i in range(14):
+        r=scored(str(dt.date(2026,9,3)+dt.timedelta(days=i)));r['packet']=r['ensemble_packet']
+        r['packet'].update(production_trial_id=tr['id'],production_weights_sha256=policy.digest(tr['weights']),
+            incumbent_probs=dict(a=.8,b=.1,c=.1),production_reference_probs=dict(a=.05,b=.9,c=.05),
+            production_candidate_probs=dict(a=.1,b=.8,c=.1))
+        rows.append(r)
+    s=dict(city_key='city',phase='d1_eve',model_version=tr['model_version'],weights=tr['weights'],learning_dates=20)
+    verdict=policy.source_trial(rows,dt.date(2026,9,18),s,dict(production_trial=tr))
+    assert verdict['decision']=='rejected'
+    assert verdict['proof']['incumbent_nll']<verdict['proof']['candidate_nll']
+
+
+def test_current_research_scores_actual_served_incumbent_and_keeps_causal_feature_prior():
+    call,packet,_=case();prior=dict(call['probs']);served=dict(a=0.,b=.2,c=.8)
+    p=dict(policy=policy.POLICY,city_key=call['city_key'],target_date=call['target_date'],checkpoint=call['checkpoint'],
+           receipt_id=1,release_id='a'*64,recorded_at=call['target_date']+'T11:00:00Z',
+           incumbent_probs=prior,served_probs=served)
+    p['binding_sha256']=policy.digest(p)
+    call['probs']=served;call['predictive_context']['product_release']=p
+    record,why=current_calls.attach(call,packet,call['target_date']+'T12:00:01Z',call['target_date']+'T12:00:01Z')
+    assert why is None
+    assert record['incumbent_probs']==served and record['pricing_prior_probs']==prior
+    x,*_=current_model.matrix([record])
+    assert list(x['saved_incumbent_probability'])==[prior[k] for k in record['band_ids']]
