@@ -185,6 +185,12 @@ def assess(records, predictions, expected, first, last, training=(), blend=None)
 
 
 def fit_and_evaluate(p, train, test, work):
+    source_units={}
+    for row in [*train,*test]:
+        identity=row['source_identity'];unit=row['row']['unit']
+        if identity in source_units and source_units[identity]!=unit:
+            raise ValueError('source unit changed across chronological cohorts')
+        source_units[identity]=unit
     ta=availability(train,p['training_availability']['input_coverage'],p['train_first'],p['fit_last'],True)
     va=availability(test,p['evaluation_availability']['input_coverage'],p['evaluation_first'],p['evaluation_last'])
     if p['decision']!='ready' or not ta['ready'] or not va['ready']:
@@ -211,7 +217,7 @@ def fit_and_evaluate(p, train, test, work):
     for r in train:
         counts[r['source_identity']+'|'+r['checkpoint']].add(r['date'])
     meta = dict(version=model_id,model_sha256=sha,recipe=model.RECIPE,blend=model.BLEND,
-                fit_last=p['fit_last'],features=booster.feature_name(),parameters=model.PARAMS,
+                fit_last=p['fit_last'],source_units=source_units,features=booster.feature_name(),parameters=model.PARAMS,
                 seed=model.SEED,rounds=model.ROUNDS,training_calls=len(train),
                 training_dates={k:len(v) for k,v in sorted(counts.items())},
                 evaluation_report=registry.REPORTS+'/'+p['night']+'.json')
@@ -318,7 +324,7 @@ def main(argv=None):
         print(json.dumps(report));return 0
     fitted=None
     if ready:
-        from wxpredict import model_artifacts
+        from wxpredict import private_artifacts as model_artifacts
         work=os.path.join(common.ROOT,'.cache/current-forecast',night)
         report,meta,weight=fit_and_evaluate(report,train,test,work)
         if report['decision']=='accept shadow':
@@ -327,11 +333,14 @@ def main(argv=None):
     if saved is None:
         registry.record(report,fitted)
     if os.environ.get('SUPABASE_URL'):
+        from wxpredict import product_promotion
+        production=product_promotion.publish(common.ops().rpc)
+        production['next_trial_enabled']=product_promotion.finish_trial(production)
         def summary(key):
             value=report.get(key) or {}
             return {k:v for k,v in value.items() if k not in ('checkpoint_dates','input_coverage')}
         common.ops().log_run(JOB,'ok',report.get('training_calls',0),
-            dict(decision=report['decision'],changes_serving=False,reason=report.get('reason'),
+            dict(decision=report['decision'],changes_serving=False,reason=report.get('reason'),production_releases=production,
                  training_availability=summary('training_availability'),
                  evaluation_availability=summary('evaluation_availability')))
     print(json.dumps(report,indent=1))

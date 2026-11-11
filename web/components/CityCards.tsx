@@ -420,12 +420,12 @@ function Card({ c, onPick, moment, dayAheadRecord, st, ev, strip, after, showRec
         <div className="text-[10px] uppercase tracking-wide text-muted">What the pick is built from</div>
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
           <dt className="text-muted" title="The temperature this ladder was integrated on (band_probabilities.centre_c): the forecast after every correction the engine applied - the station correction, the station-model blend, the day's trajectory. The raw public input it started from is shown under it. A forecast, not the pick - the pick is the bucket with the most probability once the width is spread around this centre and the day's maximum so far is counted.">
-            {c.priced_from?.startsWith("wxrd3:") ? "Prediction model" : "Forecast centre"}
+            {(c.priced_from?.startsWith("wxrd3:") || c.priced_from?.startsWith("predictive-product:")) ? "Prediction model" : "Forecast centre"}
           </dt>
           <dd className="tabular-nums">
-            {c.priced_from?.startsWith("wxrd3:")
-              ? <span>WXPredict v3 · direct bucket distribution
-                  <span className="block text-[10px] text-muted">Five seeded fits use station reports, weather-model forecasts and past station errors. The pick is the most probable bucket, not an average temperature or the market favourite.</span>
+            {(c.priced_from?.startsWith("wxrd3:") || c.priced_from?.startsWith("predictive-product:"))
+              ? <span>{c.priced_from?.startsWith("predictive-product:") ? c.priced_from_words : "WXPredict v3 · direct bucket distribution"}
+                  <span className="block text-[10px] text-muted">{c.priced_from?.startsWith("predictive-product:") ? "This release passed original forward calls against the incumbent and saved market. Its version is recorded with this price." : "Five seeded fits use station reports, weather-model forecasts and past station errors. The pick is the most probable bucket, not an average temperature or the market favourite."}</span>
                 </span>
               : c.centre_c !== null ? fmtTemp(c.centre_c, u) : <span className="text-muted">not recorded for this price</span>}
             {c.sigma_c !== null && <span className="text-muted"> ± {fmtTempDelta(c.sigma_c, u).replace("+", "")}</span>}

@@ -21,7 +21,7 @@ PARAMS = dict(objective='binary', learning_rate=.03, num_leaves=15,
 
 
 def source_hashes():
-    names=('current_calls.py','current_cycle.py','current_model.py','current_recipe.py',
+    names=('current_calls.py','current_cycle.py','current_model.py','current_recipe.py','private_artifacts.py',
            'current_forecasts.py','decision_inputs.py','remaining.py','features.py','ensemble_history.py','candidate_cycle.py','current_registry.py','current_shadow.py')
     return {name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() for name in names}
 
@@ -68,7 +68,7 @@ def matrix(records, labels=False, ensemble=None, legacy=False):
                                band_count=len(edges), incumbent_raw_prob=record['raw_probs'][bid])
             if not legacy:
                 extra.update(saved_market_probability=record['market_probs'][bid],
-                             saved_incumbent_probability=record['incumbent_probs'][bid],
+                             saved_incumbent_probability=record.get('pricing_prior_probs',record['incumbent_probs'])[bid],
                              model_market_gap=record['raw_probs'][bid]-record['market_probs'][bid])
             extras.append(extra)
             if labels:
@@ -129,7 +129,7 @@ def predict(model, records):
         if weather.sum() <= 0:
             raise ValueError('no possible weather bucket')
         weather /= weather.sum()
-        old = np.array([record['incumbent_probs'][bid] for bid in record['band_ids']])
+        old = np.array([record.get('pricing_prior_probs',record['incumbent_probs'])[bid] for bid in record['band_ids']])
         p = np.where(possible, (1-blend)*old+blend*weather, 0.)
         p /= p.sum()
         out.append(dict(zip(record['band_ids'], map(float, p))))

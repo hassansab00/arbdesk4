@@ -244,6 +244,9 @@ TABLES = {
 # Every public table the mirror does NOT copy, and why. A table in neither
 # TABLES nor here fails tests/test_every_table_has_a_home.py.
 NOT_MIRRORED = {
+    "arbdesk_private.current_forecast_artifacts": "Private immutable fitted current-weather weights and original model history, retained without pruning and never exported to public GitHub assets or mirror.",
+    "arbdesk_private.predictive_product_releases": "Private append-only release proofs and fitted payloads; retained without pruning and never copied to the public source mirror.",
+    "arbdesk_private.predictive_product_trials": "Private immutable original trial registrations and verdict snapshots, retained without pruning; never exported into the public source mirror.",
     "temperature_calls": "Private temperature research packets and freezes. Retained without pruning; export only in a private research bundle, never the public source mirror.",
     "temperature_scores": "Private matched experiment outcomes, retained without pruning and exported only with the private research record.",
     "arbdesk_private.temperature_models": "Private fixed artifacts, registration and protocol; retained without pruning and backed up in private research bundles.",

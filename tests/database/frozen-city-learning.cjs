@@ -114,6 +114,87 @@ async function refused(db,sql,params=[]){await assert.rejects(()=>db.query(sql,p
   await refused(db,selectedIns,[day,'{"a":0.2,"b":0.8}','baseline:test',now,JSON.stringify({...selectedCtx,model_selection:{...choice,validated_through:day}})]);
   await db.query(selectedIns,[day,'{"a":0.2,"b":0.8}','baseline:test',now,JSON.stringify(selectedCtx)]);
   assert.equal((await db.query("select priced_from from prediction_checkpoints where city_key='selected'")).rows[0].priced_from,'baseline:test');
+  // Product releases must pass the ACTUAL native trigger, not only build_row.
+  await db.exec('alter table prediction_checkpoints add column if not exists station text');
+  const production=fs.readFileSync(root+'/supabase/migrations/20261111152417_validated_product_releases.sql','utf8');
+  const frozenBefore=(await db.query('select jsonb_agg(to_jsonb(p) order by checkpoint_id) v from prediction_checkpoints p')).rows[0].v;
+  await db.exec(production);await db.exec(production);
+  assert.deepEqual((await db.query('select jsonb_agg(to_jsonb(p) order by checkpoint_id) v from prediction_checkpoints p')).rows[0].v,frozenBefore);
+  const d=n=>new Date(Date.now()+n*86400000).toISOString().slice(0,10);
+  const productProof={policy:'validated-product-v1',original_frozen_calls:true,as_of:d(0),fit_last:d(-35),validation_first:d(-16),validation_last:d(-3),training_dates:20,dates:14,calls:14,expected_calls:14,candidate_hits:10,incumbent_hits:7,market_hits:8,candidate_brier:.2,incumbent_brier:.3,market_brier:.25,candidate_nll:.3,incumbent_nll:.5,market_nll:.4,incumbent_gain_lower90:.1,market_gain_lower90:.05};
+  let sequence=0;
+  async function releaseFor(city,checkpoint,kind,identity,payload={}) {
+    const release={policy:'validated-product-v1',kind,city_key:city,checkpoint,station:'TEST',unit:'C',identity,
+      release_id:(++sequence).toString(16).padStart(64,'0'),code_sha256:'a'.repeat(64),payload_sha256:'b'.repeat(64),proof_sha256:'c'.repeat(64),payload,proof:productProof};
+    const id=(await db.query('select publish_predictive_product($1) id',[release])).rows[0].id;
+    const record=(await db.query('select receipt_id,recorded_at::text stamp from arbdesk_private.predictive_product_releases where receipt_id=$1',[id])).rows[0];
+    return {release,id,stamp:record.stamp};
+  }
+  async function productCall(city,selected='wxrd3',contract='awc-routine-v1') {
+    await db.query('insert into cities values($1,$2,$3)',[city,zone,'C']);
+    const rawVersion='wxrd3:v3:product',original=selected==='baseline'?{a:.6,b:.4}:{a:.8,b:.2};
+    const saved=await releaseFor(city,'noon','current_forecast',city+'|TEST|'+(contract||'legacy')+'|'+rawVersion);
+    const stamp=new Date().toISOString(),key=city+'|features';
+    const packet={policy:'wxrd3-horizons-v1',version:rawVersion,model_fit_through:d(-35),row_sha256:'digest',as_of:stamp,band_ids:['a','b'],
+      current_forecasts_sha256:'d'.repeat(64),current_receipts_sha256:'e'.repeat(64),
+      row:{city_key:city,date:day,station:'TEST',unit:'C',observation_contract:contract}};
+    await db.query("insert into live_capture(kind,key,captured_at,payload) values('wx_features',$1,clock_timestamp(),$2)",[key,packet]);
+    const ctx={band_ids:['a','b'],model_fit_through:packet.model_fit_through,raw_model_version:rawVersion,
+      current_forecasts_sha256:packet.current_forecasts_sha256,current_receipts_sha256:packet.current_receipts_sha256,
+      model_selection:{policy:'city-horizon-selector-v1',checkpoint:'noon',selected,active:selected==='baseline',fit_at:stamp,validated_through:d(-1)},
+      product_release:{policy:'validated-product-v1',city_key:city,target_date:day,checkpoint:'noon',receipt_id:saved.id,release_id:saved.release.release_id,
+        kind:'current_forecast',recorded_at:saved.stamp,incumbent_probs:original,incumbent_priced_from:selected==='baseline'?'baseline:test':rawVersion,
+        served_probs:{a:.2,b:.8},payload_sha256:saved.release.payload_sha256,proof_sha256:saved.release.proof_sha256}};
+    return {city,saved,stamp,key,ctx,station:'TEST',label:'predictive-product:current_forecast:'+saved.release.release_id};
+  }
+  async function insertProduct(x) {
+    return db.query(`insert into prediction_checkpoints(city_key,target_date,checkpoint,local_decision_time,engine_version,model_path,probs,top_band_id,top_prob,priced_from,input_key,input_sha256,input_as_of,raw_probs,baseline_probs,baseline_model,predictive_context,station)
+      values($1,$2::date,'noon',$2::date+time '12:00','product','wxpredict','{"a":0.2,"b":0.8}','b',.8,$3,$4,'digest',$5::timestamptz,'{"a":0.8,"b":0.2}','{"a":0.6,"b":0.4}','priced_from:baseline:test',$6,$7) returning *`,
+      [x.city,day,x.label,x.key,x.stamp,x.ctx,x.station]);
+  }
+  for(const [selected,contract,suffix] of [['wxrd3','awc-routine-v1','raw'],['baseline','awc-routine-v1','baseline'],['wxrd3','','legacy']]) {
+    const x=await productCall('product-'+suffix,selected,contract);
+    await db.exec('set role service_role');
+    const row=(await insertProduct(x)).rows[0];
+    await db.exec('reset role');
+    assert.deepEqual(row.probs,{a:.2,b:.8});assert.deepEqual(row.predictive_context.product_release.incumbent_probs,x.ctx.product_release.incumbent_probs);
+    assert.equal(row.predictive_context.raw_model_version,'wxrd3:v3:product');assert.ok(row.frozen_at);
+  }
+  for(const fault of ['missing','wrong_receipt','wrong_label','wrong_station','wrong_incumbent','wrong_current_hash','revoked','expired','settled']) {
+    const x=await productCall('product-bad-'+fault,'baseline');
+    if(fault==='missing')delete x.ctx.product_release;
+    if(fault==='wrong_receipt')x.ctx.product_release.receipt_id=999999;
+    if(fault==='wrong_label')x.ctx.product_release.incumbent_priced_from='different:predictor';
+    if(fault==='wrong_station')x.station='WRONG';
+    if(fault==='wrong_incumbent')x.ctx.product_release.incumbent_probs={a:.5,b:.5};
+    if(fault==='wrong_current_hash')x.ctx.current_receipts_sha256='f'.repeat(64);
+    if(fault==='revoked')await db.query('select revoke_predictive_product($1,$2)',[x.saved.id,'Synthetic rollback test']);
+    if(fault==='expired')await db.query("update arbdesk_private.predictive_product_releases set expires_at=clock_timestamp()-interval '1 second' where receipt_id=$1",[x.saved.id]);
+    if(fault==='settled')await db.query("insert into venue values($1,$2,'confirmed')",[x.city,day]);
+    await assert.rejects(()=>insertProduct(x),/Freeze refused/);
+  }
+  // Early source calls have no primary selector; require their exact pinned
+  // trial, candidate and original source/rule receipts instead.
+  const earlyCity='product-early',earlyDay=realEarly.target_date.toISOString().slice(0,10),earlyIdentity='early-seven-source-v1:awc-routine-v1:TEST:C';
+  await db.query('insert into cities values($1,$2,$3)',[earlyCity,earlyZone,'C']);
+  const trial={id:'f'.repeat(64),decision:'approved',weights_sha256:'d'.repeat(64),proof:productProof};
+  await db.query('insert into derived_wx_city_calibration(model_version,city_key,phase,as_of,version,state) values($1,$2,$3,current_date,$4,$5)',[earlyIdentity,earlyCity,'day_ahead','synthetic',{production_trial:trial}]);
+  await db.query('select record_predictive_product_trial($1,$2,$3,$4,$5)',[earlyCity,'day_ahead',earlyIdentity,trial,'e'.repeat(64)]);
+  const er=await releaseFor(earlyCity,'day_ahead','early_ensemble',earlyIdentity,{production_trial:trial}),es=new Date().toISOString();
+  const earlyContext={product_release:{policy:'validated-product-v1',city_key:earlyCity,target_date:earlyDay,checkpoint:'day_ahead',receipt_id:er.id,release_id:er.release.release_id,kind:'early_ensemble',recorded_at:er.stamp,
+    incumbent_probs:{a:.8,b:.2},incumbent_priced_from:'forecast:original',served_probs:{a:.2,b:.8},payload_sha256:er.release.payload_sha256,proof_sha256:er.release.proof_sha256},
+    ensemble_early:{policy:'early-seven-source-v1',model_version:earlyIdentity,production_trial_id:trial.id,production_weights_sha256:trial.weights_sha256,
+      production_candidate_probs:{a:.2,b:.8},incumbent_probs:{a:.8,b:.2},station:'TEST',unit:'C',captured_at:es,input_oldest:es,input_newest:es,rules_received_at:es,rules_sha256:'a'.repeat(64)}};
+  earlyContext.product_ensemble_serving=JSON.parse(JSON.stringify(earlyContext.ensemble_early));
+  earlyContext.ensemble_early.production_reference_probs={a:.2,b:.8};
+  const earlyInsert=`insert into prediction_checkpoints(city_key,target_date,checkpoint,local_decision_time,engine_version,model_path,probs,top_band_id,top_prob,priced_from,predictive_context,station)
+    values($1,$2::date,'day_ahead',$2::date-1+time '09:00','product','forecast','{"a":0.2,"b":0.8}','b',.8,$3,$4,'TEST') returning frozen_at`;
+  const wrongEarly=JSON.parse(JSON.stringify(earlyContext));wrongEarly.product_ensemble_serving.production_weights_sha256='0'.repeat(64);
+  await assert.rejects(()=>db.query(earlyInsert,[earlyCity,earlyDay,'predictive-product:early_ensemble:'+er.release.release_id,wrongEarly]),/Freeze refused/);
+  await db.exec('set role service_role');
+  assert.ok((await db.query(earlyInsert,[earlyCity,earlyDay,'predictive-product:early_ensemble:'+er.release.release_id,earlyContext])).rows[0].frozen_at);
+  await db.exec('reset role');
+
   await db.query("insert into venue values('valid',$1,'confirmed')",[day]);
   await refused(db,ins,[day,'post-settlement','{"a":0.8,"b":0.2}','a',.8,new Date().toISOString()]);
   await db.query("insert into derived_wx_city_calibration values('v','valid','before_peak',current_date,'fit','{}','2000-01-01')");

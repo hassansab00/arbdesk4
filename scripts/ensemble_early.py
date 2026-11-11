@@ -77,7 +77,7 @@ def canonical_sources(sources):
     return (values,names) if set(values)==set(MODELS) else (None,None)
 
 
-def capture(row,bands,unit,context,now=None,diagnostics=None):
+def capture(row,bands,unit,context,now=None,diagnostics=None,state_override=None):
     import probability_engine as pe
     def refuse(reason):
         if diagnostics is not None:diagnostics.update(status='unavailable',reason=reason)
@@ -110,14 +110,14 @@ def capture(row,bands,unit,context,now=None,diagnostics=None):
         ids=set(row['probs'])
         market,market_reason=saved_market(row.get('market') or {},ids)
         version=family(context['station'],unit,source_kind)
-        state=_states.get((row['city_key'],row['checkpoint'],version),{})
+        state=state_override if state_override is not None else _states.get((row['city_key'],row['checkpoint'],version),{})
         age=(dt.date.fromisoformat(row['target_date'])-dt.date.fromisoformat(state.get('as_of',row['target_date']))).days
         usable=state.get('policy')==POLICY and 0<=age<=3 and state.get('as_of','9999')<=row['target_date']
         weights=state['weights'] if usable else {m:1/7 for m in MODELS}
         weighted={k:sum(weights[m]*components[m][k] for m in MODELS) for k in ids}
         # Magnitudes are bounded; one last-cycle winner never replaces the blend.
         candidate={k:(.8 if market else .9)*row['probs'][k]+.1*weighted[k]+(.1*market[k] if market else 0.) for k in ids}
-        return dict(policy=POLICY,model_version=version,station=context['station'],unit=unit,
+        packet=dict(policy=POLICY,model_version=version,station=context['station'],unit=unit,
             rules_sha256=context['rules_sha256'],rules_received_at=context['rules_received_at'],
             captured_at=now.isoformat(),input_oldest=oldest.isoformat(),input_newest=newest.isoformat(),
             source_kind=source_kind,source_receipt=inputs.get('source_receipt'),
@@ -126,6 +126,29 @@ def capture(row,bands,unit,context,now=None,diagnostics=None):
             market_probs=market,market_comparable=market is not None,market_reason=market_reason,
             candidate_probs=candidate,weight_version=state.get('version') if usable else 'uniform-prior',
             training_dates=state.get('learning_dates',0) if usable else 0,weights_sha256=digest(weights),changes_serving=False)
+        trial=state.get('production_trial') or {}
+        if trial.get('id') and trial.get('model_version')==version and trial.get('fit_last','9999')<row['target_date'] and market:
+            from product_policy import distribution,source_recipe_hash
+            if trial.get('recipe_sha256')!=source_recipe_hash():
+                packet['production_hold']='pinned recipe changed; original trial not reset'
+                return packet
+            pinned=trial['weights']
+            if (set(pinned)!=set(MODELS) or abs(sum(pinned.values())-1)>1e-10
+                    or any(not math.isfinite(v) or not .8/7<=v<=.8/7+.2 for v in pinned.values())):
+                return refuse('invalid pinned production weights')
+            production={k:.8*row['probs'][k]+.1*market[k]
+                    +.1*sum(pinned[m]*components[m][k] for m in MODELS) for k in ids}
+            ladder,index=pe.floor_bucket(row.get('running_max_c'),unit,bands)
+            if index is not None:
+                impossible={str(b['band_id']) for b in ladder[:index]}
+                production={k:0. if k in impossible else v for k,v in production.items()}
+                z=sum(production.values())
+                if z<=0:return refuse('no possible production bucket')
+                production={k:v/z for k,v in production.items()}
+            packet.update(production_trial_id=trial['id'],production_weights_sha256=digest(pinned),
+                production_reference_probs=dict(row['probs']),
+                production_candidate_probs=distribution(production))
+        return packet
     except (KeyError,ValueError,TypeError,OverflowError) as exc:return refuse('invalid original input: '+type(exc).__name__)
 
 
@@ -154,7 +177,10 @@ def eligible(rows,as_of,*,diagnostics=None):
                 excluded['source_family_mismatch']+=1;continue
             if timestamp(r['label_received_at'])>=as_of:
                 excluded['label_not_available_at_cutoff']+=1;continue
-            if p['incumbent_probs']!=r['probs'] or not (timestamp(p['input_oldest'])<=timestamp(p['input_newest'])<=timestamp(p['captured_at'])<=timestamp(r['frozen_at'])<timestamp(r['settled_at'])<=timestamp(r['label_received_at'])<as_of):
+            from predictive_product import original_incumbent
+            if p['incumbent_probs']!=original_incumbent(r) or not (timestamp(p['input_oldest'])<=timestamp(p['input_newest'])<=timestamp(p['captured_at'])<=timestamp(r['frozen_at'])<timestamp(r['settled_at'])<=timestamp(r['label_received_at'])<as_of):
+                excluded['changed_original_or_invalid_chronology']+=1;continue
+            if p.get('production_reference_probs') is not None and p['production_reference_probs']!=r['probs']:
                 excluded['changed_original_or_invalid_chronology']+=1;continue
             if (timestamp(p['captured_at'])-timestamp(p['input_oldest'])).total_seconds()>8*3600:
                 excluded['stale_original_sources']+=1;continue
@@ -168,7 +194,7 @@ def eligible(rows,as_of,*,diagnostics=None):
                     or p.get('input_timestamp_basis')!='server_receipt'
                     or received!=timestamp(p['input_oldest']) or received!=timestamp(p['input_newest'])):
                     excluded['raw_source_receipt_mismatch']+=1;continue
-            for q in [*p['source_probs'].values(),p['candidate_probs'],*([p['market_probs']] if p.get('market_probs') is not None else [])]:
+            for q in [*p['source_probs'].values(),p['candidate_probs'],*([p['production_candidate_probs']] if p.get('production_candidate_probs') is not None else []),*([p['market_probs']] if p.get('market_probs') is not None else [])]:
                 if set(q)!=set(r['probs']) or abs(sum(q.values())-1)>1e-4 or any(not math.isfinite(v) or not 0<=v<=1 for v in q.values()):raise ValueError('bad original ladder')
             out.append(dict(r,packet=p))
         except (KeyError,ValueError,TypeError):excluded['invalid_original_fields']+=1
@@ -184,6 +210,10 @@ def fit(rows,as_of,previous=(),*,diagnostics=None):
     cutoff=dt.datetime.combine(as_of,dt.time(),dt.timezone.utc)
     prior={(s['city_key'],s['phase'],s['model_version']):s for s in previous if s.get('policy')==POLICY}
     good=eligible(rows,cutoff,diagnostics=diagnostics);groups=collections.defaultdict(list)
+    originals=collections.defaultdict(list)
+    for r in rows:
+        p=r.get('ensemble_packet') or {}
+        if p.get('model_version'):originals[(r['city_key'],r['checkpoint'],p['model_version'])].append(r)
     for r in good:groups[(r['city_key'],r['checkpoint'],r['packet']['model_version'])].append(r)
     states=[];split=as_of-dt.timedelta(days=VALIDATION_DAYS)
     for (city,cp,version),mine in sorted(groups.items()):
@@ -222,9 +252,24 @@ def fit(rows,as_of,previous=(),*,diagnostics=None):
             learning_dates=learning_dates,minimum_weight_dates=MIN_WEIGHT_DATES,maximum_weight_step=MAX_WEIGHT_STEP,
             decision='validated_shadow' if passed else 'held',changes_serving=False,
             reason='original forward calls passed both benchmarks' if passed else 'insufficient original dates or gains against incumbent and saved market unproven')
+        from product_policy import source_trial
+        old_trial=old.get('production_trial') or {}
+        state['completed_production_trial']=old.get('completed_production_trial')
+        if (old_trial.get('decision') in ('approved','rejected') and old_trial.get('proof')
+                and str(as_of)>old_trial['proof']['as_of']):
+            # A new candidate gets a new future window only after the previous
+            # fixed verdict. The completed packet is archived privately before
+            # this working pointer is allowed to move again.
+            state['completed_production_trial']=old_trial
+            state['production_trial']=source_trial(mine,as_of,state,{},originals[(city,cp,version)])
+        else:
+            state['production_trial']=source_trial(mine,as_of,state,old,originals[(city,cp,version)])
         state['version']=PREFIX+digest(state)[:16];states.append(state)
     return states
 
 
 def summary(state):
-    return {k:v for k,v in state.items() if k not in ('weights','source_log_losses')}
+    result={k:v for k,v in state.items() if k not in ('weights','source_log_losses','production_trial','completed_production_trial')}
+    result['production_trial']={k:v for k,v in (state.get('production_trial') or {}).items()
+        if k in ('id','decision','reason','training_dates','fit_last','validation_first','validation_last')}
+    return result

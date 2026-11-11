@@ -241,13 +241,14 @@ def test_registry_is_separate_immutable_and_refuses_corruption(tmp_path):
         registry.selected(str(tmp_path))
 
 
-def test_failed_public_weight_readback_cannot_register_a_candidate(tmp_path,monkeypatch):
+def test_failed_private_weight_readback_cannot_register_a_candidate(tmp_path,monkeypatch):
+    from wxpredict import private_artifacts
     p,train,test=ready_fixture()
     monkeypatch.setattr(common,'ROOT',str(tmp_path))
     monkeypatch.setattr(cycle,'prepare',lambda p:(dict(p,decision='ready'),train,test))
     monkeypatch.setattr(cycle,'fit_and_evaluate',lambda *a:(
         {**p,'decision':'accept shadow'},dict(version='synthetic',model_sha256='a'*64),'unused'))
-    monkeypatch.setattr(model_artifacts,'publish',lambda *a:(_ for _ in ()).throw(ValueError('readback refused')))
+    monkeypatch.setattr(private_artifacts,'publish',lambda *a:(_ for _ in ()).throw(ValueError('readback refused')))
     with pytest.raises(ValueError,match='readback'):
         cycle.main([])
     assert registry.selected() is None and not (tmp_path/registry.STATE).exists()

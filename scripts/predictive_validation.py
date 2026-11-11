@@ -668,6 +668,9 @@ def run(score_only=False, now=None):
         public_states=[ensemble_early.summary(s) if s.get('policy')==ensemble_early.POLICY else s for s in fitted]
         path.write_text(json.dumps(dict(as_of=now.isoformat(),policy=cal.POLICY,states=public_states,model_selection=selections),sort_keys=True,indent=2)+'\n')
         upsert_replace('derived_wx_city_calibration',[dict(model_version=s['model_version'],city_key=s['city_key'],phase=s['phase'],as_of=s['as_of'],version=s['version'],state=s) for s in fitted], 'model_version,city_key,phase')
+        import predictive_product
+        from common import rpc
+        detail['product_releases']=predictive_product.publish_sources(ensemble_fitted,rpc)
         states=[s for s in states if s['model_version'] not in versions and s.get('policy') not in (early.POLICY,ensemble_early.POLICY)]+fitted
         detail.update(calibration_cells=len(fitted),decisions=dict(Counter(s['decision'] for s in fitted)),
                       eligible_learning_calls=sum(len(cal.eligible_rows(learning,now.date(),v)) for v in versions),

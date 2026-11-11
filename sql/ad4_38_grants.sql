@@ -244,6 +244,7 @@ begin
   -- supabase/migrations/20260923130000_writes_need_an_operator.sql.
   foreach f in array array[
     'backtest_readiness', 'run_scope',
+    'predictive_product_status',
     'band_contains', 'band_local_value', 'capacity_side', 'depth_usd',
     'ad4_num', 'ad4_plural', 'ad4_region', 'ad4_norm_levels',
     'ad4_synth_levels', 'ad4_raw_book_side'

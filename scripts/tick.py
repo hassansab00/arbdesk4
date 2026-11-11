@@ -249,7 +249,7 @@ def _path_and_model(reasons):
             rest_label = tail
     if rest_label.startswith("model:"):
         path = "model" if path == "forecast" else "trajectory+model"
-    if rest_label.startswith("wxrd3:"):
+    if rest_label.startswith(("wxrd3:","predictive-product:")):
         path = "wxpredict"
     model = rest_label.split(":", 1)[0] if rest_label else None
     if model == "model":
@@ -309,6 +309,8 @@ def build_row(city, target, checkpoint, local_time, rows, reasons, books, readin
     }
     import predictive_primary
     lineage=predictive_primary.checkpoint_lineage(city, target, probs, checkpoint)
+    import predictive_product
+    lineage=predictive_product.checkpoint_lineage(city,target,probs,checkpoint) or lineage
     row.update(lineage)
     import probability_engine
     forecast_input = probability_engine.forecast_context(city, target, rows)
@@ -331,7 +333,7 @@ def build_row(city, target, checkpoint, local_time, rows, reasons, books, readin
             comparison = early_forecast_audit.freeze(rows, bands, unit)
         if comparison:
             row['predictive_context'] = dict(row.get('predictive_context') or {}, early_forecast_audit=comparison)
-    if lineage and str(row.get('priced_from') or '').startswith('wxrd3:'):
+    if lineage and str(row.get('priced_from') or '').startswith(('wxrd3:','predictive-product:current_forecast:')):
         # The baseline may have a newer station report than the arrival-mode
         # vector. Name the report actually used, never borrow that newer stamp.
         context=lineage.get('predictive_context') or {}
@@ -345,7 +347,9 @@ def build_row(city, target, checkpoint, local_time, rows, reasons, books, readin
     import early_city_adaptation
     import ensemble_early
     ensemble_diagnostic={}
-    proposal=ensemble_early.capture(row,bands,unit,early_city_adaptation.capture_context(city,target),diagnostics=ensemble_diagnostic)
+    proposal=(row.get('predictive_context') or {}).get('ensemble_early')
+    if proposal is None:
+        proposal=ensemble_early.capture(row,bands,unit,early_city_adaptation.capture_context(city,target),diagnostics=ensemble_diagnostic)
     if proposal:
         row['predictive_context']=dict(row.get('predictive_context') or {},ensemble_early=proposal)
     elif ensemble_diagnostic:
@@ -709,6 +713,22 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
         notes.append(f"CLOB books unavailable: {type(e).__name__}: {str(e)[:120]}")
 
     detail['books_s']=round(time.monotonic()-t_books,2)
+    import predictive_product
+    detail['product']=predictive_product.prepare([market_of[d] for d in days+reprice],
+        deadline=t0+budget_s-3)
+    for (city,target,name),res in list(checkpoint_results.items()):
+        m=market_of[(city,target)]
+        checkpoint_results[(city,target,name)]=predictive_product.apply(city,target,res,
+            bands_by_market.get(m['market_id'],[]),m.get('unit') or unit_of.get(city,'C'),books,
+            m.get('contract_station') or station_of.get(city),checkpoint=name)
+    for (city,target),res in list(results.items()):
+        if (city,target) in newest:
+            results[(city,target)]=checkpoint_results[(city,target,newest[(city,target)][0])]
+        else:
+            m=market_of[(city,target)]
+            results[(city,target)]=predictive_product.apply(city,target,res,
+                bands_by_market.get(m['market_id'],[]),m.get('unit') or unit_of.get(city,'C'),books,
+                m.get('contract_station') or station_of.get(city))
     out = []
     for city, target, name, local in due:
         res = checkpoint_results.get((city, target, name))

@@ -102,7 +102,10 @@ def selected(root=None):
 def load(meta, budget_s=10):
     import lightgbm as lgb
     from wxpredict import model_artifacts
-    path = model_artifacts.ensure(meta, budget_s=budget_s)
+    from wxpredict import private_artifacts
+    if not meta.get('asset_url','').startswith(private_artifacts.PREFIX):
+        raise ValueError('current model artifact must remain private; re-register before serving')
+    path = private_artifacts.ensure(meta, budget_s=budget_s)
     with gzip.open(path, 'rt') as fh:
         raw=fh.read()
     if meta.get('recipe') in ('current-city-ensemble-v2','current-city-standalone-v3'):
