@@ -1,0 +1,40 @@
+const {PGlite}=require('@electric-sql/pglite');
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+(async()=>{
+ const db=new PGlite();const q=async(s,p)=>(await db.query(s,p)).rows;
+ await db.exec('create role anon;create role authenticated;create role service_role bypassrls;create table derived_wx_city_calibration(city_key text,phase text,model_version text,state jsonb)');
+ const sql=fs.readFileSync(path.join(__dirname,'../../supabase/migrations/20261111152417_validated_product_releases.sql'),'utf8');
+ await db.exec(sql);await db.exec(sql);
+ const day=(n)=>new Date(Date.now()+n*86400000).toISOString().slice(0,10);
+ const proof={policy:'validated-product-v1',original_frozen_calls:true,as_of:day(0),fit_last:day(-30),validation_first:day(-16),validation_last:day(-3),training_dates:20,dates:14,calls:14,expected_calls:14,candidate_hits:10,incumbent_hits:7,market_hits:8,candidate_brier:.2,incumbent_brier:.3,market_brier:.25,candidate_nll:.3,incumbent_nll:.5,market_nll:.4,incumbent_gain_lower90:.1,market_gain_lower90:.05};
+ const release={policy:'validated-product-v1',kind:'current_forecast',city_key:'synthetic',checkpoint:'noon',station:'TEST',unit:'C',release_id:'a'.repeat(64),payload_sha256:'b'.repeat(64),code_sha256:'c'.repeat(64),payload:{metadata:{model_sha256:'d'.repeat(64)}},proof};
+ await db.exec('set role anon');
+ assert.deepEqual(await q('select * from predictive_product_status()'),[]);
+ await assert.rejects(q('select publish_predictive_product($1)',[release]),/permission denied/);
+ await assert.rejects(q('select * from predictive_product_inputs(array[\'synthetic\'])'),/permission denied/);
+ await assert.rejects(q('select * from arbdesk_private.predictive_product_releases'),/permission denied/);
+ await db.exec('reset role;set role service_role');
+ for(const [k,v] of [['training_dates',19],['dates',9],['calls',12],['original_frozen_calls',false],['candidate_hits',8],['candidate_brier',.25],['market_gain_lower90',0],['candidate_nll','NaN']]){
+  const bad={...release,proof:{...proof,[k]:v}};
+  await assert.rejects(q('select publish_predictive_product($1)',[bad]),/production|benchmark/);
+ }
+ const missing={...release};delete missing.code_sha256;
+ await assert.rejects(q('select publish_predictive_product($1)',[missing]),/production/);
+ const id=(await q('select publish_predictive_product($1) id',[release]))[0].id;
+ assert.equal((await q('select publish_predictive_product($1) id',[release]))[0].id,id,'retry does not create a newer release');
+ await assert.rejects(q('select publish_predictive_product($1)',[{...release,payload:{changed:true}}]),/immutable/);
+ await assert.rejects(q('select * from predictive_product_inputs($1)',[Array(61).fill('city')]),/bounded/);
+ const inputs=await q('select * from predictive_product_inputs(array[\'synthetic\'])');assert.equal(inputs.length,1);
+ assert.deepEqual(inputs[0].predictive_product_inputs.release.payload,release.payload);
+ await assert.rejects(q('update arbdesk_private.predictive_product_releases set decision=\'revoke\''),/permission denied/);
+ await assert.rejects(q('delete from arbdesk_private.predictive_product_releases'),/permission denied/);
+ await q('select revoke_predictive_product($1,$2)',[id,'Independent forward performance regressed']);
+ assert.equal((await q('select * from predictive_product_inputs(array[\'synthetic\'])'))[0].predictive_product_inputs.decision,'revoke');
+ await q('select publish_predictive_product($1)',[release]);
+ assert.equal((await q('select * from predictive_product_inputs(array[\'synthetic\'])'))[0].predictive_product_inputs.decision,'revoke','retry cannot reactivate a rolled back release');
+ await db.exec('reset role;set role anon');
+ const status=(await q('select * from predictive_product_status()'))[0].predictive_product_status;
+ assert.equal(status.status,'revoked');assert.equal(status.payload,undefined);assert.equal(status.proof,undefined);
+ await db.exec('reset role');assert.equal((await q('select count(*)::int n from arbdesk_private.predictive_product_releases'))[0].n,2);
+ await db.close();console.log('predictive product: gates, private receipts, immutable retry, bounded reads, rollback and sanitized anonymous status passed');
+})().catch(e=>{console.error(e);process.exit(1)});

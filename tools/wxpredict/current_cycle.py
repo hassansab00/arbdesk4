@@ -327,11 +327,13 @@ def main(argv=None):
     if saved is None:
         registry.record(report,fitted)
     if os.environ.get('SUPABASE_URL'):
+        from wxpredict import product_promotion
+        production=product_promotion.publish(common.ops().rpc)
         def summary(key):
             value=report.get(key) or {}
             return {k:v for k,v in value.items() if k not in ('checkpoint_dates','input_coverage')}
         common.ops().log_run(JOB,'ok',report.get('training_calls',0),
-            dict(decision=report['decision'],changes_serving=False,reason=report.get('reason'),
+            dict(decision=report['decision'],changes_serving=False,reason=report.get('reason'),production_releases=production,
                  training_availability=summary('training_availability'),
                  evaluation_availability=summary('evaluation_availability')))
     print(json.dumps(report,indent=1))

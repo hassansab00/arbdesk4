@@ -55,7 +55,7 @@ def distribution(value, ids):
     return {k: float(p[k]) for k in ids}
 
 
-def attach(call, packet, captured_at, written_at, outcome=None, through=None):
+def attach(call, packet, captured_at, written_at, outcome=None, through=None, *, decision_at=None):
     """Return the original features, or a counted exclusion reason."""
     if packet.get('policy') != INPUT_POLICY:
         return None, 'missing_primary_packet'
@@ -76,7 +76,9 @@ def attach(call, packet, captured_at, written_at, outcome=None, through=None):
     edges = bounds(row)
     if len(edges) != len(ids):
         raise ValueError('frozen bucket IDs differ from geometry')
-    frozen = inputs.unix(call['frozen_at'])
+    # Live inference shares these checks using its actual decision clock. It
+    # does not invent a database freeze/receipt or create a historical call.
+    frozen = inputs.unix(decision_at if decision_at is not None else call['frozen_at'])
     as_of = inputs.unix(packet['as_of'])
     if (not as_of <= inputs.unix(captured_at) <= inputs.unix(written_at) <= frozen
             or frozen-as_of > 15*60 or packet['history_committed_at'] > as_of
@@ -113,7 +115,8 @@ def attach(call, packet, captured_at, written_at, outcome=None, through=None):
         return None, 'insufficient_current_ensemble'
     merged.update(current_hourly_age_h=ages['hourly0'],current_models_age_h=ages['models0'])
     raw = distribution(call['raw_probs'], ids)
-    served = distribution(call['probs'], ids)
+    from predictive_product import original_incumbent
+    served = distribution(original_incumbent(call), ids)
     quotes = object_of(call.get('market')) or {}
     prices = []
     for bid in ids:
@@ -130,16 +133,20 @@ def attach(call, packet, captured_at, written_at, outcome=None, through=None):
         return None, 'missing_first_call_market_or_floor'
     source = row.get('observation_contract') or 'legacy'
     identity = '|'.join((call['city_key'], row['station'], source, version))
-    record = dict(checkpoint_id=str(call['checkpoint_id']), city=call['city_key'],
+    record = dict(checkpoint_id=str(call.get('checkpoint_id','')), city=call['city_key'],
                   date=call['target_date'], checkpoint=call['checkpoint'], timezone=timezone,
                   source_identity=identity, version=version, row=merged, band_ids=ids,
                   incumbent_probs=served, raw_probs=raw,
                   market_probs=dict(zip(ids, (v/sum(prices) for v in prices))),
-                  frozen_at=call['frozen_at'], input_sha256=packet['row_sha256'],
+                  frozen_at=call.get('frozen_at'), input_sha256=packet['row_sha256'],
                   current_sha256=packet['current_forecasts_sha256'],
                   input_as_of=packet['as_of'],history_commit=packet['history_commit'],
                   history_committed_at=packet['history_committed_at'],
                   primary_packet_receipt=captured_at,primary_packet_written_at=written_at)
+    if decision_at is not None:
+        if outcome is not None:
+            raise ValueError('live inference cannot accept an outcome')
+        record['prospective_at']=decision_at
     if outcome is not None:
         if (str(outcome['checkpoint_id']) != record['checkpoint_id']
                 or outcome['city_key'] != record['city'] or outcome['target_date'] != record['date']

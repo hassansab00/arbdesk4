@@ -16,6 +16,7 @@ import PredictionLineup from "@/components/PredictionLineup";
 import CityPredictionValidation from "@/components/CityPredictionValidation";
 import PredictionClocks from "@/components/PredictionClocks";
 import CityCards from "@/components/CityCards";
+import ProductReleaseStatus from "@/components/ProductReleaseStatus";
 import CalibrationStatus from "@/components/CalibrationStatus";
 import FocusFilter, { type FocusSet } from "@/components/FocusFilter";
 import { selectedKeys, type HindsightRow, type Scope } from "@/lib/focus";
@@ -620,6 +621,7 @@ export default function PredictivePage() {
         {/* The global map and each city's current learner have separate gates. */}
         <div className="mt-3">
           <CalibrationStatus />
+          <ProductReleaseStatus />
         </div>
         <PredictiveAccuracyGuide />
       </div>

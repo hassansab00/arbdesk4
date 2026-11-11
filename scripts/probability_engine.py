@@ -1879,9 +1879,21 @@ def main():
     with ThreadPoolExecutor(max_workers=workers) as pool:
         contexts = [(copy_context(), job) for job in jobs]
         results = list(pool.map(lambda pair: pair[0].run(_price, pair[1]), contexts))
+    import predictive_product
+    product=predictive_product.prepare(markets)
+    try:
+        product_now=dt.datetime.now(dt.timezone.utc)
+        product_books=predictive_product.pricing_books(
+            [str(r['band_id']) for result in results if result for r in result[0]],product_now)
+    except Exception:
+        product_books={}
+    market_of={(m['city_key'],str(m['resolution_date'])):m for m in markets}
     for (city_key, for_date, unit, band_rows), result in zip(jobs, results):
         if result is None:
             continue
+        m=market_of[(city_key,str(for_date))]
+        result=predictive_product.apply(city_key,for_date,result,band_rows,unit,product_books,
+            m.get('contract_station') or next((c.get('icao') for c in cities if c['city_key']==city_key),None))
         rows, reg, reasons = result
         all_rows.extend(rows)
         priced_city_days += 1
@@ -1892,6 +1904,7 @@ def main():
         raise RuntimeError("no fresh probability ladders; downstream pricing must stop")
     if all_rows:
         insert("band_probabilities", all_rows)
+    print('predictive product '+json.dumps(product),flush=True)
 
     for city_key, for_date, band_rows, rows, reg in sample_prints:
         print(f"\n{city_key} {for_date}  regime={reg.label} confidence={reg.confidence:.2f}")
@@ -1908,7 +1921,7 @@ def main():
         "ok" if all_rows else "attention",
         len(all_rows),
         {"city_days": priced_city_days, "upcoming_markets": len(markets),
-         "cities_with_observed_floor": len(floors), "primary": primary},
+         "cities_with_observed_floor": len(floors), "primary": primary, "product": product},
     )
     print(f"\nwrote {len(all_rows)} band_probabilities rows")
 

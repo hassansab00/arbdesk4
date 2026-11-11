@@ -248,7 +248,7 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
                     "calibration": state, "predictive_context": context,
                     "floor_c": float(row["rmax_c"]), "unit": e["unit"],
                     "floor_unit": float(row["rmax_unit"]), "input_sha256": sha,
-                    "history_commit": commit}
+                    "history_commit": commit, "product_input_packet": payload}
                 _predictions[key].update(selection_states={h:choices.get((e['city'],h)) for h in selector.HORIZONS},
                     horizon=selector.horizon_at(e['date'],cities[e['city']]['timezone'],
                         peaks.get((e['city'],int(e['date'][5:7]))),now))
@@ -348,3 +348,9 @@ def checkpoint_lineage(city, target, probs, checkpoint=None):
     if record is None or record["served_probs"] != probs:
         return {}
     return {k:v for k,v in record.items() if k != "served_probs"}
+
+
+def product_input(city, target, probs):
+    """Read-only prepared original packet; never reconstruct a missing input."""
+    record = _predictions.get((city,str(target),frozenset(probs)))
+    return record.get('product_input_packet') if record else None

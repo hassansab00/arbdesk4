@@ -78,6 +78,8 @@ def run(now=None, dry_run=False, deadline=None):
         from wxpredict import wxrd_live
         out=[]
         for call,row,p in zip(parent,rows,predictions):
+            from product_policy import distribution
+            p=distribution(p)
             if max(abs(p[k]-row['incumbent_probs'][k]) for k in row['band_ids'])>float(meta.get('blend',.10))+1e-12:
                 exclude('prediction correction exceeds its bound')
                 continue
