@@ -45,10 +45,10 @@ def annotate(markets, read):
     ids = ','.join(str(m['market_id']) for m in markets)
     try:
         rules = {str(r['market_id']):r for r in read('markets', [
-            ('select','market_id,rules_text,event_slug'),('market_id','in.('+ids+')')])}
+            ('select','market_id,rules_text,event_slug,rules_fetched_at'),('market_id','in.('+ids+')')])}
     except Exception:
         rules = {}
-    return [with_rules(dict(row,event_slug=rules.get(str(row['market_id']),{}).get('event_slug') or row.get('event_slug')),
+    return [with_rules(dict(row,rules_received_at=rules.get(str(row['market_id']),{}).get('rules_fetched_at'),event_slug=rules.get(str(row['market_id']),{}).get('event_slug') or row.get('event_slug')),
                        rules.get(str(row['market_id']),{}).get('rules_text')) for row in markets]
 
 

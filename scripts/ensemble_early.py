@@ -61,6 +61,18 @@ def saved_market(quotes,ids):
         return None,'malformed saved quote'
 
 
+def canonical_sources(sources):
+    """Accept the recorded provider names without changing values or identity."""
+    values={}; names={}
+    for name,value in sources.items():
+        canonical=name.removeprefix('open_meteo_')
+        if canonical not in MODELS or canonical in values:
+            return None,None
+        values[canonical]=value
+        names[canonical]=name
+    return (values,names) if set(values)==set(MODELS) else (None,None)
+
+
 def capture(row,bands,unit,context,now=None,diagnostics=None):
     import probability_engine as pe
     def refuse(reason):
@@ -72,8 +84,8 @@ def capture(row,bands,unit,context,now=None,diagnostics=None):
     if context.get('contract')!='awc-routine-v1':return refuse('supported dated station resolution contract unavailable')
     now=now or dt.datetime.now(dt.timezone.utc)
     inputs=((row.get('predictive_context') or {}).get('forecast_input') or {}).get('station_combination') or {}
-    sources=inputs.get('sources') or {}
-    if set(sources)!=set(MODELS):return refuse('seven original station-corrected sources unavailable')
+    sources,source_names=canonical_sources(inputs.get('sources') or {})
+    if sources is None:return refuse('seven original station-corrected sources unavailable')
     try:
         if row.get('station')!=context.get('station') or not context.get('rules_received_at') or timestamp(context['rules_received_at'])>now or len(context.get('rules_sha256') or '')!=64:return refuse('dated station or rule receipt mismatch')
         if any(not math.isfinite(float(v)) or not -90<=float(v)<=70 for v in sources.values()):return refuse('invalid source temperature')
@@ -95,7 +107,7 @@ def capture(row,bands,unit,context,now=None,diagnostics=None):
         return dict(policy=POLICY,model_version=version,station=context['station'],unit=unit,
             rules_sha256=context['rules_sha256'],rules_received_at=context['rules_received_at'],
             captured_at=now.isoformat(),input_oldest=oldest.isoformat(),input_newest=newest.isoformat(),
-            source_probs=components,source_values_c=dict(sources),incumbent_probs=dict(row['probs']),
+            source_probs=components,source_values_c=dict(sources),source_names=source_names,incumbent_probs=dict(row['probs']),
             market_probs=market,market_comparable=market is not None,market_reason=market_reason,
             candidate_probs=candidate,weight_version=state.get('version') if usable else 'uniform-prior',
             training_dates=state.get('learning_dates',0) if usable else 0,weights_sha256=digest(weights),changes_serving=False)

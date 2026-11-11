@@ -118,3 +118,56 @@ def test_invalid_or_unquoted_market_stays_uncomparable(quotes):
     r,c,n=original();r['market']['a']=quotes
     packet=e.capture(r,BANDS,'C',c,n)
     assert packet and packet['market_probs'] is None and not packet['market_comparable']
+
+
+def test_live_provider_names_keep_all_seven_original_sources(monkeypatch):
+    monkeypatch.setattr(e,'_states',{})
+    r,c,n=original();before=copy.deepcopy(r)
+    baseline=e.capture(r,BANDS,'C',c,n)
+    inp=r['predictive_context']['forecast_input']['station_combination']
+    inp['sources']={'open_meteo_'+k:v for k,v in inp['sources'].items()}
+    saved=copy.deepcopy(r)
+    packet=e.capture(r,BANDS,'C',c,n)
+    assert packet and r==saved
+    assert packet['source_values_c']==baseline['source_values_c']
+    assert packet['source_probs']==baseline['source_probs']
+    assert packet['candidate_probs']==baseline['candidate_probs']
+    assert packet['source_names']=={m:'open_meteo_'+m for m in e.MODELS}
+    assert baseline['source_names']=={m:m for m in e.MODELS}
+    assert before['probs']==r['probs']
+
+
+@pytest.mark.parametrize('bad',['duplicate','unknown','missing'])
+def test_provider_aliases_cannot_merge_or_invent_source_evidence(bad):
+    r,c,n=original()
+    src=r['predictive_context']['forecast_input']['station_combination']['sources']
+    if bad=='duplicate':src['open_meteo_'+e.MODELS[0]]=src[e.MODELS[0]]
+    if bad=='unknown':src['other_provider']=21.
+    if bad=='missing':src.pop(e.MODELS[0])
+    assert e.capture(r,BANDS,'C',c,n) is None
+
+
+@pytest.mark.parametrize('receipt',['past','missing','future'])
+def test_known_rules_receipt_and_provider_payload_reach_capture_together(monkeypatch,receipt):
+    import contract_inputs as ci
+    import early_city_adaptation as adaptation
+    monkeypatch.setattr(adaptation,'_contexts',{})
+    monkeypatch.setattr(adaptation,'_states',{})
+    monkeypatch.setattr(e,'_states',{})
+    r,_,n=original()
+    inp=r['predictive_context']['forecast_input']['station_combination']
+    inp['sources']={'open_meteo_'+k:v for k,v in inp['sources'].items()}
+    stamp=(n+dt.timedelta(hours=1) if receipt=='future' else n-dt.timedelta(hours=1)).isoformat() if receipt!='missing' else None
+    rule='https://aviationweather.gov/api/data/metar?ids=TEST&format=raw&date=2026-10-03T00:00:00Z&hours=27'
+    def read(table,params):
+        assert table=='markets' and 'rules_fetched_at' in dict(params)['select']
+        return [dict(market_id='market',event_slug='event',rules_text=rule,rules_fetched_at=stamp)]
+    markets=ci.annotate([dict(market_id='market',city_key='city',resolution_date=r['target_date'],unit='C')],read)
+    assert markets[0]['rules_received_at']==stamp
+    adaptation.prepare(markets,[dict(city_key='city',timezone='UTC',unit='C',icao='TEST')],now=n,read=lambda *a,**k:[])
+    packet=e.capture(r,BANDS,'C',adaptation.capture_context('city',r['target_date']),n)
+    if receipt=='past':
+        assert packet and packet['rules_received_at']==stamp
+        assert packet['source_names']=={m:'open_meteo_'+m for m in e.MODELS}
+    else:
+        assert packet is None
