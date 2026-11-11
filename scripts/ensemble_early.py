@@ -134,39 +134,56 @@ def metrics(q,winner):
                 hit=int(min(q,key=lambda k:(-q[k],k))==winner))
 
 
-def eligible(rows,as_of):
-    out=[];first={}
+def eligible(rows,as_of,*,diagnostics=None):
+    out=[];first={};excluded=collections.Counter()
     for r in rows:
         key=(r['city_key'],r['target_date'],r['checkpoint'])
         if key not in first or (r.get('frozen_at') or '9999')<(first[key].get('frozen_at') or '9999'):first[key]=r
+    excluded['later_duplicate']=len(rows)-len(first)
     for r in first.values():
         p=r.get('ensemble_packet') or {};winner=r.get('winner')
         try:
-            if p.get('policy')!=POLICY or r.get('inputs_ok',True) is not True or not r.get('verified') or not r.get('settled') or not winner:continue
-            if winner not in r['probs'] or p['station']!=r.get('station') or len(p.get('rules_sha256',''))!=64 or timestamp(p['rules_received_at'])>timestamp(p['captured_at']):continue
-            if p['model_version']!=family(p['station'],p['unit'],p.get('source_kind','station_corrected')) or set(p['source_probs'])!=set(MODELS):continue
-            if p['incumbent_probs']!=r['probs'] or not (timestamp(p['input_oldest'])<=timestamp(p['input_newest'])<=timestamp(p['captured_at'])<=timestamp(r['frozen_at'])<timestamp(r['settled_at'])<=timestamp(r['label_received_at'])<as_of):continue
-            if (timestamp(p['captured_at'])-timestamp(p['input_oldest'])).total_seconds()>8*3600:continue
-            if dt.date.fromisoformat(r['target_date'])>=as_of.date():continue
-            if dt.date.fromisoformat(r['target_date'])<as_of.date()-dt.timedelta(days=90):continue
+            reason=('missing_original_ensemble_packet' if p.get('policy')!=POLICY else
+                    'inputs_not_verified' if r.get('inputs_ok') is not True else
+                    'missing_verified_freeze' if not r.get('verified') else
+                    'pending_confirmed_label' if not r.get('settled') or not winner else None)
+            if reason:excluded[reason]+=1;continue
+            if winner not in r['probs'] or p['station']!=r.get('station') or len(p.get('rules_sha256',''))!=64 or timestamp(p['rules_received_at'])>timestamp(p['captured_at']):
+                excluded['station_rule_or_ladder_mismatch']+=1;continue
+            if p['model_version']!=family(p['station'],p['unit'],p.get('source_kind','station_corrected')) or set(p['source_probs'])!=set(MODELS):
+                excluded['source_family_mismatch']+=1;continue
+            if timestamp(r['label_received_at'])>=as_of:
+                excluded['label_not_available_at_cutoff']+=1;continue
+            if p['incumbent_probs']!=r['probs'] or not (timestamp(p['input_oldest'])<=timestamp(p['input_newest'])<=timestamp(p['captured_at'])<=timestamp(r['frozen_at'])<timestamp(r['settled_at'])<=timestamp(r['label_received_at'])<as_of):
+                excluded['changed_original_or_invalid_chronology']+=1;continue
+            if (timestamp(p['captured_at'])-timestamp(p['input_oldest'])).total_seconds()>8*3600:
+                excluded['stale_original_sources']+=1;continue
+            if not as_of.date()-dt.timedelta(days=90)<=dt.date.fromisoformat(r['target_date'])<as_of.date():
+                excluded['outside_learning_window']+=1;continue
             if p.get('source_kind')=='models0_raw_local_day':
                 sr=p['source_receipt']
                 received=max(timestamp(sr['captured_at']),timestamp(sr['written_at']))
                 if (r['checkpoint']!='morning' or sr['key']!=r['city_key']+'|snapshot' or sr['target_date']!=r['target_date']
                     or not 0<int(sr['expected_hours'])<=26 or len(sr['sha256'])!=64
                     or p.get('input_timestamp_basis')!='server_receipt'
-                    or received!=timestamp(p['input_oldest']) or received!=timestamp(p['input_newest'])):continue
+                    or received!=timestamp(p['input_oldest']) or received!=timestamp(p['input_newest'])):
+                    excluded['raw_source_receipt_mismatch']+=1;continue
             for q in [*p['source_probs'].values(),p['candidate_probs'],*([p['market_probs']] if p.get('market_probs') is not None else [])]:
                 if set(q)!=set(r['probs']) or abs(sum(q.values())-1)>1e-4 or any(not math.isfinite(v) or not 0<=v<=1 for v in q.values()):raise ValueError('bad original ladder')
             out.append(dict(r,packet=p))
-        except (KeyError,ValueError,TypeError):continue
+        except (KeyError,ValueError,TypeError):excluded['invalid_original_fields']+=1
+    if diagnostics is not None:
+        diagnostics.update(input_rows=len(rows),first_calls=len(first),eligible_rows=len(out),
+            exclusions={k:v for k,v in excluded.items() if v},
+            first_eligible_date=min((r['target_date'] for r in out),default=None),
+            last_eligible_date=max((r['target_date'] for r in out),default=None))
     return out
 
 
-def fit(rows,as_of,previous=()):
+def fit(rows,as_of,previous=(),*,diagnostics=None):
     cutoff=dt.datetime.combine(as_of,dt.time(),dt.timezone.utc)
     prior={(s['city_key'],s['phase'],s['model_version']):s for s in previous if s.get('policy')==POLICY}
-    good=eligible(rows,cutoff);groups=collections.defaultdict(list)
+    good=eligible(rows,cutoff,diagnostics=diagnostics);groups=collections.defaultdict(list)
     for r in good:groups[(r['city_key'],r['checkpoint'],r['packet']['model_version'])].append(r)
     states=[];split=as_of-dt.timedelta(days=VALIDATION_DAYS)
     for (city,cp,version),mine in sorted(groups.items()):

@@ -212,3 +212,21 @@ def test_archived_outcome_strings_reach_the_original_scorer_as_typed_evidence(tm
         assert rows[0]['market_metrics']==dict(hit=0,log_loss=1.5,brier=.75)
     else:
         assert rows[0]['market_metrics'] is None
+
+
+@pytest.mark.parametrize('flag,expected',[
+    ('True',True),('False',False),('t',True),('f',False),('1',True),('0',False),
+    (True,True),(False,False),('',None),(None,None),('unknown','error')])
+def test_archived_input_eligibility_is_decoded_without_inventing_missing_proof(tmp_path,monkeypatch,flag,expected):
+    import predictive_validation as pv
+    monkeypatch.syspath_prepend(str(ROOT/'tools'))
+    from wxpredict import arrival_dataset
+    original=dict(checkpoint_id='old',inputs_ok=flag,station='TEST',frozen_at='2026-09-30T18:36:00Z')
+    monkeypatch.setattr(arrival_dataset,'mirrored_rows',lambda table,*a,**kw:[dict(original)] if table=='prediction_checkpoints' else [])
+    if expected=='error':
+        with pytest.raises(ValueError,match='invalid mirrored checkpoint boolean'):
+            pv.older_predictor_calls(tmp_path,dt.date(2026,10,31),'2026-10-01')
+    else:
+        rows,_=pv.older_predictor_calls(tmp_path,dt.date(2026,10,31),'2026-10-01')
+        assert rows[0]['inputs_ok'] is expected and rows[0]['station']=='TEST'
+    assert original['inputs_ok']==flag

@@ -570,6 +570,15 @@ def older_predictor_calls(root, as_of, report_first):
         for field in ('probs', 'predictive_context', 'raw_probs', 'baseline_probs'):
             row[field] = json.loads(row[field]) if isinstance(row.get(field), str) and row[field] else row.get(field) or None
         row['frozen_at'] = row.get('frozen_at') or None
+        value = row.get('inputs_ok')
+        if value is None or value == '':
+            row['inputs_ok'] = None
+        elif isinstance(value, bool):
+            pass
+        elif str(value).lower() in ('true', 't', '1', 'false', 'f', '0'):
+            row['inputs_ok'] = str(value).lower() in ('true', 't', '1')
+        else:
+            raise ValueError('invalid mirrored checkpoint boolean: inputs_ok')
     for fact in facts:
         # CSV mirrors preserve values as text. Decode evidence types before
         # collect() applies the same logic as the typed live REST response.
@@ -596,7 +605,7 @@ def run(score_only=False, now=None):
     now=now or dt.datetime.now(dt.timezone.utc)
     first=(now.date()-dt.timedelta(days=30)).isoformat()
     cities=get_cities(require_coords=False,extra=('display_name',))
-    p=rest_all('prediction_checkpoints',[('select','checkpoint_id,city_key,target_date,checkpoint,decided_at,local_decision_time,frozen_at,input_as_of,input_sha256,priced_from,engine_version,probs,raw_probs,baseline_probs,predictive_context'),('target_date','gte.'+first)],order='checkpoint_id.asc',page_size=1000)
+    p=rest_all('prediction_checkpoints',[('select','checkpoint_id,city_key,target_date,checkpoint,station,inputs_ok,decided_at,local_decision_time,frozen_at,input_as_of,input_sha256,priced_from,engine_version,probs,raw_probs,baseline_probs,predictive_context'),('target_date','gte.'+first)],order='checkpoint_id.asc',page_size=1000)
     outcomes=rest_all('v_checkpoint_outcome',[('select','checkpoint_id,winner_band_id,settled_at,banked_at,market_complete,market_hit,log_loss_market,brier_market'),('target_date','gte.'+first)],order='checkpoint_id.asc',page_size=1000)
     da=rest_all('v_day_ahead_frozen_validation',[('select','*'),('for_date','gte.'+first)],order='city_key.asc,for_date.asc',page_size=1000)
     reviews=rest_all('derived_day_review',[('select','*'),('target_date','gte.'+first)],order='city_key.asc,target_date.asc',page_size=1000)
@@ -650,7 +659,9 @@ def run(score_only=False, now=None):
         detail['early_history'] = detail['learning_history']
         early_fitted=early.fit(collect(older_p+p,older_outcomes+outcomes,[],cities,{},now),now.date(),states)
         fitted.extend(early_fitted)
-        ensemble_fitted=ensemble_early.fit(collect(older_p+p,older_outcomes+outcomes,[],cities,{},now),now.date(),states)
+        ensemble_eligibility={}
+        ensemble_fitted=ensemble_early.fit(collect(older_p+p,older_outcomes+outcomes,[],cities,{},now),now.date(),states,
+                                           diagnostics=ensemble_eligibility)
         fitted.extend(ensemble_fitted)
         path=ROOT/'data/eval/wxpredict/city_calibration'/f'{now.date()}.json'
         path.parent.mkdir(parents=True,exist_ok=True)
@@ -663,7 +674,8 @@ def run(score_only=False, now=None):
                       input_versions=list(versions))
         detail.update(selection_cells=len(selections),selection_decisions=dict(Counter(s['decision'] for s in selections)))
         detail.update(early_adaptation_cells=len(early_fitted),early_adaptation_decisions=dict(Counter(s['decision'] for s in early_fitted)))
-        detail.update(ensemble_cells=len(ensemble_fitted),ensemble_decisions=dict(Counter(s['decision'] for s in ensemble_fitted)))
+        detail.update(ensemble_cells=len(ensemble_fitted),ensemble_decisions=dict(Counter(s['decision'] for s in ensemble_fitted)),
+                      ensemble_eligibility=ensemble_eligibility)
     data=reports(collect(p,outcomes,da,cities,{},now),cities,reviews,states,now,version,selections,early_states,
                  model_versions=active_versions)
     from wxpredict import cycle_registry
