@@ -1,8 +1,8 @@
 """A bounded city ensemble and market-aware classifier on frozen inputs.
 
 Targets are the venue's winning bucket, including open ends. No midpoint or
-unreported maximum is invented. The accepted predictor is a bounded correction
-to the actually served incumbent; the new weather model must earn its weight.
+unreported maximum is invented. The independent classifier is a new shadow recipe. Older bounded artifacts
+retain their own blend; production promotion still requires later evidence.
 """
 import math
 import hashlib
@@ -11,8 +11,9 @@ from pathlib import Path
 
 from wxpredict import current_calls, current_recipe, ensemble_history
 
-RECIPE = 'current-city-ensemble-v2'
-SEED, ROUNDS, BLEND = 20261024, 120, .10
+RECIPE = 'current-city-standalone-v3'
+RECIPE_BLENDS={'current-city-ensemble-v2':.10,RECIPE:1.0}
+SEED, ROUNDS, BLEND = 20261024, 120, 1.0
 PARAMS = dict(objective='binary', learning_rate=.03, num_leaves=15,
               min_data_in_leaf=200, lambda_l2=20., feature_fraction=.8,
               bagging_fraction=.8, bagging_freq=1, num_threads=2, verbose=-1,
@@ -21,7 +22,7 @@ PARAMS = dict(objective='binary', learning_rate=.03, num_leaves=15,
 
 def source_hashes():
     names=('current_calls.py','current_cycle.py','current_model.py','current_recipe.py',
-           'current_forecasts.py','decision_inputs.py','remaining.py','features.py','ensemble_history.py')
+           'current_forecasts.py','decision_inputs.py','remaining.py','features.py','ensemble_history.py','candidate_cycle.py','current_registry.py','current_shadow.py')
     return {name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() for name in names}
 
 
@@ -87,20 +88,23 @@ def fit(records):
 
 class AdaptiveModel:
     """Weights and their preprocessing travel in the hashed private artifact."""
-    def __init__(self,booster,history):self.booster,self.history=booster,history
+    def __init__(self,booster,history,recipe=RECIPE,blend=BLEND):
+        if RECIPE_BLENDS.get(recipe)!=blend:raise ValueError('adaptive recipe/blend mismatch')
+        self.booster,self.history,self.recipe,self.blend=booster,history,recipe,blend
     def feature_name(self):return self.booster.feature_name()
     def feature_importance(self,**kwargs):return self.booster.feature_importance(**kwargs)
     def predict(self,*args,**kwargs):return self.booster.predict(*args,**kwargs)
     def model_to_string(self):
-        return json.dumps(dict(recipe=RECIPE,booster=self.booster.model_to_string(),ensemble=self.history),sort_keys=True,allow_nan=False)
+        return json.dumps(dict(recipe=self.recipe,blend=self.blend,booster=self.booster.model_to_string(),ensemble=self.history),sort_keys=True,allow_nan=False)
 
 
 def restore(raw):
     import lightgbm as lgb
     saved=json.loads(raw)
-    if saved.get('recipe')!=RECIPE or saved['ensemble'].get('policy')!='city-ensemble-snapshot-v1':
+    if saved.get('recipe') not in RECIPE_BLENDS or saved['ensemble'].get('policy')!='city-ensemble-snapshot-v1':
         raise ValueError('unknown adaptive ensemble artifact')
-    return AdaptiveModel(lgb.Booster(model_str=saved['booster']),saved['ensemble'])
+    blend=saved.get('blend',.10 if saved['recipe']=='current-city-ensemble-v2' else None)
+    return AdaptiveModel(lgb.Booster(model_str=saved['booster']),saved['ensemble'],saved['recipe'],blend)
 
 
 def predict(model, records):
@@ -108,6 +112,7 @@ def predict(model, records):
     if not records:
         return []
     adaptive=isinstance(model,AdaptiveModel)
+    blend=model.blend if adaptive else .10  # v1 raw boosters keep their registered weight
     x, _, _, sizes = matrix(records,ensemble=model.history if adaptive else None,legacy=not adaptive)
     if list(x.columns) != model.feature_name():
         raise ValueError('current model feature contract changed')
@@ -125,7 +130,7 @@ def predict(model, records):
             raise ValueError('no possible weather bucket')
         weather /= weather.sum()
         old = np.array([record['incumbent_probs'][bid] for bid in record['band_ids']])
-        p = np.where(possible, (1-BLEND)*old+BLEND*weather, 0.)
+        p = np.where(possible, (1-blend)*old+blend*weather, 0.)
         p /= p.sum()
         out.append(dict(zip(record['band_ids'], map(float, p))))
     return out

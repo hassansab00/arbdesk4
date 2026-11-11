@@ -82,6 +82,8 @@ def prepare(markets, cities, now=None, read=None):
                     contract=m.get('observation_contract'), station=m.get('contract_station') or c.get('icao'),
                     unit=m.get('unit') or c.get('unit'), timezone=c['timezone'], scheduled_at=scheduled.isoformat(),
                     rules_sha256=m.get('rules_sha256'),rules_observed_at=now.isoformat(),rules_received_at=m.get('rules_received_at'))
+    import morning_ensemble
+    morning_ensemble.prepare(_contexts,cities,now,read)
     if not _contexts:
         return
     import ensemble_early

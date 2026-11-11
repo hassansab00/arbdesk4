@@ -78,7 +78,7 @@ def run(now=None, dry_run=False, deadline=None):
         from wxpredict import wxrd_live
         out=[]
         for call,row,p in zip(parent,rows,predictions):
-            if max(abs(p[k]-row['incumbent_probs'][k]) for k in row['band_ids'])>current_model.BLEND+1e-12:
+            if max(abs(p[k]-row['incumbent_probs'][k]) for k in row['band_ids'])>float(meta.get('blend',.10))+1e-12:
                 exclude('prediction correction exceeds its bound')
                 continue
             frozen=wxrd_live.variant_row(call,row['row']['unit'],row['band_ids'],

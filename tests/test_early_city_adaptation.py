@@ -136,9 +136,11 @@ def test_prepare_uses_city_day_and_makes_one_compact_read_and_handles_dst():
     e.prepare(markets,cities,dt.datetime(2026,11,1,14,36,tzinfo=UTC),read)
     assert e._contexts[('city','2026-11-01')]['checkpoint']=='morning'
     assert e._contexts[('city','2026-11-01')]['scheduled_at'].endswith('-05:00')
-    assert len(calls)==1 and calls[0][0][0]=='derived_wx_city_calibration'
+    assert [c[0][0] for c in calls]==['live_capture','derived_wx_city_calibration']
+    assert dict(calls[0][0][1])['kind']=='eq.models0'
+    assert dict(calls[0][0][1])['key']=='in.(city|snapshot)'
     e.prepare(markets,cities,dt.datetime(2026,11,1,17,tzinfo=UTC),read)
-    assert not e._contexts and len(calls)==1
+    assert not e._contexts and len(calls)==2
 
 
 @pytest.mark.parametrize('unit',['C','F'])
