@@ -36,18 +36,22 @@ def release(kind,city,checkpoint,station,unit,identity,payload,proof):
 
 
 def publish_sources(states, rpc):
-    result=dict(approved=0,published=0,held=0)
+    result=dict(approved=0,published=0,held=0,trials_archived=0)
     for state in states:
-        trial=state.get('production_trial') or {}
-        if trial.get('decision')!='approved':result['held']+=1;continue
-        if trial.get('recipe_sha256')!=source_recipe_hash():result['held']+=1;continue
-        result['approved']+=1
-        # Never re-date an old proof to extend its expiry or undo a rollback.
-        if dt.date.fromisoformat(trial['proof']['as_of'])<dt.datetime.now(dt.timezone.utc).date()-dt.timedelta(days=2):continue
-        version=state['model_version'];parts=version.split(':')
-        r=release('early_ensemble',state['city_key'],state['phase'],parts[2],parts[3],version,
-                  dict(production_trial=trial),trial['proof'])
-        rpc('publish_predictive_product',dict(p_release=r));result['published']+=1
+        for trial in (state.get('completed_production_trial'),state.get('production_trial')):
+            if not trial or not trial.get('id'):continue
+            rpc('record_predictive_product_trial',dict(p_city=state['city_key'],p_checkpoint=state['phase'],
+                p_identity=state['model_version'],p_trial=trial,p_snapshot_sha256=digest(trial)))
+            result['trials_archived']+=1
+            if trial.get('decision')!='approved':result['held']+=1;continue
+            if trial.get('recipe_sha256')!=source_recipe_hash():result['held']+=1;continue
+            result['approved']+=1
+            # Never re-date an old proof to extend its expiry or undo a rollback.
+            if dt.date.fromisoformat(trial['proof']['as_of'])<dt.datetime.now(dt.timezone.utc).date()-dt.timedelta(days=2):continue
+            version=state['model_version'];parts=version.split(':')
+            r=release('early_ensemble',state['city_key'],state['phase'],parts[2],parts[3],version,
+                      dict(production_trial=trial),trial['proof'])
+            rpc('publish_predictive_product',dict(p_release=r));result['published']+=1
     return result
 
 
@@ -174,11 +178,12 @@ def apply(city,target,result,bands,unit,books,station,checkpoint=None,now=None):
             meta=r['payload']['metadata']
             if meta['fit_last']>=str(target):return hold('model_fit_not_before_target')
             if meta.get('recipe_sources_sha256')!=calls.digest(current_model.source_hashes()):return hold('current_recipe_changed')
-            if r['release_id'] not in _models:
+            artifact=meta['model_sha256']
+            if artifact not in _models:
                 left=_DEADLINE-time.monotonic()
                 if left<2:return hold('model_load_budget')
-                _models[r['release_id']]=current_registry.load(meta,budget_s=min(4,left/2))
-            served=distribution(current_model.predict(_models[r['release_id']],[record])[0])
+                _models[artifact]=current_registry.load(meta,budget_s=min(4,left/2))
+            served=distribution(current_model.predict(_models[artifact],[record])[0])
         if set(served)!=set(q):return hold('ladder_mismatch')
         from common import model_version_id,request_deadline
         label='predictive-product:'+r['kind']+':'+r['release_id']

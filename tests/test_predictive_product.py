@@ -138,7 +138,7 @@ def test_current_live_adapter_requires_actual_server_receipt_and_original_primar
     call,packet,_=case()
     now=dt.datetime(2026,10,24,12,0,2,tzinfo=dt.timezone.utc)
     identity='|'.join(('synthetic','SYN0','legacy',packet['version']))
-    meta=dict(fit_last='2026-09-01',recipe_sources_sha256=current_calls.digest(current_model.source_hashes()))
+    meta=dict(model_sha256='d'*64,fit_last='2026-09-01',recipe_sources_sha256=current_calls.digest(current_model.source_hashes()))
     r=product.release('current_forecast','synthetic','noon','SYN0','C',identity,dict(metadata=meta),proof())
     receipt=dict(receipt_id=20,decision='activate',recorded_at='2026-10-24T11:00:00Z',expires_at='2026-11-01T00:00:00Z',release=r)
     monkeypatch.setattr(common,'rpc',lambda *a:[receipt])
@@ -234,7 +234,7 @@ def test_current_publisher_requires_hashed_fixed_forward_and_local_development_g
     report=dict(decision='forward validated',model_sha256='a'*64,night=str(today),reasons=[],
                 forward_first=str(first),forward_evaluation_last=str(today-dt.timedelta(days=1)),city_horizons=[local])
     development=dict(decision='accept shadow',city_horizons=[copy.deepcopy(local)])
-    meta=dict(model_sha256='a'*64,fit_last=str(first-dt.timedelta(days=20)),evaluation_report='dev.json',training_dates={identity+'|noon':20})
+    meta=dict(model_sha256='a'*64,fit_last=str(first-dt.timedelta(days=20)),evaluation_report='dev.json',training_dates={identity+'|noon':20},source_units={identity:'C'})
     (tmp_path/'forward.json').write_text(json.dumps(report));(tmp_path/'dev.json').write_text(json.dumps(development))
     state=dict(paused=False,forward_validated=dict(report='forward.json',report_sha256=current_calls.digest(report)))
     monkeypatch.setattr(current_registry,'state',lambda root:state)
@@ -250,3 +250,72 @@ def test_current_publisher_requires_hashed_fixed_forward_and_local_development_g
     assert promotion.publish(lambda *a:pytest.fail('losing city published'),str(tmp_path))['published']==0
     report['forward_first']=str(first+dt.timedelta(days=1));(tmp_path/'forward.json').write_text(json.dumps(report))
     with pytest.raises(ValueError,match='proof mismatch'):promotion.publish(lambda *a:None,str(tmp_path))
+
+
+def test_next_source_trial_is_new_and_the_completed_fixed_verdict_is_retained(monkeypatch):
+    monkeypatch.setattr(ensemble,'_states',{})
+    rows=[scored(str(dt.date(2026,8,1)+dt.timedelta(days=i))) for i in range(20)]
+    first=ensemble.fit(rows,dt.date(2026,8,22))[0]
+    closed=ensemble.fit(rows,dt.date(2026,9,8),[first])[0]
+    assert closed['production_trial']['decision']=='rejected'
+    original_closed=copy.deepcopy(closed['production_trial'])
+    later=ensemble.fit(rows,dt.date(2026,9,9),[closed])[0]
+    assert later['completed_production_trial']==original_closed
+    assert later['production_trial']['id']!=original_closed['id']
+    assert later['production_trial']['validation_first']=='2026-09-11'
+    public=json.dumps(ensemble.summary(later))
+    assert '"weights"' not in public and 'completed_production_trial' not in public
+
+
+def test_pending_original_trial_outcomes_do_not_become_a_failed_model_or_reset_window(monkeypatch):
+    monkeypatch.setattr(ensemble,'_states',{})
+    tr=trial();tr.pop('proof');tr['decision']='waiting'
+    rows=[]
+    for i in range(14):
+        r=scored(str(dt.date(2026,9,3)+dt.timedelta(days=i)))
+        r['ensemble_packet'].update(production_trial_id=tr['id'],production_weights_sha256=policy.digest(tr['weights']),
+                                   production_candidate_probs=dict(a=.05,b=.9,c=.05))
+        r.update(settled=False,winner=None);rows.append(r)
+    state=dict(city_key='city',phase='d1_eve',model_version=ensemble.family('TEST','C'),weights={m:1/7 for m in ensemble.MODELS},learning_dates=20)
+    waiting=policy.source_trial([],dt.date(2026,9,18),state,dict(production_trial=tr),rows)
+    assert waiting['decision']=='pending_evidence' and waiting['proof']['pending_calls']==14
+    assert waiting['proof']['calls']==0 and waiting['id']==tr['id']
+
+
+def test_completed_current_trial_retires_research_pointer_without_removing_served_artifact(tmp_path):
+    from wxpredict import product_promotion as promotion,cycle_registry
+    candidate=dict(metadata='immutable-candidate.json',model_sha256='a'*64)
+    state=dict(paused=False,history=[],candidate=candidate,
+               forward_validated=dict(report='immutable-report.json',report_sha256='b'*64))
+    cycle_registry.write(str(tmp_path/current_registry.STATE),state)
+    assert promotion.finish_trial(dict(published=1),str(tmp_path))
+    saved=current_registry.state(str(tmp_path))
+    assert 'candidate' not in saved and 'forward_validated' not in saved
+    assert saved['history'][-1]['retired_candidate']==candidate
+    assert saved['history'][-1]['production']['published']==1
+    assert not promotion.finish_trial(dict(published=1),str(tmp_path))
+
+
+def test_private_artifact_roundtrip_checks_both_hashes_size_and_readback(tmp_path,monkeypatch):
+    import gzip,hashlib,base64,contextlib
+    from wxpredict import private_artifacts as private
+    raw=b'PRIVATE synthetic native model';blob=gzip.compress(raw,mtime=0);sha=hashlib.sha256(raw).hexdigest()
+    path=tmp_path/'candidate.gz';path.write_bytes(blob);stored={};reads=[]
+    def rpc(name,p):
+        if name=='register_current_forecast_artifact':
+            assert p['p_model'].encode()==raw
+            stored.update(model_sha256=p['p_sha256'],compressed=p['p_compressed'],compressed_sha256=hashlib.sha256(blob).hexdigest())
+            return sha
+        assert name=='read_current_forecast_artifact';reads.append(p)
+        return dict(stored)
+    monkeypatch.setattr(private.common,'ROOT',str(tmp_path))
+    monkeypatch.setattr(private.common,'ops',lambda:SimpleNamespace(rpc=rpc,request_deadline=lambda *a:contextlib.nullcontext()))
+    url=private.publish(str(path),'synthetic',sha)
+    assert url==private.PREFIX+sha and len(reads)==1
+    meta=dict(asset_url=url,model_sha256=sha)
+    assert Path(private.ensure(meta)).read_bytes()==blob and len(reads)==1
+    stored['compressed_sha256']='f'*64
+    with pytest.raises(ValueError,match='hash'):private.ensure(meta,force_remote=True)
+    with pytest.raises(ValueError,match='reference'):private.ensure(dict(meta,asset_url='https://public.invalid/model'))
+    monkeypatch.setattr(private,'MAX_COMPRESSED',1)
+    with pytest.raises(ValueError,match='budget'):private.publish(str(path),'synthetic',sha)

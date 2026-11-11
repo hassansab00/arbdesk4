@@ -14,6 +14,72 @@ create index if not exists predictive_product_cell_receipt on arbdesk_private.pr
 alter table arbdesk_private.predictive_product_releases enable row level security;
 revoke all on arbdesk_private.predictive_product_releases from public,anon,authenticated,service_role;
 
+create table if not exists arbdesk_private.predictive_product_trials (
+ receipt_id bigint generated always as identity primary key,
+ city_key text not null, checkpoint text not null, identity text not null,
+ trial_id text not null, snapshot_sha256 text not null,
+ recorded_at timestamptz not null default clock_timestamp(), trial jsonb not null,
+ unique(city_key,checkpoint,identity,trial_id,snapshot_sha256)
+);
+alter table arbdesk_private.predictive_product_trials enable row level security;
+revoke all on arbdesk_private.predictive_product_trials from public,anon,authenticated,service_role;
+
+create or replace function public.record_predictive_product_trial(p_city text,p_checkpoint text,p_identity text,p_trial jsonb,p_snapshot_sha256 text)
+returns bigint language plpgsql security definer set search_path='' set statement_timeout='3s' as $$
+declare r bigint; existing jsonb;
+begin
+ if coalesce(p_trial->>'id','') !~ '^[0-9a-f]{64}$' or coalesce(p_snapshot_sha256,'') !~ '^[0-9a-f]{64}$'
+ or not exists(select 1 from public.derived_wx_city_calibration c
+  where c.city_key=p_city and c.phase=p_checkpoint and c.model_version=p_identity
+   and (c.state->'production_trial'=p_trial or c.state->'completed_production_trial'=p_trial))
+ then raise exception 'trial differs from private fitted state'; end if;
+ select receipt_id,trial into r,existing from arbdesk_private.predictive_product_trials
+ where city_key=p_city and checkpoint=p_checkpoint and identity=p_identity
+ and trial_id=p_trial->>'id' and snapshot_sha256=p_snapshot_sha256;
+ if r is not null then
+  if existing<>p_trial then raise exception 'immutable trial conflict'; end if;
+  return r;
+ end if;
+ insert into arbdesk_private.predictive_product_trials(city_key,checkpoint,identity,trial_id,snapshot_sha256,trial)
+ values(p_city,p_checkpoint,p_identity,p_trial->>'id',p_snapshot_sha256,p_trial) returning receipt_id into r;
+ return r;
+end $$;
+revoke all on function public.record_predictive_product_trial(text,text,text,jsonb,text) from public,anon,authenticated;
+grant execute on function public.record_predictive_product_trial(text,text,text,jsonb,text) to service_role;
+
+create table if not exists arbdesk_private.current_forecast_artifacts (
+ model_sha256 text primary key, compressed text not null, compressed_sha256 text not null,
+ recorded_at timestamptz not null default clock_timestamp()
+);
+alter table arbdesk_private.current_forecast_artifacts enable row level security;
+revoke all on arbdesk_private.current_forecast_artifacts from public,anon,authenticated,service_role;
+
+create or replace function public.register_current_forecast_artifact(p_sha256 text,p_model text,p_compressed text)
+returns text language plpgsql security definer set search_path='' set statement_timeout='3s' as $$
+declare existing text; compressed_hash text;
+begin
+ if coalesce(p_sha256,'') !~ '^[0-9a-f]{64}$' or octet_length(p_model)>8388608
+ or length(p_compressed)>699052 or octet_length(decode(p_compressed,'base64'))>524288
+ or encode(sha256(convert_to(p_model,'UTF8')),'hex') is distinct from p_sha256
+ then raise exception 'invalid or oversized private artifact'; end if;
+ compressed_hash:=encode(sha256(decode(p_compressed,'base64')),'hex');
+ select compressed into existing from arbdesk_private.current_forecast_artifacts where model_sha256=p_sha256;
+ if found then
+  if existing<>p_compressed then raise exception 'immutable private artifact conflict'; end if;
+  return p_sha256;
+ end if;
+ insert into arbdesk_private.current_forecast_artifacts(model_sha256,compressed,compressed_sha256)
+ values(p_sha256,p_compressed,compressed_hash);
+ return p_sha256;
+end $$;
+
+create or replace function public.read_current_forecast_artifact(p_sha256 text)
+returns jsonb language sql stable security definer set search_path='' set statement_timeout='3s' as $$
+ select to_jsonb(a) from arbdesk_private.current_forecast_artifacts a where model_sha256=p_sha256
+$$;
+revoke all on function public.register_current_forecast_artifact(text,text,text),public.read_current_forecast_artifact(text) from public,anon,authenticated;
+grant execute on function public.register_current_forecast_artifact(text,text,text),public.read_current_forecast_artifact(text) to service_role;
+
 create or replace function public.publish_predictive_product(p_release jsonb)
 returns bigint language plpgsql security definer set search_path='' set statement_timeout='3s' as $$
 declare p jsonb:=p_release->'proof'; r bigint; existing jsonb; ref text; field text;
@@ -56,9 +122,13 @@ begin
   select 1 from public.derived_wx_city_calibration c
   where c.city_key=p_release->>'city_key' and c.phase=p_release->>'checkpoint'
    and c.model_version=p_release->>'identity'
-   and c.state->'production_trial'->>'decision'='approved'
-   and c.state->'production_trial'->'proof'=p
-   and c.state->'production_trial'=p_release->'payload'->'production_trial'
+   and (c.state->'production_trial'=p_release->'payload'->'production_trial'
+     or c.state->'completed_production_trial'=p_release->'payload'->'production_trial')
+   and p_release->'payload'->'production_trial'->>'decision'='approved'
+   and p_release->'payload'->'production_trial'->'proof'=p
+   and exists(select 1 from arbdesk_private.predictive_product_trials t
+     where t.city_key=c.city_key and t.checkpoint=c.phase and t.identity=c.model_version
+       and t.trial=p_release->'payload'->'production_trial')
  ) then raise exception 'pinned production trial differs from private fit'; end if;
  select receipt_id,release into r,existing from arbdesk_private.predictive_product_releases
  where city_key=p_release->>'city_key' and checkpoint=p_release->>'checkpoint'

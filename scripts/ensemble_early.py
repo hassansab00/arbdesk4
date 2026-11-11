@@ -207,6 +207,10 @@ def fit(rows,as_of,previous=(),*,diagnostics=None):
     cutoff=dt.datetime.combine(as_of,dt.time(),dt.timezone.utc)
     prior={(s['city_key'],s['phase'],s['model_version']):s for s in previous if s.get('policy')==POLICY}
     good=eligible(rows,cutoff,diagnostics=diagnostics);groups=collections.defaultdict(list)
+    originals=collections.defaultdict(list)
+    for r in rows:
+        p=r.get('ensemble_packet') or {}
+        if p.get('model_version'):originals[(r['city_key'],r['checkpoint'],p['model_version'])].append(r)
     for r in good:groups[(r['city_key'],r['checkpoint'],r['packet']['model_version'])].append(r)
     states=[];split=as_of-dt.timedelta(days=VALIDATION_DAYS)
     for (city,cp,version),mine in sorted(groups.items()):
@@ -246,13 +250,23 @@ def fit(rows,as_of,previous=(),*,diagnostics=None):
             decision='validated_shadow' if passed else 'held',changes_serving=False,
             reason='original forward calls passed both benchmarks' if passed else 'insufficient original dates or gains against incumbent and saved market unproven')
         from product_policy import source_trial
-        state['production_trial']=source_trial(mine,as_of,state,old)
+        old_trial=old.get('production_trial') or {}
+        state['completed_production_trial']=old.get('completed_production_trial')
+        if (old_trial.get('decision') in ('approved','rejected') and old_trial.get('proof')
+                and str(as_of)>old_trial['proof']['as_of']):
+            # A new candidate gets a new future window only after the previous
+            # fixed verdict. The completed packet is archived privately before
+            # this working pointer is allowed to move again.
+            state['completed_production_trial']=old_trial
+            state['production_trial']=source_trial(mine,as_of,state,{},originals[(city,cp,version)])
+        else:
+            state['production_trial']=source_trial(mine,as_of,state,old,originals[(city,cp,version)])
         state['version']=PREFIX+digest(state)[:16];states.append(state)
     return states
 
 
 def summary(state):
-    result={k:v for k,v in state.items() if k not in ('weights','source_log_losses','production_trial')}
+    result={k:v for k,v in state.items() if k not in ('weights','source_log_losses','production_trial','completed_production_trial')}
     result['production_trial']={k:v for k,v in (state.get('production_trial') or {}).items()
         if k in ('id','decision','reason','training_dates','fit_last','validation_first','validation_last')}
     return result

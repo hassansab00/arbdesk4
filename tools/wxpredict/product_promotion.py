@@ -26,7 +26,7 @@ def publish(rpc, root=None):
     if not development or development.get('decision')!='accept shadow':
         raise ValueError('current development gate missing')
     locals_dev={(r['source_identity'],r['checkpoint']):r for r in development.get('city_horizons',[])}
-    result=dict(published=0,held=0);city_units=None
+    result=dict(published=0,held=0)
     for row in report.get('city_horizons',[]):
         cp=row['checkpoint'];identity=row['source_identity']
         dev=locals_dev.get((identity,cp))
@@ -50,10 +50,32 @@ def publish(rpc, root=None):
         if calls.dt.date.fromisoformat(proof['as_of'])<calls.dt.datetime.now(common.UTC).date()-calls.dt.timedelta(days=2):
             result['held']+=1;continue
         city,station,_,_=identity.split('|')
-        # The native feature row's unit is pinned by the source station metadata.
-        if city_units is None:city_units={c['city_key']:c.get('unit') for c in common.ops().get_cities(require_coords=False)}
-        unit=city_units.get(city)
+        # Use the original training/validation unit, not today's city metadata.
+        unit=(meta.get('source_units') or {}).get(identity)
         if unit not in ('C','F'):result['held']+=1;continue
         r=release('current_forecast',city,cp,station,unit,identity,dict(metadata=meta),proof)
         rpc('publish_predictive_product',dict(p_release=r));result['published']+=1
     return result
+
+
+def finish_trial(result, root=None):
+    """Retire the completed research pointer, preserving its immutable files.
+
+    Approved serving artifacts live in the private release ledger independently
+    of the next challenger. A completed failed city gate cannot stop subsequent
+    chronological research forever either. This runs only after publication
+    returns, so a failed publication leaves the candidate available for retry.
+    """
+    root=root or common.ROOT
+    state=registry.state(root)
+    if state.get('paused') or not state.get('forward_validated') or not state.get('candidate'):
+        return False
+    proof=state['forward_validated'];candidate=state['candidate']
+    state['history'].append(dict(night=str(calls.dt.datetime.now(common.UTC).date()),
+        decision='production gate complete',report=proof['report'],report_sha256=proof['report_sha256'],
+        retired_candidate=candidate,production=dict(result)))
+    state.pop('candidate');state.pop('forward_validated')
+    cycle_registry.write(os.path.join(root,registry.STATE),state)
+    cycle_registry.write(os.path.join(root,registry.POINTER),dict(disabled=True,
+        reason='fixed trial complete; approved serving release retained independently'))
+    return True

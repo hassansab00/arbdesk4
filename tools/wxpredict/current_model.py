@@ -21,7 +21,7 @@ PARAMS = dict(objective='binary', learning_rate=.03, num_leaves=15,
 
 
 def source_hashes():
-    names=('current_calls.py','current_cycle.py','current_model.py','current_recipe.py',
+    names=('current_calls.py','current_cycle.py','current_model.py','current_recipe.py','private_artifacts.py',
            'current_forecasts.py','decision_inputs.py','remaining.py','features.py','ensemble_history.py','candidate_cycle.py','current_registry.py','current_shadow.py')
     return {name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() for name in names}
 

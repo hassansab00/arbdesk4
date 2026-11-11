@@ -65,7 +65,7 @@ def qualified(proof):
     return None
 
 
-def source_trial(rows, as_of, state, old):
+def source_trial(rows, as_of, state, old, original_rows=None):
     """Pin weights before the first of fourteen future local dates.
 
     The existing adaptive shadow experiment continues independently. Its later
@@ -102,6 +102,27 @@ def source_trial(rows, as_of, state, old):
                  fit_last=trial['fit_last'], training_dates=trial['training_dates'],
                  validation_first=trial['validation_first'], validation_last=trial['validation_last'],
                  dates=len({r['target_date'] for r in val}), calls=len(val), expected_calls=14)
+    recorded=set()
+    for r in original_rows or []:
+        p=r.get('ensemble_packet') or {}
+        try:
+            if (r.get('verified') and r.get('inputs_ok') is True
+                    and trial['validation_first']<=r['target_date']<=trial['validation_last']
+                    and p.get('production_trial_id')==trial['id']
+                    and p.get('production_weights_sha256')==digest(trial['weights'])
+                    and p.get('station')==r.get('station')
+                    and p.get('production_candidate_probs') is not None
+                    and p.get('market_probs') is not None
+                    and ensemble.timestamp(p['input_oldest'])<=ensemble.timestamp(p['input_newest'])
+                    <=ensemble.timestamp(p['captured_at'])<=ensemble.timestamp(r['frozen_at'])
+                    <dt.datetime.combine(as_of,dt.time(),dt.timezone.utc)):
+                recorded.add(r['target_date'])
+        except (KeyError,ValueError,TypeError):continue
+    proof.update(recorded_calls=len(recorded) if original_rows is not None else len(val),
+                 pending_calls=max(0,len(recorded)-len(val)))
+    if original_rows is not None and len(recorded)>=13 and len(val)<13:
+        return dict(trial,proof=proof,decision='pending_evidence',
+                    reason='original fixed calls exist; authoritative outcomes still pending')
     if val:
         for name in ('candidate', 'incumbent', 'market'):
             key = 'production_candidate_probs' if name == 'candidate' else name+'_probs'

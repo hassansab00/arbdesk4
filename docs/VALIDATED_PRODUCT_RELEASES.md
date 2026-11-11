@@ -20,6 +20,10 @@ the fixed window, sixty percent bucket hits, strictly more bucket hits and
 lower Brier/log loss than both saved references, and positive paired date
 bootstrap lower bounds. These are acceptance requirements, not measured gains.
 Production uses the exact pinned weights and six-decimal candidate recipe.
+Completed trial registrations and verdicts are retained in a private immutable
+ledger. The next candidate receives a new future window after completion;
+pending authoritative labels keep the original trial pending. Approved
+production artifacts remain independent of the next research candidate.
 
 The current-weather model additionally requires its immutable, hashed accepted
 development report and fixed original forward trial for the exact artifact,
@@ -41,6 +45,10 @@ benchmark rather than comparing a model with its own output. Cards label an
 applied release; the predictive page separately shows sanitized approval
 receipts and explains that approval does not prove a release was applied.
 Weights, model artifacts and detailed research remain private.
+New current-weather artifacts use service-only hash-verified database storage,
+with a 512 KiB compressed transfer cap and shared per-run model cache. They
+are never uploaded to public repository Releases. Oversized artifacts hold
+the candidate rather than increasing the database plan.
 
 ## Verification and remaining gate
 
