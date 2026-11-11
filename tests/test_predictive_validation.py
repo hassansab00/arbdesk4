@@ -419,3 +419,52 @@ def test_real_day_ahead_call_owns_cohort_over_legacy_summary_even_when_pending(s
     assert len(rows)==1 and rows[0]['verified'] is True
     assert rows[0]['settled'] is settled
     assert rows[0]['metrics']['hit']==0 if settled else rows[0]['metrics'] is None
+
+
+def test_nightly_projected_inputs_reach_the_real_seven_source_learner(tmp_path,monkeypatch):
+    """A REST projection must not erase station/eligibility before fitting."""
+    import copy
+    import json
+    from pathlib import Path
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1]/'tools'))
+    from test_ensemble_early import original,BANDS
+    import ensemble_early as ensemble
+    monkeypatch.setattr(ensemble,'_states',{})
+    row,context,captured=original('2026-10-16')
+    row['inputs_ok']=True
+    packet=ensemble.capture(row,BANDS,'C',context,captured)
+    assert packet
+    frozen=(captured+dt.timedelta(seconds=1)).isoformat()
+    original_call=dict(row,checkpoint_id='source-call',decided_at=frozen,frozen_at=frozen,
+        local_decision_time='2026-10-15T18:00:00',engine_version='original',priced_from='original')
+    original_call['predictive_context']=dict(row['predictive_context'],ensemble_early=packet)
+    fact=dict(checkpoint_id='source-call',winner_band_id='b',settled_at='2026-10-16T23:58:00Z',
+              banked_at='2026-10-16T23:59:00Z')
+    before=copy.deepcopy(original_call)
+    metadata=tmp_path/'data/models/wxrd/wxrd-v3_remaining.json'
+    metadata.parent.mkdir(parents=True)
+    metadata.write_text(json.dumps(dict(version='wxrd-v3',model_sha256='a'*64,fit_last='2026-10-11')))
+    monkeypatch.setattr(v,'ROOT',tmp_path)
+    monkeypatch.setattr(v,'get_cities',lambda **kw:CITIES)
+    def read(table,params,**kwargs):
+        if table=='prediction_checkpoints':
+            # Unlike earlier fixtures, emulate the actual Data API projection.
+            return [{key:copy.deepcopy(original_call[key]) for key in dict(params)['select'].split(',')
+                     if key in original_call}]
+        if table=='v_checkpoint_outcome':return [fact]
+        return []
+    monkeypatch.setattr(v,'rest_all',read)
+    monkeypatch.setattr(v,'older_predictor_calls',lambda *a:([],[]))
+    written=[]
+    def save(table,rows,*args,**kwargs):written.extend(copy.deepcopy(rows));return len(rows)
+    monkeypatch.setattr(v,'upsert_replace',save)
+    monkeypatch.setattr(v,'publish_reports',lambda *a:0)
+    monkeypatch.setattr(v,'log_run',lambda *a:None)
+    detail=v.run(now=NOW)
+    learned=[r['state'] for r in written if r['state'].get('policy')==ensemble.POLICY]
+    assert detail['ensemble_cells']==1 and len(learned)==1
+    assert learned[0]['learning_dates']==1 and learned[0]['decision']=='held'
+    assert learned[0]['changes_serving'] is False
+    assert detail['ensemble_eligibility']==dict(input_rows=1,first_calls=1,eligible_rows=1,
+        exclusions={},first_eligible_date='2026-10-16',last_eligible_date='2026-10-16')
+    assert original_call==before, 'learning must preserve the frozen packet'

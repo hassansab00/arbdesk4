@@ -13,7 +13,7 @@ def original(day='2026-10-02'):
     now=dt.datetime.combine(dt.date.fromisoformat(day)-dt.timedelta(days=1),dt.time(18,36),dt.timezone.utc)
     inputs=dict(sources={m:21. if i==0 else 26. for i,m in enumerate(e.MODELS)},
                 inputs_oldest_run_at=(now-dt.timedelta(hours=1)).isoformat(),inputs_newest_run_at=now.isoformat())
-    row=dict(city_key='city',target_date=day,checkpoint='d1_eve',station='TEST',sigma_c=1.,
+    row=dict(city_key='city',target_date=day,checkpoint='d1_eve',station='TEST',inputs_ok=True,sigma_c=1.,
              probs={'a':.2,'b':.4,'c':.4},market={k:dict(bid=.1,ask=.5) for k in ('a','b','c')},
              predictive_context=dict(forecast_input=dict(station_combination=inputs)))
     context=dict(contract='awc-routine-v1',station='TEST',rules_sha256='a'*64,rules_received_at=(now-dt.timedelta(days=1)).isoformat())
@@ -77,6 +77,36 @@ def test_shadow_weights_update_from_recent_labels_without_claiming_validation(mo
     assert s['learning_dates']==2 and s['train_dates']==0
     assert all(w==1/7 for w in s['weights'].values())
     assert s['decision']=='held' and not s['changes_serving']
+
+
+@pytest.mark.parametrize('flag',[None,False,'True','False',1])
+def test_unknown_false_or_untyped_input_status_never_trains(flag):
+    r=scored();r['inputs_ok']=flag
+    before=copy.deepcopy(r);detail={}
+    assert not e.eligible([r],dt.datetime(2026,11,20,tzinfo=dt.timezone.utc),diagnostics=detail)
+    assert detail['exclusions']=={'inputs_not_verified':1} and detail['eligible_rows']==0
+    assert r==before
+
+
+def test_learning_rejections_account_for_each_original_without_hiding_pending():
+    good=scored();pending=scored('2026-10-03');pending.update(settled=False,winner=None)
+    unknown=scored('2026-10-04');unknown['station']=None
+    changed=scored('2026-10-05');changed['ensemble_packet']['incumbent_probs']={'b':1.}
+    missing=scored('2026-10-06');missing['ensemble_packet']=None
+    rows=[good,copy.deepcopy(good),pending,unknown,changed,missing];before=copy.deepcopy(rows);detail={}
+    result=e.eligible(rows,dt.datetime(2026,11,20,tzinfo=dt.timezone.utc),diagnostics=detail)
+    assert len(result)==1 and rows==before
+    assert detail['exclusions']==dict(later_duplicate=1,pending_confirmed_label=1,
+        station_rule_or_ladder_mismatch=1,changed_original_or_invalid_chronology=1,missing_original_ensemble_packet=1)
+    assert detail['input_rows']==detail['eligible_rows']+sum(detail['exclusions'].values())
+
+
+def test_legitimate_later_receipt_is_a_cutoff_hold_then_becomes_available():
+    r=scored('2026-10-02');r['settled_at']='2026-10-03T00:05:00Z';r['label_received_at']='2026-10-03T00:06:00Z'
+    detail={}
+    assert not e.eligible([r],dt.datetime(2026,10,3,tzinfo=dt.timezone.utc),diagnostics=detail)
+    assert detail['exclusions']=={'label_not_available_at_cutoff':1}
+    assert len(e.eligible([r],dt.datetime(2026,10,4,tzinfo=dt.timezone.utc)))==1
 
 
 def test_weight_steps_are_bounded_and_same_night_retry_is_idempotent(monkeypatch):
