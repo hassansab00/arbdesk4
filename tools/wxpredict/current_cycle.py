@@ -27,7 +27,7 @@ POLICY = dict(recipe=model.RECIPE, inputs_from=INPUTS_FROM, minimum_training_dat
               minimum_coverage=legacy.MIN_COVERAGE, minimum_local_validation_dates=10,
               evaluation_checkpoints=list(calls.CHECKPOINTS),
               improvement_checkpoints=list(legacy.PREPEAK_CHECKPOINTS),
-              maximum_probability_change=legacy.MAX_BUCKET_CHANGE,
+              maximum_probability_change=model.BLEND,
               maximum_current_age_hours=calls.MAX_CURRENT_AGE_HOURS,
               minimum_current_models=calls.MIN_CURRENT_MODELS,
               blend=model.BLEND, seed=model.SEED, rounds=model.ROUNDS, parameters=model.PARAMS,
@@ -148,10 +148,11 @@ def local_results(scores, training=()):
     return sorted(out,key=lambda r:(-r['candidate_hits']/r['calls'],r['candidate_nll'],r['city'],r['checkpoint']))
 
 
-def assess(records, predictions, expected, first, last, training=()):
+def assess(records, predictions, expected, first, last, training=(), blend=None):
+    blend=model.BLEND if blend is None else blend
     scored = model.scores(records,predictions)
     result = legacy.assess(scored,expected,first,last,checkpoints=calls.CHECKPOINTS,
-                           improvement_checkpoints=legacy.PREPEAK_CHECKPOINTS)
+                           improvement_checkpoints=legacy.PREPEAK_CHECKPOINTS,maximum_bucket_change=blend)
     brier_regressions = [cp for cp in calls.CHECKPOINTS
         if (group:=[r for r in scored if r['checkpoint']==cp])
         and sum(r['candidate_brier']-r['incumbent_brier'] for r in group)>1e-12]
@@ -179,7 +180,7 @@ def assess(records, predictions, expected, first, last, training=()):
         result['reasons'].append('saved-market hit, Brier or date-clustered log-loss gate failed')
     result.update(market_regressed_checkpoints=market_regressions,market_gain_lower90_by_date=lower)
     result.update(brier_regressed_checkpoints=brier_regressions,
-                  city_horizons=local_results(scored,training),standalone_weather_weight=model.BLEND)
+                  city_horizons=local_results(scored,training),standalone_weather_weight=blend)
     return result
 
 
@@ -228,7 +229,9 @@ def fit_and_evaluate(p, train, test, work):
 def forward(meta, available, night):
     first = str(dt.date.fromisoformat(available[:10])+dt.timedelta(days=POLICY['forward_full_day_margin']))
     last = str(dt.date.fromisoformat(night)-dt.timedelta(days=2))
-    p = dict(night=night,decision='wait forward',changes_serving=False,policy=POLICY,
+    policy={**POLICY,'recipe':meta.get('recipe','current-band-v1'),
+            'blend':meta.get('blend',.10),'maximum_probability_change':meta.get('blend',.10)}
+    p = dict(night=night,decision='wait forward',changes_serving=False,policy=policy,
              model_sha256=meta['model_sha256'],forward_first=first,forward_last=last)
     if first>last:
         return {**p,'reason':'no completed full forward dates yet'}
@@ -263,7 +266,7 @@ def forward(meta, available, night):
     # Rebuild the denominator for the exact registered window if later dates
     # are now available. No missing prediction disappears from this count.
     records,coverage = calls.build(first,last_eval,through)
-    result = assess(scored_records,predictions,coverage['first_calls'],first,last_eval)
+    result = assess(scored_records,predictions,coverage['first_calls'],first,last_eval,blend=meta.get('blend',.10))
     for row in result['city_horizons']:
         row['training_dates']=meta['training_dates'].get(row['source_identity']+'|'+row['checkpoint'],0)
         row['supported']=supported_local(row)

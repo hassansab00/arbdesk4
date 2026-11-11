@@ -206,7 +206,7 @@ def test_real_fresh_forecast_fit_and_inference_preserve_labels_and_probability_b
     p,train,test=ready_fixture()
     report,meta,path=cycle.fit_and_evaluate(p,train,test,str(tmp_path))
     assert report['decision']=='accept shadow'
-    assert report['maximum_bucket_change']<=cycle.legacy.MAX_BUCKET_CHANGE+1e-12
+    assert report['maximum_bucket_change']<=model.BLEND+1e-12
     assert meta['fit_last']<p['evaluation_first'] and meta['recipe']==model.RECIPE
     assert model_artifacts.validate_blob(pathlib.Path(path).read_bytes(),meta['model_sha256'])
     assert any('current_' in name for name in meta['features'])
@@ -340,3 +340,33 @@ def test_readiness_excludes_labels_received_during_validation(monkeypatch):
     report,eligible,_=cycle.prepare(p)
     assert train[0] not in eligible
     assert report['training_availability']['excluded_by_reason']['label_unavailable_at_validation_start']==1
+
+
+def test_standalone_recipe_keeps_legacy_artifact_weight_and_round_trips(tmp_path,monkeypatch):
+    pytest.importorskip('lightgbm')
+    monkeypatch.setattr(sys,'path',list(sys.path))
+    _,train,test=ready_fixture()
+    fresh=model.fit(train)
+    assert fresh.recipe=='current-city-standalone-v3' and fresh.blend==1.
+    old=model.AdaptiveModel(fresh.booster,fresh.history,'current-city-ensemble-v2',.1)
+    old_raw=json.loads(old.model_to_string());old_raw.pop('blend') # authentic v2 artifact format
+    restored=model.restore(json.dumps(old_raw))
+    assert restored.recipe=='current-city-ensemble-v2' and restored.blend==.1
+    assert model.predict(restored,test[:1])==model.predict(old,test[:1])
+    assert model.predict(model.restore(fresh.model_to_string()),test[:1])==model.predict(fresh,test[:1])
+    assert model.predict(fresh,test[:1])!=model.predict(old,test[:1])
+    old_raw['blend']=1.
+    with pytest.raises(ValueError,match='recipe/blend'):model.restore(json.dumps(old_raw))
+
+
+def test_standalone_scope_does_not_relax_legacy_bounds_or_market_gate():
+    assert cycle.legacy.MAX_BUCKET_CHANGE==.10
+    assert model.BLEND==1. and cycle.POLICY['changes_serving'] is False
+    assert registry.RECIPE_BLENDS['current-city-ensemble-v2']==.1
+    assert registry.RECIPE_BLENDS[model.RECIPE]==1.
+    rows=records('2026-11-03',14)
+    # Perfect incumbent correction still fails when saved market is stronger.
+    preds=[{'a':0.,'b':.2,'c':.8} for _ in rows]
+    for r in rows:r['market_probs']={'a':0.,'b':.01,'c':.99}
+    result=cycle.assess(rows,preds,len(rows),'2026-11-03','2026-11-16',rows)
+    assert result['decision']=='reject' and result['market_gain_lower90_by_date']<0

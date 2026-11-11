@@ -95,7 +95,10 @@ def statistics_mean(values):
     return sum(values)/len(values)
 
 
-def assess(rows, expected, first, last, checkpoints=CHECKPOINTS, improvement_checkpoints=None):
+def assess(rows, expected, first, last, checkpoints=CHECKPOINTS, improvement_checkpoints=None,
+           maximum_bucket_change=MAX_BUCKET_CHANGE):
+    if not math.isfinite(maximum_bucket_change) or not 0<maximum_bucket_change<=1:
+        raise ValueError("invalid declared probability-change bound")
     objective = tuple(checkpoints) if improvement_checkpoints is None else tuple(improvement_checkpoints)
     if (not checkpoints or len(set(checkpoints)) != len(checkpoints) or not set(checkpoints) <= set(CHECKPOINTS)
             or not objective or len(set(objective)) != len(objective) or not set(objective) <= set(checkpoints)):
@@ -138,7 +141,7 @@ def assess(rows, expected, first, last, checkpoints=CHECKPOINTS, improvement_che
     if sparse: reasons.append("insufficient dates/cities per checkpoint")
     if coverage < MIN_COVERAGE: reasons.append("insufficient common-call coverage")
     if regressed: reasons.append("checkpoint regression")
-    if jump > MAX_BUCKET_CHANGE: reasons.append("prediction change exceeds its bound")
+    if jump > maximum_bucket_change: reasons.append("prediction change exceeds its bound")
     if interval is None or interval[0] <= 1e-12: reasons.append("no positive date-clustered log-loss gain")
     return {"decision": "reject" if reasons else "accept shadow", "reasons": reasons, "all": aggregate(rows),
             "objective":aggregate(objective_rows),"improvement_checkpoints":list(objective),

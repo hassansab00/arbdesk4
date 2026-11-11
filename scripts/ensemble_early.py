@@ -22,7 +22,11 @@ _states={}
 
 def timestamp(v):return dt.datetime.fromisoformat(str(v).replace('Z','+00:00'))
 def digest(v):return hashlib.sha256(json.dumps(v,sort_keys=True,allow_nan=False,separators=(',',':')).encode()).hexdigest()
-def family(station,unit):return PREFIX+'awc-routine-v1:'+station+':'+unit
+def family(station,unit,source_kind='station_corrected'):
+    base=PREFIX+'awc-routine-v1:'+station+':'+unit
+    if source_kind=='station_corrected':return base
+    if source_kind=='models0_raw_local_day':return base+':models0-raw-local-day-v1'
+    raise ValueError('unknown ensemble source family')
 
 
 def prepare(read,now,rows=None):
@@ -85,18 +89,27 @@ def capture(row,bands,unit,context,now=None,diagnostics=None):
     now=now or dt.datetime.now(dt.timezone.utc)
     inputs=((row.get('predictive_context') or {}).get('forecast_input') or {}).get('station_combination') or {}
     sources,source_names=canonical_sources(inputs.get('sources') or {})
+    if sources is None and row['checkpoint']=='morning':
+        import morning_ensemble
+        inputs=morning_ensemble.get(row['city_key'],row['target_date']) or {}
+        sources,source_names=canonical_sources(inputs.get('sources') or {})
+        if sources is None:return refuse(morning_ensemble.reason(row['city_key'],row['target_date']))
     if sources is None:return refuse('seven original station-corrected sources unavailable')
     try:
         if row.get('station')!=context.get('station') or not context.get('rules_received_at') or timestamp(context['rules_received_at'])>now or len(context.get('rules_sha256') or '')!=64:return refuse('dated station or rule receipt mismatch')
         if any(not math.isfinite(float(v)) or not -90<=float(v)<=70 for v in sources.values()):return refuse('invalid source temperature')
-        oldest=timestamp(inputs['inputs_oldest_run_at']);newest=timestamp(inputs['inputs_newest_run_at'])
+        source_kind=inputs.get('source_kind','station_corrected')
+        raw=source_kind=='models0_raw_local_day'
+        if raw and row['checkpoint']!='morning':return refuse('raw current model family is morning-only')
+        oldest=timestamp(inputs['inputs_oldest_received_at' if raw else 'inputs_oldest_run_at'])
+        newest=timestamp(inputs['inputs_newest_received_at' if raw else 'inputs_newest_run_at'])
         if not 0<=(now-oldest).total_seconds()<=8*3600 or not oldest<=newest<=now:return refuse('source run stale or future')
         sigma=float(row['sigma_c'])
         if not math.isfinite(sigma) or sigma<=0:return refuse('invalid original uncertainty')
         components={m:dict(pe.compute_band_probabilities(float(sources[m]),sigma,unit,bands,row.get('running_max_c'))) for m in MODELS}
         ids=set(row['probs'])
         market,market_reason=saved_market(row.get('market') or {},ids)
-        version=family(context['station'],unit)
+        version=family(context['station'],unit,source_kind)
         state=_states.get((row['city_key'],row['checkpoint'],version),{})
         age=(dt.date.fromisoformat(row['target_date'])-dt.date.fromisoformat(state.get('as_of',row['target_date']))).days
         usable=state.get('policy')==POLICY and 0<=age<=3 and state.get('as_of','9999')<=row['target_date']
@@ -107,6 +120,8 @@ def capture(row,bands,unit,context,now=None,diagnostics=None):
         return dict(policy=POLICY,model_version=version,station=context['station'],unit=unit,
             rules_sha256=context['rules_sha256'],rules_received_at=context['rules_received_at'],
             captured_at=now.isoformat(),input_oldest=oldest.isoformat(),input_newest=newest.isoformat(),
+            source_kind=source_kind,source_receipt=inputs.get('source_receipt'),
+            input_timestamp_basis='server_receipt' if raw else 'source_run',
             source_probs=components,source_values_c=dict(sources),source_names=source_names,incumbent_probs=dict(row['probs']),
             market_probs=market,market_comparable=market is not None,market_reason=market_reason,
             candidate_probs=candidate,weight_version=state.get('version') if usable else 'uniform-prior',
@@ -129,11 +144,18 @@ def eligible(rows,as_of):
         try:
             if p.get('policy')!=POLICY or r.get('inputs_ok',True) is not True or not r.get('verified') or not r.get('settled') or not winner:continue
             if winner not in r['probs'] or p['station']!=r.get('station') or len(p.get('rules_sha256',''))!=64 or timestamp(p['rules_received_at'])>timestamp(p['captured_at']):continue
-            if p['model_version']!=family(p['station'],p['unit']) or set(p['source_probs'])!=set(MODELS):continue
+            if p['model_version']!=family(p['station'],p['unit'],p.get('source_kind','station_corrected')) or set(p['source_probs'])!=set(MODELS):continue
             if p['incumbent_probs']!=r['probs'] or not (timestamp(p['input_oldest'])<=timestamp(p['input_newest'])<=timestamp(p['captured_at'])<=timestamp(r['frozen_at'])<timestamp(r['settled_at'])<=timestamp(r['label_received_at'])<as_of):continue
             if (timestamp(p['captured_at'])-timestamp(p['input_oldest'])).total_seconds()>8*3600:continue
             if dt.date.fromisoformat(r['target_date'])>=as_of.date():continue
             if dt.date.fromisoformat(r['target_date'])<as_of.date()-dt.timedelta(days=90):continue
+            if p.get('source_kind')=='models0_raw_local_day':
+                sr=p['source_receipt']
+                received=max(timestamp(sr['captured_at']),timestamp(sr['written_at']))
+                if (r['checkpoint']!='morning' or sr['key']!=r['city_key']+'|snapshot' or sr['target_date']!=r['target_date']
+                    or not 0<int(sr['expected_hours'])<=26 or len(sr['sha256'])!=64
+                    or p.get('input_timestamp_basis')!='server_receipt'
+                    or received!=timestamp(p['input_oldest']) or received!=timestamp(p['input_newest'])):continue
             for q in [*p['source_probs'].values(),p['candidate_probs'],*([p['market_probs']] if p.get('market_probs') is not None else [])]:
                 if set(q)!=set(r['probs']) or abs(sum(q.values())-1)>1e-4 or any(not math.isfinite(v) or not 0<=v<=1 for v in q.values()):raise ValueError('bad original ladder')
             out.append(dict(r,packet=p))
