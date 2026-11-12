@@ -122,6 +122,7 @@ def venue_minimum_shares(quoted, step):
     """The smallest share count EVERY leg's venue would accept, on the step.
 
     Polymarket states a minimum per market as `orderMinSize`, quoted in USDC,
+    Legacy receipts with a documented dollar minimum retain that meaning,
     so the share count it implies is different on every leg: a leg at $0.05
     needs twenty times the shares of a leg at $1.00 to clear the same dollar
     floor. A basket buys equal shares on all legs, so the basket's floor is

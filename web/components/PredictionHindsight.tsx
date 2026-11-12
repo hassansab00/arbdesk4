@@ -8,6 +8,8 @@ import { compareFocus, summariseByMoment, type HindsightRow } from "@/lib/focus"
 import type { FocusSet } from "@/components/FocusFilter";
 import { displayTz, fmtDateTime, tzLabel } from "@/lib/time";
 import { captureDelay } from "@/lib/cityValidation";
+import {sideIdentity} from '../lib/originalSides';
+import {OriginalSideCell,OriginalSideHistory,useOriginalSideRows} from './OriginalSideResults';
 
 /**
  * WAS THE DESK RIGHT? - graded only on calls frozen before the answer.
@@ -163,6 +165,7 @@ export default function PredictionHindsight({
   const rows = useMemo(() => shown.filter((r) => r.called_when === moment)
     .sort((a, b) => (a.for_date < b.for_date ? 1 : a.for_date > b.for_date ? -1 : a.city_key.localeCompare(b.city_key)))
     .slice(0, 300), [shown, moment]);
+  const sideRows=useOriginalSideRows(rows.map(r=>sideIdentity(r.city_key,r.for_date,r.called_when,r.called_at,r.predicted_band,r.engine_version)));
   // Judged against the universe recorded with the set, never today's roster:
   // a city retired or added later must not move its record in or out.
   const versus = useMemo(() => {
@@ -345,7 +348,7 @@ export default function PredictionHindsight({
       <div className="overflow-x-auto rounded border border-border">
         <table className="w-full text-xs">
           <thead className="bg-panel2 text-muted"><tr>
-            {["Day", "City", "Scheduled (city local)", "Captured (city local)", "Capture delay", "Your time", "Engine called", "Sure", "Market called", "Actual", "Observed", "Priced centre", "Error", "", "Source"]
+            {["Day", "City", "Scheduled (city local)", "Captured (city local)", "Capture delay", "Your time", "Engine called", "Sure", "Market called", "Actual", "Observed", "Priced centre", "Error", "Prediction", "Source", "YES buy / YES net P&L", "NO buy / NO net P&L"]
               .map((h, i) => <th key={i} className="px-2 py-1.5 text-left font-normal">{h}</th>)}
           </tr></thead>
           <tbody>
@@ -387,6 +390,10 @@ export default function PredictionHindsight({
                 : "Banked from the weather outcome after the day ended."}>
                 {r.outcome_source ?? "—"}
               </td>
+              {(['YES','NO'] as const).map(side=><td key={side} className="px-2 py-1 align-top">
+                <OriginalSideCell side={side} loading={sideRows.loading} error={sideRows.error}
+                  call={sideRows.calls.get(sideIdentity(r.city_key,r.for_date,r.called_when,r.called_at,r.predicted_band,r.engine_version).row_key)}/>
+              </td>)}
             </tr>)}
           </tbody>
         </table>
@@ -395,6 +402,7 @@ export default function PredictionHindsight({
         Showing the 300 most recent calls at this moment; the figures above use all of them.
       </p>}
     </DataState>
+    <OriginalSideHistory cities={cities} checkpoint={moment}/>
   </section>;
 }
 

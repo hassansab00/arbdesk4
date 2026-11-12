@@ -43,6 +43,9 @@
     "../lib/cityValidation.ts",
     "../lib/pipelineHealth.ts",
     "../app/api/shared-weather/route.ts",
-    "../app/api/temperature-research/route.ts"
+    "../app/api/temperature-research/route.ts",
+    "../app/api/original-sides/route.ts",
+    "../lib/originalSides.ts",
+    "../components/OriginalSideResults.tsx"
   ]
 }

@@ -167,6 +167,10 @@ SQL_RECORD = {
 }
 
 MIGRATION_RECORD = {
+    "supabase/migrations/20261112071521_day_max_v1_source_identity.sql":
+        "Keeps v1 original source lineage and existing historical writer guards; it does not enumerate or change city scope.",
+    "supabase/migrations/20261111214539_original_call_side_evidence.sql":
+        "Exact historical original-call and settlement provenance includes retired cities; prospective policy choices separately require active cities.",
     "supabase/migrations/20261110223147_seven_source_day_ahead_checkpoint.sql": "Adds the pre-day city-clock slot while preserving immutable original history and existing trigger guards; the active capture roster is selected by Tick.",
     "supabase/migrations/20261111152417_validated_product_releases.sql": "Validates the exact original call's city clock and private product receipt without enumerating a new roster; active capture remains selected by Tick.",
     "supabase/migrations/20261107090006_temperature_score_pending_markets.sql": "Scores original closed research calls with scoped venue history; retired-city originals are preserved and eligible, never discarded by the active roster.",

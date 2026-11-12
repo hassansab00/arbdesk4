@@ -121,6 +121,8 @@ export default function PaperTradesPage() {
   // can act, then the name.
   useEffect(()=>{
     if(account || !accounts.data?.length) return;
+    const linked=new URLSearchParams(window.location.search).get('paperAccount');
+    if(linked&&accounts.data.some(a=>a.account_id===linked)){setAccount(linked);setTab('Orders');return;}
     const best=pickDesk(accounts.data);
     if(best) setAccount(best);
   },[accounts.data,account]);

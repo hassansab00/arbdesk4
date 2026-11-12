@@ -3,6 +3,19 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Original-bucket YES/NO paper integration — 12 Nov
+
+Additive private side quote receipts, explicit inactive paper v2 policies,
+settled-cash reservations, existing simulator execution and immutable payout
+revisions share one read model across both Predictive history surfaces and
+the paper ledger. v1 keeps its original YES/$10 cohort. Native original calls
+retain metadata during freeze. Direct NO books, fees, minimum shares, numeric
+finance, owner access, bounded storage and verified private restore are gated.
+Production activation of the mixed preset and real forward fill/settlement
+acceptance remain separate from source deployment. Model weights and frozen
+prediction accuracy are unchanged. Source checks and later live receipts must
+be reported separately; no accuracy improvement is implied.
+
 ## Sparse market source-learning guard — 11 Nov
 
 Live validation found 8/10 recent early calls lacked two-sided books on every
