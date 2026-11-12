@@ -167,6 +167,8 @@ SQL_RECORD = {
 }
 
 MIGRATION_RECORD = {
+    "supabase/migrations/20261112133331_original_side_ladder_encoding.sql":
+        "Validates the exact original call's saved ladder and city clock without changing capture scope or filtering historical cities.",
     "supabase/migrations/20261112071521_day_max_v1_source_identity.sql":
         "Keeps v1 original source lineage and existing historical writer guards; it does not enumerate or change city scope.",
     "supabase/migrations/20261111214539_original_call_side_evidence.sql":
