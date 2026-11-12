@@ -1,0 +1,464 @@
+{
+ "changes_serving": false,
+ "decision": "wait",
+ "evaluation_availability": {
+  "checkpoint_dates": [
+   {
+    "checkpoint": "noon",
+    "cities": 46,
+    "date": "2026-10-28"
+   },
+   {
+    "checkpoint": "prepeak_2h",
+    "cities": 45,
+    "date": "2026-10-28"
+   },
+   {
+    "checkpoint": "prepeak_1h",
+    "cities": 45,
+    "date": "2026-10-28"
+   },
+   {
+    "checkpoint": "postpeak_1h",
+    "cities": 46,
+    "date": "2026-10-28"
+   },
+   {
+    "checkpoint": "noon",
+    "cities": 46,
+    "date": "2026-10-29"
+   },
+   {
+    "checkpoint": "prepeak_2h",
+    "cities": 46,
+    "date": "2026-10-29"
+   },
+   {
+    "checkpoint": "prepeak_1h",
+    "cities": 46,
+    "date": "2026-10-29"
+   },
+   {
+    "checkpoint": "postpeak_1h",
+    "cities": 47,
+    "date": "2026-10-29"
+   },
+   {
+    "checkpoint": "noon",
+    "cities": 43,
+    "date": "2026-10-30"
+   },
+   {
+    "checkpoint": "prepeak_2h",
+    "cities": 42,
+    "date": "2026-10-30"
+   },
+   {
+    "checkpoint": "prepeak_1h",
+    "cities": 40,
+    "date": "2026-10-30"
+   },
+   {
+    "checkpoint": "postpeak_1h",
+    "cities": 43,
+    "date": "2026-10-30"
+   },
+   {
+    "checkpoint": "noon",
+    "cities": 47,
+    "date": "2026-10-31"
+   },
+   {
+    "checkpoint": "prepeak_2h",
+    "cities": 47,
+    "date": "2026-10-31"
+   },
+   {
+    "checkpoint": "prepeak_1h",
+    "cities": 47,
+    "date": "2026-10-31"
+   },
+   {
+    "checkpoint": "postpeak_1h",
+    "cities": 47,
+    "date": "2026-10-31"
+   },
+   {
+    "checkpoint": "noon",
+    "cities": 47,
+    "date": "2026-11-01"
+   },
+   {
+    "checkpoint": "prepeak_2h",
+    "cities": 45,
+    "date": "2026-11-01"
+   },
+   {
+    "checkpoint": "prepeak_1h",
+    "cities": 46,
+    "date": "2026-11-01"
+   },
+   {
+    "checkpoint": "postpeak_1h",
+    "cities": 43,
+    "date": "2026-11-01"
+   },
+   {
+    "checkpoint": "noon",
+    "cities": 46,
+    "date": "2026-11-02"
+   },
+   {
+    "checkpoint": "prepeak_2h",
+    "cities": 45,
+    "date": "2026-11-02"
+   },
+   {
+    "checkpoint": "prepeak_1h",
+    "cities": 46,
+    "date": "2026-11-02"
+   },
+   {
+    "checkpoint": "postpeak_1h",
+    "cities": 44,
+    "date": "2026-11-02"
+   },
+   {
+    "checkpoint": "noon",
+    "cities": 37,
+    "date": "2026-11-03"
+   },
+   {
+    "checkpoint": "prepeak_2h",
+    "cities": 36,
+    "date": "2026-11-03"
+   },
+   {
+    "checkpoint": "prepeak_1h",
+    "cities": 38,
+    "date": "2026-11-03"
+   },
+   {
+    "checkpoint": "postpeak_1h",
+    "cities": 37,
+    "date": "2026-11-03"
+   },
+   {
+    "checkpoint": "noon",
+    "cities": 46,
+    "date": "2026-11-04"
+   },
+   {
+    "checkpoint": "prepeak_2h",
+    "cities": 45,
+    "date": "2026-11-04"
+   },
+   {
+    "checkpoint": "prepeak_1h",
+    "cities": 46,
+    "date": "2026-11-04"
+   },
+   {
+    "checkpoint": "postpeak_1h",
+    "cities": 46,
+    "date": "2026-11-04"
+   },
+   {
+    "checkpoint": "noon",
+    "cities": 46,
+    "date": "2026-11-05"
+   },
+   {
+    "checkpoint": "prepeak_2h",
+    "cities": 46,
+    "date": "2026-11-05"
+   },
+   {
+    "checkpoint": "prepeak_1h",
+    "cities": 46,
+    "date": "2026-11-05"
+   },
+   {
+    "checkpoint": "postpeak_1h",
+    "cities": 45,
+    "date": "2026-11-05"
+   },
+   {
+    "checkpoint": "noon",
+    "cities": 47,
+    "date": "2026-11-06"
+   },
+   {
+    "checkpoint": "prepeak_2h",
+    "cities": 46,
+    "date": "2026-11-06"
+   },
+   {
+    "checkpoint": "prepeak_1h",
+    "cities": 46,
+    "date": "2026-11-06"
+   },
+   {
+    "checkpoint": "postpeak_1h",
+    "cities": 46,
+    "date": "2026-11-06"
+   },
+   {
+    "checkpoint": "noon",
+    "cities": 46,
+    "date": "2026-11-07"
+   },
+   {
+    "checkpoint": "prepeak_2h",
+    "cities": 46,
+    "date": "2026-11-07"
+   },
+   {
+    "checkpoint": "prepeak_1h",
+    "cities": 46,
+    "date": "2026-11-07"
+   },
+   {
+    "checkpoint": "postpeak_1h",
+    "cities": 46,
+    "date": "2026-11-07"
+   },
+   {
+    "checkpoint": "noon",
+    "cities": 46,
+    "date": "2026-11-08"
+   },
+   {
+    "checkpoint": "prepeak_2h",
+    "cities": 46,
+    "date": "2026-11-08"
+   },
+   {
+    "checkpoint": "prepeak_1h",
+    "cities": 46,
+    "date": "2026-11-08"
+   },
+   {
+    "checkpoint": "postpeak_1h",
+    "cities": 46,
+    "date": "2026-11-08"
+   },
+   {
+    "checkpoint": "noon",
+    "cities": 47,
+    "date": "2026-11-09"
+   },
+   {
+    "checkpoint": "prepeak_2h",
+    "cities": 46,
+    "date": "2026-11-09"
+   },
+   {
+    "checkpoint": "prepeak_1h",
+    "cities": 46,
+    "date": "2026-11-09"
+   },
+   {
+    "checkpoint": "postpeak_1h",
+    "cities": 46,
+    "date": "2026-11-09"
+   },
+   {
+    "checkpoint": "noon",
+    "cities": 47,
+    "date": "2026-11-10"
+   },
+   {
+    "checkpoint": "prepeak_2h",
+    "cities": 46,
+    "date": "2026-11-10"
+   },
+   {
+    "checkpoint": "prepeak_1h",
+    "cities": 46,
+    "date": "2026-11-10"
+   },
+   {
+    "checkpoint": "postpeak_1h",
+    "cities": 46,
+    "date": "2026-11-10"
+   }
+  ],
+  "complete_dates": 14,
+  "coverage": 0.9752513534416086,
+  "excluded_by_reason": {
+   "missing_frozen_lineage": 46,
+   "stale_current_forecasts": 18
+  },
+  "first_calls": 2586,
+  "input_coverage": {
+   "dataset_sha256": "e58d42d6ed00c7fafe63bd412a4a94e9623248c8e7345236914995dae46099f1",
+   "excluded": {
+    "missing_frozen_lineage": 46,
+    "stale_current_forecasts": 18
+   },
+   "first": "2026-10-28",
+   "first_calls": 2586,
+   "last": "2026-11-10",
+   "paired_rows": 2522,
+   "policy": "wx-primary-current-calls-v1",
+   "through": 1794441600.0,
+   "uses_reconstructed_features": false
+  },
+  "paired_rows": 2522,
+  "ready": true,
+  "recorded_inputs_from": "2026-10-24",
+  "required_dates": 14,
+  "unavailable_reasons": [],
+  "window_first": "2026-10-28",
+  "window_last": "2026-11-10"
+ },
+ "evaluation_first": "2026-10-28",
+ "evaluation_last": "2026-11-10",
+ "fit_last": "2026-10-26",
+ "night": "2026-11-12",
+ "policy": {
+  "blend": 1.0,
+  "changes_serving": false,
+  "evaluation_checkpoints": [
+   "noon",
+   "prepeak_2h",
+   "prepeak_1h",
+   "postpeak_1h"
+  ],
+  "evaluation_dates": 14,
+  "forward_full_day_margin": 2,
+  "improvement_checkpoints": [
+   "noon",
+   "prepeak_2h",
+   "prepeak_1h"
+  ],
+  "inputs_from": "2026-10-24",
+  "maximum_current_age_hours": 8,
+  "maximum_probability_change": 1.0,
+  "minimum_cities_per_checkpoint_date": 20,
+  "minimum_coverage": 0.8,
+  "minimum_current_models": 4,
+  "minimum_local_validation_dates": 10,
+  "minimum_training_dates": 20,
+  "parameters": {
+   "bagging_fraction": 0.8,
+   "bagging_freq": 1,
+   "deterministic": true,
+   "feature_fraction": 0.8,
+   "force_col_wise": true,
+   "lambda_l2": 20.0,
+   "learning_rate": 0.03,
+   "min_data_in_leaf": 200,
+   "num_leaves": 15,
+   "num_threads": 2,
+   "objective": "binary",
+   "seed": 20261024,
+   "verbose": -1
+  },
+  "recipe": "current-city-standalone-v3",
+  "rounds": 120,
+  "seed": 20261024,
+  "training_window_days": 60
+ },
+ "reason": "insufficient recorded training or independent evaluation coverage",
+ "train_first": "2026-10-24",
+ "training_availability": {
+  "checkpoint_dates": [
+   {
+    "checkpoint": "noon",
+    "cities": 5,
+    "date": "2026-10-24"
+   },
+   {
+    "checkpoint": "prepeak_2h",
+    "cities": 7,
+    "date": "2026-10-24"
+   },
+   {
+    "checkpoint": "prepeak_1h",
+    "cities": 12,
+    "date": "2026-10-24"
+   },
+   {
+    "checkpoint": "postpeak_1h",
+    "cities": 14,
+    "date": "2026-10-24"
+   },
+   {
+    "checkpoint": "noon",
+    "cities": 47,
+    "date": "2026-10-25"
+   },
+   {
+    "checkpoint": "prepeak_2h",
+    "cities": 47,
+    "date": "2026-10-25"
+   },
+   {
+    "checkpoint": "prepeak_1h",
+    "cities": 47,
+    "date": "2026-10-25"
+   },
+   {
+    "checkpoint": "postpeak_1h",
+    "cities": 47,
+    "date": "2026-10-25"
+   },
+   {
+    "checkpoint": "noon",
+    "cities": 46,
+    "date": "2026-10-26"
+   },
+   {
+    "checkpoint": "prepeak_2h",
+    "cities": 46,
+    "date": "2026-10-26"
+   },
+   {
+    "checkpoint": "prepeak_1h",
+    "cities": 43,
+    "date": "2026-10-26"
+   },
+   {
+    "checkpoint": "postpeak_1h",
+    "cities": 45,
+    "date": "2026-10-26"
+   }
+  ],
+  "complete_dates": 2,
+  "coverage": 0.7198581560283688,
+  "excluded_by_reason": {
+   "label_unavailable_at_validation_start": 0,
+   "missing_frozen_lineage": 21,
+   "missing_frozen_timezone": 137
+  },
+  "first_calls": 564,
+  "input_coverage": {
+   "dataset_sha256": "e3c3651c82ba0060cc62a4e63de326a3ae04780557850910e233c754766d42c0",
+   "excluded": {
+    "label_unavailable_at_validation_start": 0,
+    "missing_frozen_lineage": 21,
+    "missing_frozen_timezone": 137
+   },
+   "exclusions_note": "training labels must precede the first original validation decision",
+   "first": "2026-10-24",
+   "first_calls": 564,
+   "last": "2026-10-26",
+   "paired_rows": 406,
+   "policy": "wx-primary-current-calls-v1",
+   "through": 1794441600.0,
+   "uses_reconstructed_features": false
+  },
+  "paired_rows": 406,
+  "ready": false,
+  "recorded_inputs_from": "2026-10-24",
+  "required_dates": 20,
+  "unavailable_reasons": [
+   "too_few_complete_dates",
+   "paired_input_coverage_below_minimum"
+  ],
+  "window_first": "2026-10-24",
+  "window_last": "2026-10-26"
+ }
+}
