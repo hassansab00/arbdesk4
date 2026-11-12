@@ -176,7 +176,11 @@ def run(*, budget_s=BUDGET_S):
             if time.monotonic()+8 >= started+budget_s:
                 counts['paper_drain_budget_exhausted']+=1
                 break
-            order = rpc('claim_original_side_order')
+            try:
+                order = rpc('claim_original_side_order')
+            except Exception as exc:
+                failures['order_claim_'+type(exc).__name__]+=1
+                break  # The lease reader must not disable settlement recovery.
             if not order:
                 break
             try:
@@ -184,8 +188,11 @@ def run(*, budget_s=BUDGET_S):
                 counts['paper_'+result['status']] += 1
             except Exception as exc:
                 failures['fill_completion_'+type(exc).__name__]+=1
-                rpc('record_original_side_stage',dict(p_call=order['call_id'],p_account=order['account_id'],
-                    p_stage='fill_completion_deferred',p_reason=type(exc).__name__))
+                try:
+                    rpc('record_original_side_stage',dict(p_call=order['call_id'],p_account=order['account_id'],
+                        p_stage='fill_completion_deferred',p_reason=type(exc).__name__))
+                except Exception as stage_exc:
+                    failures['fill_stage_receipt_'+type(stage_exc).__name__]+=1
         if time.monotonic()+5 < started+budget_s:
             groups={}
             for row in rpc('original_side_settlement_candidates', {'p_limit': 50}):
