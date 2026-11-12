@@ -88,6 +88,7 @@ def test_every_n8n_collector_asks_for_active_cities_only():
         "collecting for retired cities: " + ", ".join(offenders))
 
 SQL_FILTERS = {
+    "supabase/migrations/20261112205125_bounded_signal_inputs.sql": "Service signal inputs require active city scope.",
     "sql/ad4_page_status.sql": "Active-city operational input",
     "supabase/migrations/20261018172215_page_evidence_health_sample.sql": "Active-city operational input",
     "sql/ad4_13_reconcile.sql":                 "Active-city operational input",

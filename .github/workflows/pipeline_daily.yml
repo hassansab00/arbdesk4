@@ -1,4 +1,5 @@
 name: Daily Pipeline (forecasts, settlement, skill, databank, derived)
+run-name: ${{ inputs.clock_dispatch_id && format('AD4 clock {0}', inputs.clock_dispatch_id) || github.workflow }}
 
 # ONE RUNNER INSTEAD OF SIX.
 #
@@ -28,6 +29,10 @@ on:
   # every scheduled workflow is on the CLOCK table in n8n/P6.1_clock.template.json.
   workflow_dispatch:
     inputs:
+      clock_dispatch_id:
+        description: 'Internal clock receipt; leave blank for manual runs'
+        required: false
+        default: ''
       learning_only:
         description: 'Run city validation and the existing shadow candidate job, skipping ingestion'
         type: boolean

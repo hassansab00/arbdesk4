@@ -101,7 +101,7 @@ def test_the_strategies_read_the_live_definition():
     """signal_engine runs right behind the edge engine and before the
     pipeline refreshes the stored rows, so the stored copy would hand it the
     edges of the run before."""
-    assert signal_engine.BOARD == "v_opportunities_live"
+    assert signal_engine.BOARD == "v_signal_inputs"
     src = (ROOT / "scripts/signal_engine.py").read_text()
     assert "rest_all(BOARD, " in src
     steps = [s.get("name") for s in yaml.safe_load(

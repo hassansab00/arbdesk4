@@ -66,7 +66,33 @@ SIGNAL_TTL_MINUTES = 30
 # :42 and at the end of each pipeline - after this step, which runs right
 # behind the edge engine. v_opportunities_live is the same definition read
 # from the tables, so the strategies see the edges just written.
-BOARD = "v_opportunities_live"
+BOARD = "v_signal_inputs"
+
+
+def _current_receipt(value, cycle):
+    """A receipt must have an explicit clock in the current pricing cycle."""
+    try:
+        stamp = dt.datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+        start = dt.datetime.fromisoformat(str(cycle).replace('Z', '+00:00'))
+        return (stamp.tzinfo is not None and start.tzinfo is not None
+                and stamp >= start)
+    except (TypeError, ValueError):
+        return False
+
+
+def _edge_matches_probability(edge, probability, cycle):
+    if edge is None:
+        return False
+    # Old in-memory callers have no receipt columns. Real service rows always
+    # carry them; an identified cycle never accepts an unreceipted row.
+    if not cycle and 'edge_prob_id' not in edge:
+        return True
+    if not probability.get('prob_id') or edge.get('edge_prob_id') != probability['prob_id']:
+        return False
+    if cycle:
+        return (_current_receipt(probability.get('computed_at'), cycle)
+                and _current_receipt(edge.get('edge_computed_at'), cycle))
+    return True
 
 
 def _enabled_strategies():
@@ -132,7 +158,7 @@ def _band_views():
     than recomputed, for the same reason the pricing is read from
     v_opportunities and not re-derived: one implementation, read everywhere.
     """
-    rows = rest_all(BOARD, [("select", "band_id,side,city_key,resolution_date,unit,band_label,band_lo,band_hi,open_low,open_high,model_prob,market_price,edge_net_pp,tradeable,block_reason,confidence,regime_label,market_state,fillable_usd_5c,token_yes,token_no,spread")],
+    rows = rest_all(BOARD, [("select", "band_id,side,city_key,resolution_date,unit,band_label,band_lo,band_hi,open_low,open_high,model_prob,market_price,edge_net_pp,tradeable,block_reason,confidence,regime_label,market_state,fillable_usd_5c,token_yes,token_no,spread,edge_id,edge_computed_at,edge_prob_id,edge_book_snapshot_id")],
                     order="band_id.asc,side.asc", page_size=1000)
     by_band = defaultdict(dict)
     for r in rows:
@@ -248,8 +274,10 @@ def _band_views():
         ap = (approach.get(city) or {}) if tm else {}
         pr = probs.get(band_id) or {}
         cycle = os.environ.get('AD4_CYCLE_STARTED_AT')
-        if cycle and (not pr.get('computed_at') or
-            dt.datetime.fromisoformat(pr['computed_at'].replace('Z', '+00:00')) < dt.datetime.fromisoformat(cycle.replace('Z', '+00:00'))):
+        yes = yes if _edge_matches_probability(yes, pr, cycle) else None
+        no = no if _edge_matches_probability(no, pr, cycle) else None
+        base = yes or no
+        if base is None:
             continue
         meta = band_meta.get(band_id) or {}
         lead = pr.get("lead_days")
@@ -813,6 +841,10 @@ def main():
     counts["bands"] = len(views)
     if not views:
         print("no priced bands - run the intraday pipeline first")
+        if os.environ.get('AD4_CYCLE_STARTED_AT'):
+            counts['blocked_reason'] = 'no_current_receipt_matched_bands'
+            log_run("signal_engine", "attention", 0, counts)
+            return 1
         log_run("signal_engine", "ok", 0, counts)
         return 0
 
