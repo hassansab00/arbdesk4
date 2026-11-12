@@ -22,11 +22,28 @@ module.exports=async function(db){
  const again=(await q('select public.set_original_side_policy_state($1,$2,$3) r',[owner,pid,'activate']))[0].r;
  assert.equal(again.account_id,account,'activation is one initial contribution, never a top-up');
  const p=(await q(`insert into public.prediction_checkpoints(city_key,target_date,checkpoint,local_decision_time,engine_version,model_path,probs,top_band_id,top_prob,inputs_ok,predictive_context,forecast_issued_at,station)
-  values('side_fixture',(now() at time zone '${zone}')::date,'noon',(now() at time zone '${zone}')::date+time '12:00','side-fixture','forecast',$1,$2,.7,true,'{"clim_peak_hour":18}',now()-interval '5 minutes','TEST') returning *`,[JSON.stringify({[band]:.7,[other]:.3}),band]))[0];
+  values('side_fixture',(now() at time zone '${zone}')::date,'noon',(now() at time zone '${zone}')::date+time '12:00','side-fixture','forecast',$1,$2,.7,true,$3,now()-interval '5 minutes','TEST') returning *`,[JSON.stringify({[band]:.7,[other]:.3}),band,
+   {clim_peak_hour:18,band_ids:[band,other],bands_lo:'20;21',bands_hi:'21;22'}]))[0];
  const call=(await q('select public.register_original_side_call($1) r',[p.checkpoint_id]))[0].r;
  assert.equal((await q('select count(*) n from arbdesk_private.original_side_calls where call_id=$1',[p.checkpoint_id]))[0].n,1,'native AFTER INSERT retains identity without a later observation stage');
  assert.equal(call.eligibility,'eligible');assert.equal(call.identity.predicted_band_id,band);
  assert.equal(call.source.probs[band],.7,'canonical p stays YES probability');
+ const ladder=[{band_id:band,band_lo:20,band_hi:21},{band_id:other,band_lo:21,band_hi:22}];
+ const arrayContext={band_ids:[band,other],bands_lo:'20;21',bands_hi:'21;22'};
+ const matches=async(ctx,bands=ladder)=>(await q('select arbdesk_private.original_side_ladder_matches($1,$2) ok',[ctx,bands]))[0].ok;
+ assert.equal(await matches(arrayContext),true,'real intraday JSON IDs match the same saved geometry');
+ assert.equal(await matches({...arrayContext,band_ids:[band,other].join(';')}),true,'legacy delimited IDs retain parity');
+ assert.equal(await matches({...arrayContext,bands_lo:[20,21],bands_hi:[21,22]}),true);
+ assert.equal(await matches({...arrayContext,band_ids:[other,band],bands_lo:'21;20',bands_hi:'22;21'}),true,'bounds follow saved ordinal IDs, not canonical sort order');
+ assert.equal(await matches({band_ids:[band,other],bands_lo:';21',bands_hi:'21;'},[{band_id:band,band_lo:null,band_hi:21},{band_id:other,band_lo:21,band_hi:null}]),true,'open tails preserve null bounds');
+ for(const ctx of [
+  {...arrayContext,band_ids:[band,band]}, {...arrayContext,band_ids:[band]},
+  {...arrayContext,band_ids:[band,'unknown']}, {...arrayContext,band_ids:null},
+  {...arrayContext,band_ids:{id:band}}, {...arrayContext,bands_lo:'20'},
+  {...arrayContext,bands_lo:'20;20'}, {...arrayContext,bands_hi:'21;23'},
+  {...arrayContext,bands_lo:'bad;21'}, {...arrayContext,bands_hi:null},
+ ]) assert.equal(await matches(ctx),false,'invalid encoding or genuinely changed geometry stays blocked');
+ assert.equal(await matches({clim_peak_hour:18}),true,'older calls without saved geometry keep their existing probability-identity checks');
  const wrongSource='f5555555-0000-0000-0000-000000000014';
  await q(`insert into arbdesk_private.original_side_calls(call_id,city_key,target_date,checkpoint,source_kind,frozen_at,source,identity,eligibility,cutoff_at,registered_at)
   select $1::uuid,city_key,target_date,checkpoint,'day_max_day_ahead_calls',frozen_at,source,identity,eligibility,cutoff_at,registered_at
@@ -197,6 +214,9 @@ module.exports=async function(db){
  await assert.rejects(()=>require('../../tools/restore_original_sides.cjs').restore({payload:changedPayload,
   sha256:crypto.createHash('sha256').update(changedPayload).digest('hex')}),/reconcile.*ledger/);
  await db.exec(fs.readFileSync(path.join(__dirname,'../../supabase/migrations/20261111214539_original_call_side_evidence.sql'),'utf8'));
+ const encodingFix=fs.readFileSync(path.join(__dirname,'../../supabase/migrations/20261112133331_original_side_ladder_encoding.sql'),'utf8');
+ await db.exec(encodingFix);await db.exec(encodingFix);
+ assert.equal((await q('select arbdesk_private.original_side_source($1) r',[p.checkpoint_id]))[0].r.eligibility,'eligible','repeat installation still accepts the real intraday shape');
  const reinstalled=JSON.parse((await q('select public.begin_original_side_archive() r'))[0].r.payload);
  assert.deepEqual(reinstalled.entities,manifest.entities,'reinstall retains every original receipt, account/order projection and ledger row');
  const session=(await q('select public.issue_original_side_session() r'))[0].r;
@@ -207,6 +227,7 @@ module.exports=async function(db){
  await db.exec('set role anon');
  await assert.rejects(()=>q('select public.read_original_side_desk($1)',[owner]),/permission denied/);
  await assert.rejects(()=>q('select * from arbdesk_private.original_side_books'),/permission denied/);
+ await assert.rejects(()=>q('select arbdesk_private.original_side_ladder_matches($1,$2)',[arrayContext,ladder]),/permission denied/);
  await db.exec('reset role');
  console.log('original sides: original bucket, own NO token, private evidence, numeric sizing/fees, inactive policy, one contribution, reservations, idempotent leases/fills and unresolved nulls passed');
 };

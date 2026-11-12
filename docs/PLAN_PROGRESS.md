@@ -5,6 +5,16 @@ PR that advances a step.
 
 ## Original-bucket YES/NO paper integration — 12 Nov
 
+Continuation found an actual intraday encoding defect: frozen noon/peak
+contexts contain JSON array band IDs, while the side-source validator split
+them as delimited text. The new parser supports both saved encodings and
+checks exact ID membership, ordinal bounds, unique complete coverage and open
+tails; malformed or changed geometry stays blocked. A database regression
+reproduced the false rejection before the fix. Existing immutable registrations
+and rejected attempts are retained, without reconstructing missed quotes.
+Only newly registered calls use the corrected parser. Deployment, later normal
+worker acceptance and real future fill/settlement remain separate gates.
+
 Additive private side quote receipts, explicit inactive paper v2 policies,
 settled-cash reservations, existing simulator execution and immutable payout
 revisions share one read model across both Predictive history surfaces and
