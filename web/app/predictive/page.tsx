@@ -10,6 +10,8 @@ import TemperatureResearch from "@/components/TemperatureResearch";
 import PredictiveSectionNav from "@/components/PredictiveSectionNav";
 import PredictiveAccuracyGuide from "@/components/PredictiveAccuracyGuide";
 import PredictionHindsight from "@/components/PredictionHindsight";
+import {OriginalSidesProvider,OriginalSideCell,OriginalSideHistory,useOriginalSideRows} from '@/components/OriginalSideResults';
+import {sideIdentity} from '@/lib/originalSides';
 import SettlementStatus from "@/components/SettlementStatus";
 import CheckpointScoreboard from "@/components/CheckpointScoreboard";
 import PredictionLineup from "@/components/PredictionLineup";
@@ -145,6 +147,9 @@ const MISSING = (file: string, extra?: string) => (
 );
 
 export default function PredictivePage() {
+  return <OriginalSidesProvider><PredictiveContent/></OriginalSidesProvider>;
+}
+function PredictiveContent() {
   const citiesQ = useQuery<CityRow[]>(
     // Active only: a retired city keeps every row it ever wrote, so without
     // this filter the desk would go on listing cities it has stopped trading.
@@ -421,6 +426,7 @@ export default function PredictivePage() {
   const unitOf = (key: string) => (cities.find((c) => c.city_key === key)?.unit === "F" ? "F" : "C") as Unit;
 
   const hits = hitQ.data ?? [];
+  const hitSideRows=useOriginalSideRows(hits.map(r=>sideIdentity(r.city_key,r.for_date,'day_ahead',r.called_at,r.model_call)));
   const activeCity = cities.find((c) => c.city_key === active) ?? null;
   const pending = useMemo<PendingDay[]>(
     () => pendingDays(recentMarketsQ.data ?? [], new Set(hits.map((h) => h.for_date)),
@@ -970,6 +976,8 @@ export default function PredictivePage() {
                     <th className="p-2 text-right">its p on winner</th>
                     <th className="p-2 text-right">Brier us / uniform</th>
                     <th className="p-2 text-right">shared bands: us / market</th>
+                    <th className="p-2 text-left">YES buy / YES net P&amp;L</th>
+                    <th className="p-2 text-left">NO buy / NO net P&amp;L</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1021,6 +1029,10 @@ export default function PredictivePage() {
                           </>
                         ) : "—"}
                       </td>
+                      {(['YES','NO'] as const).map(side=><td key={side} className="p-2 align-top">
+                        <OriginalSideCell side={side} loading={hitSideRows.loading} error={hitSideRows.error}
+                          call={hitSideRows.calls.get(sideIdentity(r.city_key,r.for_date,'day_ahead',r.called_at,r.model_call).row_key)}/>
+                      </td>)}
                     </tr>
                   ))}
                 </tbody>
@@ -1028,6 +1040,8 @@ export default function PredictivePage() {
             </div>
           </div>
         </DataState>
+
+        <OriginalSideHistory cities={active?[active]:[]} checkpoint="day_ahead"/>
       </section>
 
       {/* =========================================== 3. ACTUAL AGAINST PREDICTED

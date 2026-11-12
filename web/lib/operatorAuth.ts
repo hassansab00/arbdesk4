@@ -121,3 +121,16 @@ export async function requireOperator(request: Request): Promise<Verdict> {
     },
   });
 }
+
+/** Strict private owner identity; legacy single-user mode never bypasses it.
+ * Only the server operator client handles sessions. Public data reads stay anon.
+ */
+export async function privateOperatorOwner(request:Request):Promise<string|null>{
+  const token=bearerToken(request),client=serviceClient();if(!token||!client)return null;
+  let id:string|null=null;
+  const verdict=await authorize(token,{
+    emailForToken:async t=>{const {data,error}=await client.auth.getUser(t);id=!error?data.user?.id??null:null;return !error?data.user?.email??null:null;},
+    operators:async()=>{const {data,error}=await client.from('settings').select('value').eq('key','operators').maybeSingle();return error?[]:normaliseOperators(data?.value);},
+  });
+  return verdict.ok?id:null;
+}

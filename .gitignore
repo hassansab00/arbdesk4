@@ -23,3 +23,6 @@ data/training/wxpredict/table_v2/
 web/tests/render/out/
 .cache/wxpredict-models/
 .cache/wxpredict-cycle/
+
+# Private original-call quote/ledger archives never become public source assets.
+.private/

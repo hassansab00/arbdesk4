@@ -1,4 +1,5 @@
 "use client";
+import OriginalSideDesk from './OriginalSideDesk';
 import {useState} from 'react';
 import { useQuery } from '@/lib/useQuery';
 import { paperRead } from '@/lib/paperSupabase';
@@ -34,5 +35,6 @@ export default function DayMaxPrediction({openLedger}:{openLedger:(id:string)=>v
       </details>
       {!!Object.keys(d.last_run?.detail.skipped??{}).length&&<details><summary className="cursor-pointer text-sm">Last worker’s skipped entries</summary><ul className="text-xs">{Object.entries(d.last_run!.detail.skipped!).map(([why,n])=><li key={why}>{why} ({n})</li>)}</ul></details>}
     </>}
+    <OriginalSideDesk/>
   </section>;
 }

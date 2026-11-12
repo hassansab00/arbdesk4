@@ -194,6 +194,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_databank_coverage": "ad4_18_databank.sql",
   "v_day_ahead_frozen_validation": "supabase/migrations/20261017170738_frozen_city_learning.sql",
   "v_day_max_original_calls": "supabase/migrations/20261030170828_day_max_original_early_calls.sql",
+  "v_day_max_v1_original_calls": "supabase/migrations/20261112071521_day_max_v1_source_identity.sql",
   "v_decision_prediction": "supabase/migrations/20261004210000_decisions_name_their_call.sql",
   "v_desk_equity_curve": "ad4_84_risk_budget.sql",
   "v_desk_risk_state": "ad4_84_risk_budget.sql",

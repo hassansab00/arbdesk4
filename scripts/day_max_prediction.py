@@ -127,7 +127,7 @@ def run(dry_run=False):
                         detail['day_ahead_capture'].append(dict(city=city,**receipt))
                     except Exception as exc:
                         detail['day_ahead_capture'].append(dict(city=city,error=str(exc)[:200]))
-            rows = rest_all('v_day_max_original_calls', {'select':'*',
+            rows = rest_all('v_day_max_v1_original_calls', {'select':'*',
                 'checkpoint':'in.('+','.join(sorted({c['checkpoint'] for c in selected.values()}))+')',
                 'target_date':'gte.'+(now.date()-dt.timedelta(days=1)).isoformat(),
                 'city_key':'in.('+','.join(selected)+')'}, order='checkpoint_id')

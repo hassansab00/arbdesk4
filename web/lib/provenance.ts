@@ -1534,6 +1534,16 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "prediction_checkpoints",
     "live_capture"
   ],
+  "v_day_max_v1_original_calls": [
+    "bands",
+    "cities",
+    "day_max_prediction_entries",
+    "markets",
+    "paper_accounts",
+    "prediction_checkpoints",
+    "day_max_day_ahead_calls",
+    "live_capture"
+  ],
   "v_decision_prediction": [
     "decisions",
     "prediction_checkpoints"

@@ -1,4 +1,5 @@
 import {cityInstant} from './time';
+export type {SideChoice as DayMaxV2Choice,SidePolicyConfig as DayMaxV2Policy} from './originalSides';
 export const DAY_MAX_STRATEGY='s14_day_max_prediction';
 export const DAY_MAX_TIMES:Record<string,string>={day_ahead:'Day-ahead (last forecast before local midnight)',d1_eve:'Evening before',morning:'Morning',noon:'Noon',prepeak_2h:'2h before expected peak',prepeak_1h:'1h before expected peak'};
 export type DayMaxChoice={city_key:string;checkpoint:string;stake_usd:number;hits?:number;calls?:number;dates?:number;verified?:number};
