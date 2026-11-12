@@ -271,3 +271,44 @@ def test_entries_are_held_when_the_run_has_no_cost_version():
 def test_entries_go_out_when_the_run_has_a_cost_version():
     kept, held = se.hold_entries_without_cost_version([_sig("ENTER")], [_View("uuid-1")])
     assert [s.action for s in kept] == ["ENTER"] and held == []
+
+
+@pytest.mark.parametrize('value', [None, '', 'bad', '2026-11-12T13:00:00', '2026-11-12T12:59:00Z'])
+def test_identified_cycle_rejects_absent_invalid_or_old_clock(value):
+    assert not se._current_receipt(value, '2026-11-12T13:00:00Z')
+
+
+def test_edges_match_current_probability_independently():
+    cycle = '2026-11-12T13:00:00Z'
+    prob = {'prob_id': 7, 'computed_at': cycle}
+    good = {'edge_prob_id': 7, 'edge_computed_at': cycle}
+    assert se._edge_matches_probability(good, prob, cycle)
+    assert not se._edge_matches_probability({**good, 'edge_prob_id': 6}, prob, cycle)
+    assert not se._edge_matches_probability({**good, 'edge_computed_at': '2026-11-12T12:59:00Z'}, prob, cycle)
+    assert not se._edge_matches_probability({}, prob, cycle)
+    assert not se._edge_matches_probability(good, {}, cycle)
+
+
+def test_no_current_bands_blocks_dependent_proposals(monkeypatch):
+    monkeypatch.setenv('AD4_CYCLE_STARTED_AT', '2026-11-12T13:00:00Z')
+    monkeypatch.setattr(se, '_enabled_strategies', lambda: [object()])
+    monkeypatch.setattr(se, '_band_views', lambda: [])
+    logged = []
+    monkeypatch.setattr(se, 'log_run', lambda *args: logged.append(args))
+    assert se.main() == 1
+    assert logged[0][1] == 'attention'
+    assert logged[0][3]['blocked_reason'] == 'no_current_receipt_matched_bands'
+
+
+def test_new_probability_cannot_relabel_old_side(board, monkeypatch):
+    cycle = '2026-11-12T13:00:00Z'
+    board([_opp('b1', 'YES', edge_prob_id=7, edge_computed_at=cycle),
+           _opp('b1', 'NO', edge_prob_id=6, edge_computed_at=cycle)])
+    monkeypatch.setenv('AD4_CYCLE_STARTED_AT', cycle)
+    original = se._optional
+    monkeypatch.setattr(se, '_optional', lambda path,*a: [dict(band_id='b1',prob_id=7,computed_at=cycle)]
+                        if path == 'v_latest_prob' else original(path,*a))
+    views = se._band_views()
+    assert len(views) == 1
+    assert views[0].yes_price is not None
+    assert views[0].no_price is None and views[0].no_tradeable is False

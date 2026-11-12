@@ -1,4 +1,5 @@
 name: Weather Model
+run-name: ${{ inputs.clock_dispatch_id && format('AD4 clock {0}', inputs.clock_dispatch_id) || github.workflow }}
 
 # Fits each city's daily maximum against the conditions its own morning shows -
 # dewpoint depression, cloud, wind, rain - and scores it against persistence
@@ -17,6 +18,10 @@ on:
   # every scheduled workflow is on the CLOCK table in n8n/P6.1_clock.template.json.
   workflow_dispatch:
     inputs:
+      clock_dispatch_id:
+        description: 'Internal clock receipt; leave blank for manual runs'
+        required: false
+        default: ''
       min_days:
         description: 'Minimum usable days before a city is modelled'
         required: false

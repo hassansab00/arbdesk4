@@ -1,4 +1,5 @@
 name: Forecasts (Open-Meteo Previous Runs)
+run-name: ${{ inputs.clock_dispatch_id && format('AD4 clock {0}', inputs.clock_dispatch_id) || github.workflow }}
 # Each resumable link is bounded to 25 job minutes, including setup.
 # The wrapper invokes scripts/ingest_forecasts.py (provenance source).
 on:
@@ -25,6 +26,10 @@ on:
   # every scheduled workflow is on the CLOCK table in n8n/P6.1_clock.template.json.
   workflow_dispatch:
     inputs:
+      clock_dispatch_id:
+        description: 'Internal clock receipt; leave blank for manual runs'
+        required: false
+        default: ''
       start:
         description: 'Start date YYYY-MM-DD (blank = last 10 days)'
         required: false

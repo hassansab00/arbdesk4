@@ -1,4 +1,5 @@
 name: Observations (IEM METAR)
+run-name: ${{ inputs.clock_dispatch_id && format('AD4 clock {0}', inputs.clock_dispatch_id) || github.workflow }}
 
 # THE CADENCE MOVED TO n8n ON 2026-09-22. This is now the BACKFILL path and a
 # daily backstop, not the feed.
@@ -48,6 +49,10 @@ on:
   # every scheduled workflow is on the CLOCK table in n8n/P6.1_clock.template.json.
   workflow_dispatch:
     inputs:
+      clock_dispatch_id:
+        description: 'Internal clock receipt; leave blank for manual runs'
+        required: false
+        default: ''
       days:
         description: 'Days to backfill (2 for normal runs, 365+ for an archive rebuild)'
         required: false

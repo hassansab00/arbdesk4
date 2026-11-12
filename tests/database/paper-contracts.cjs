@@ -60,7 +60,7 @@ const assert = require('node:assert/strict');
       market_state text default 'LIVE',tradeable boolean default true,
       -- the ladder columns, live types (27 Sep): 20260927100000 builds
       -- v_unarchived_ladders over them
-      best_bid numeric,best_ask numeric,no_best_bid numeric,no_best_ask numeric,raw_book jsonb,no_book jsonb);
+      spread numeric,best_bid numeric,best_ask numeric,no_best_bid numeric,no_best_ask numeric,raw_book jsonb,no_book jsonb);
     -- ingested_at as live (not null, default now()): prune_trades takes only
     -- trades ingested before the cutoff's UTC day, which the mirror has.
     -- The dedupe columns and their five-column unique index as production has
@@ -146,7 +146,8 @@ const assert = require('node:assert/strict');
     -- migration that rebuilds v_hit_forecasts on it) reads the eve's price.
     create table public.edges(edge_id bigint primary key,band_id uuid,computed_at timestamptz default now(),
       side text,tradeable boolean default false,book_snapshot_id bigint,
-      prob_id bigint references public.band_probabilities(prob_id),market_price numeric);
+      prob_id bigint references public.band_probabilities(prob_id),market_price numeric,
+      model_prob numeric,edge_net_pp numeric,block_reason text,confidence numeric,regime_label text,fillable_usd_5c numeric);
     -- derived_climb_profile is created by sql/ad4_28_feature_cache.sql, which
     -- this harness never applies; v_trajectory_evidence joins it
     -- (20260929160000). The live shape (information_schema, 29 Sep).

@@ -244,6 +244,7 @@ TABLES = {
 # Every public table the mirror does NOT copy, and why. A table in neither
 # TABLES nor here fails tests/test_every_table_has_a_home.py.
 NOT_MIRRORED = {
+    "arbdesk_private.clock_startup_checks": "Bounded private operational receipts; no credentials or API bodies; retained without pruning.",
     "arbdesk_private.original_side_resolution_receipts": "Private authoritative side payout packets, shared by exact call links. Included in the service-only private archive; never public mirrors or assets; no pruning.",
     "arbdesk_private.original_side_rule_receipts": "Private normalized rule receipts. Service-only private archive; no public mirror or pruning.",
     "arbdesk_private.original_side_ladder_receipts": "Private normalized original ladders. Service-only private archive; no public mirror or pruning.",

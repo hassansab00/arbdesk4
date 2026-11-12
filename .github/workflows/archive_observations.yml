@@ -1,4 +1,5 @@
 name: Archive Observations
+run-name: ${{ inputs.clock_dispatch_id && format('AD4 clock {0}', inputs.clock_dispatch_id) || github.workflow }}
 
 # Moves cold rows out of Postgres into a GitHub Release, then prunes them.
 # Three tables: trades_observed, weather_observations, weather_forecasts.
@@ -43,6 +44,10 @@ on:
     # query that returns zero rows.
   workflow_dispatch:
     inputs:
+      clock_dispatch_id:
+        description: 'Internal clock receipt; leave blank for manual runs'
+        required: false
+        default: ''
       keep_days:
         description: 'Override every table window (blank = each table keeps its own: 90 days, 2 for research)'
         required: false
