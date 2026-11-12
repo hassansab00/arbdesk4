@@ -221,6 +221,8 @@ begin
   'requested_stake',p_stake::text,'shares',shares::text,'notional',cost::text,'fee',fees::text,
   'filled_cost',(cost+fees)::text,'unspent_allocation',(p_stake-cost-fees)::text,
   'profit_if_win',(shares-cost-fees)::text,'loss_if_lose',(-cost-fees)::text,'payout_if_win',shares::text,
+  'best_ask',(select min((x->>'price')::numeric)::text from jsonb_array_elements(p_book->'asks') x),
+  'best_bid',(select max((x->>'price')::numeric)::text from jsonb_array_elements(coalesce(p_book->'bids','[]')) x),
   'limit_price',limit_price::text,'vwap',(cost/shares)::text,'fills',fills);
 end $$;
 
@@ -771,15 +773,16 @@ declare proof jsonb:=evidence->'ctf_payout';provider jsonb;calls jsonb;block jso
 begin
  if pg_column_size(proof)>65536 or proof->>'protocol' is distinct from 'polygon-legacy-ctf-v1'
   or proof->>'ctf' is distinct from contract or proof->>'collateral' is distinct from collateral
-  or jsonb_array_length(proof->'providers')<>2 or cond !~ '^0x[0-9a-f]{64}$'
+  or jsonb_array_length(proof->'providers')<>2 or cond !~ '^0x[0-9a-f]{64}$' or proof->>'received_at' is null
   or (proof->>'received_at')::timestamptz<(evidence->>'requested_at')::timestamptz
   or (proof->>'received_at')::timestamptz>(evidence->>'response_received_at')::timestamptz then return null;end if;
  if (select count(distinct p->>'source') from jsonb_array_elements(proof->'providers') p)<>2 then return null;end if;
  for provider in select * from jsonb_array_elements(proof->'providers') loop
   if provider->>'source' not in ('https://polygon-bor-rpc.publicnode.com','https://polygon.drpc.org')
-   or provider->>'chain_id' is distinct from '0x89' or jsonb_array_length(provider->'calls')<>7 then return null;end if;
+   or provider->>'chain_id' is distinct from '0x89' or provider->>'latest_block' is null
+   or provider->>'latest_block' !~ '^[0-9]{1,20}$' or jsonb_array_length(provider->'calls')<>7 then return null;end if;
   block:=provider->'block';
-  if block->>'hash' !~ '^0x[0-9a-fA-F]{64}$' or (provider->>'latest_block')::numeric-arbdesk_private.original_side_hex(block->>'number')<64
+  if block->>'hash' is null or block->>'hash' !~ '^0x[0-9a-fA-F]{64}$' or (provider->>'latest_block')::numeric-arbdesk_private.original_side_hex(block->>'number')<64
    or to_timestamp(arbdesk_private.original_side_hex(block->>'timestamp')::double precision)<((identity->>'target_date')::date+1)::timestamp at time zone (identity->>'timezone')
    or to_timestamp(arbdesk_private.original_side_hex(block->>'timestamp')::double precision)>(evidence->>'response_received_at')::timestamptz then return null;end if;
   if previous is not null and (previous->'block' is distinct from block or previous->'calls' is distinct from provider->'calls') then return null;end if;
@@ -947,7 +950,8 @@ begin
     'decision_id',o.decision_id,'allocation_id',o.allocation_id,'status',o.status,'reason',o.result->>'reason',
     'requested_at',o.requested_at,'requested_stake',al.reserved_amount::text,'shares',o.result->>'shares',
     'notional',o.result->>'notional','fee',o.result->>'fee','recorded_fill_at',o.result->>'simulated_at',
-    'fill_snapshot_id',o.result->>'snapshot_id','paper_outcome',case when o.status not in ('filled','partial') then 'no_fill' else state end,
+    'fill_snapshot_id',o.result->>'snapshot_id','fill_vwap',case when (o.result->>'shares')::numeric>0 then ((o.result->>'notional')::numeric/(o.result->>'shares')::numeric)::text end,
+    'paper_outcome',case when o.status not in ('filled','partial') then 'no_fill' else state end,
     'paper_net_pnl',case when payout is not null and o.status in ('filled','partial') then
       ((o.result->>'shares')::numeric*payout-(o.result->>'notional')::numeric-(o.result->>'fee')::numeric)::text else null end
     ) order by o.requested_at),'[]') into paper
@@ -960,6 +964,7 @@ begin
    'decision_id',entry.decision_id::text,'allocation_id',entry.checkpoint_id,'status',o.status,'reason',o.reason,
    'requested_at',o.requested_at,'requested_stake',entry.stake_ceiling::text,'shares',o.result->>'shares',
    'notional',o.result->>'notional','fee',o.result->>'fee','recorded_fill_at',o.result->>'simulated_at','fill_snapshot_id',o.result->>'snapshot_id',
+   'fill_vwap',case when (o.result->>'shares')::numeric>0 then ((o.result->>'notional')::numeric/(o.result->>'shares')::numeric)::text end,
    'paper_outcome',case when ps.proof_id is not null and o.status in ('filled','partial') then case when ps.payout=ps.shares then 'won' when ps.payout=0 then 'lost' else 'payout_recorded' end
      when o.status in ('filled','partial') then 'pending' else 'no_fill' end,
    'paper_net_pnl',tr.pnl::text,'source_kind','recorded_v1_ledger','settlement_proof_id',ps.proof_id,

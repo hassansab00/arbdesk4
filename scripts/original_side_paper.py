@@ -169,8 +169,12 @@ def run(*, budget_s=BUDGET_S):
                         counts['execution_blocked'] += 1
             except Exception as exc:
                 failures[type(exc).__name__] += 1
-        for _ in range(4):
-            if time.monotonic()+5 >= started+budget_s:
+        # Drain every available lease within the single deadline; an arbitrary
+        # four-order cap strands batches until after their five-minute expiry.
+        # Keep a bounded recovery allowance for independently due settlements.
+        while True:
+            if time.monotonic()+8 >= started+budget_s:
+                counts['paper_drain_budget_exhausted']+=1
                 break
             order = rpc('claim_original_side_order')
             if not order:

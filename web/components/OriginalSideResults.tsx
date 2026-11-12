@@ -75,7 +75,7 @@ function SideCard({call,side,mode}:{call:OriginalSideCall;side:TradeSide;mode:Si
    <p>Comparison uses the first executable direct quote for this stake.</p>{result.quote_attempts.map(a=><p key={a.attempt_id}>{a.received_at} · {a.status} · {a.reason??a.attempt_id}</p>)}</details>}
   {mode==='hypothetical'?<>
    <p className="font-medium">Hypothetical comparison · ${result.comparison_stake} per side</p>
-   <p>Own ask / VWAP: {e?.limit_price??'Not recorded'} / {(e as SideResult['evaluation']&{vwap?:string})?.vwap??'Not recorded'}</p>
+   <p>Own best ask / modeled VWAP: {e?.best_ask??'Not recorded'} / {e?.vwap??'Not recorded'}</p>
    <p>Quote received: {result.quote_received_at?fmtDateTime(result.quote_received_at,call.timezone):'Not recorded'}</p>
    <p>Book observed: {result.book_observed_at?fmtDateTime(result.book_observed_at,call.timezone):'Not recorded'}</p>
    <p>Filled cost: {sideMoney(e?.filled_cost)} · shares {e?.shares??'Not recorded'} · fees {sideMoney(e?.fee)}</p>
@@ -88,6 +88,7 @@ function SideCard({call,side,mode}:{call:OriginalSideCall;side:TradeSide;mode:Si
    <p>{order.status} · {order.paper_outcome.replaceAll('_',' ')}{order.reason?` · ${order.reason}`:''}</p>
    <p>Requested ${order.requested_stake} · cost {order.notional==null?'No fill':sideMoney(order.notional)} · shares {order.shares??'No fill'} · fees {order.fee==null?'No fill':sideMoney(order.fee)}</p>
    <p>Recorded fill: {order.recorded_fill_at?fmtDateTime(order.recorded_fill_at,call.timezone):'No fill'}</p>
+   <p>Recorded fill VWAP: {order.fill_vwap??'No fill'}</p>
    {order.evidence_note&&<p className="text-muted">{order.evidence_note}</p>}
    <p className="font-medium">Recorded paper P&amp;L: {order.paper_net_pnl==null?(['filled','partial'].includes(order.status)?'Pending / unverified settlement':'No fill'):sideMoney(order.paper_net_pnl)}</p>
    <details><summary className="cursor-pointer">Receipt links</summary><p>Call {call.call_id}</p><p>Allocation {order.allocation_id}</p><p>Decision {order.decision_id}</p><p>Order {order.order_id}</p><p>Fill book {order.fill_snapshot_id??'Not recorded'}</p><p>Settlement {call.settlement_receipt_id??'Pending'}</p></details>

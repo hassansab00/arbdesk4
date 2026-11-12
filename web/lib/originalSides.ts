@@ -2,10 +2,10 @@
 export type TradeSide='YES'|'NO';
 export type SideMode='recorded'|'hypothetical';
 export type SideEvaluation={requested_stake:string;shares?:string;notional?:string;fee?:string;
- filled_cost?:string;unspent_allocation?:string;profit_if_win?:string;loss_if_lose?:string;limit_price?:string;reason?:string};
+ filled_cost?:string;unspent_allocation?:string;profit_if_win?:string;loss_if_lose?:string;best_ask?:string;best_bid?:string;vwap?:string;limit_price?:string;reason?:string};
 export type SideOrder={order_id:string;account_id:string;policy_id:string;decision_id:string;allocation_id:string;
  status:string;reason:string|null;requested_at:string;requested_stake:string;shares:string|null;notional:string|null;fee:string|null;
- recorded_fill_at:string|null;fill_snapshot_id:string|null;paper_outcome:string;paper_net_pnl:string|null;
+ recorded_fill_at:string|null;fill_snapshot_id:string|null;fill_vwap?:string|null;paper_outcome:string;paper_net_pnl:string|null;
  source_kind?:string;evidence_note?:string;settlement_proof_id?:string|null};
 export type SideResult={side:TradeSide;token_id:string;quote_kind:'direct'|'derived_scenario'|'missing';quote_id:string|null;
  quote_selection?:string;quote_attempts?:{attempt_id:string;status:string;reason:string|null;received_at:string}[];attempts_truncated?:boolean;

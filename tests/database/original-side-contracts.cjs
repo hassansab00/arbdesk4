@@ -45,6 +45,10 @@ module.exports=async function(db){
  assert.equal((await q('select count(*) n from arbdesk_private.original_side_quotes'))[0].n,3,'retry append identity is idempotent and missing depth remains visible');
  const calc=(await q('select arbdesk_private.original_side_calculate($1,10) r',[noBook]))[0].r;
  assert.equal(Number(calc.shares),15.38);assert.equal(Number(calc.filled_cost),9.997);assert.equal(Number(calc.profit_if_win),5.383);
+ const multi={...yesBook,asks:[{price:'.4',size:'10'},{price:'.65',size:'100'}]};
+ const multiCalc=(await q('select arbdesk_private.original_side_calculate($1,10) r',[multi]))[0].r;
+ assert.equal(Number(multiCalc.best_ask),.4);assert.equal(Number(multiCalc.limit_price),.65);
+ assert.ok(Math.abs(Number(multiCalc.vwap)-9.9995/19.23)<1e-14,'independent cost/shares agrees within JavaScript display precision');
  const feeCalc=(await q('select arbdesk_private.original_side_calculate($1,10) r',[{...yesBook,fee_rate:'.05'}]))[0].r;
  assert.equal(Number(feeCalc.shares),24.27);assert.equal(Number(feeCalc.filled_cost),9.99924);
  await assert.rejects(()=>quote('NO',{...noBook,token_id:'side-yes'},'f5555555-0000-0000-0000-000000000007'),/token|condition/);
@@ -153,6 +157,13 @@ module.exports=async function(db){
  assert.equal(split.state,'verified_split','actual token payouts need independently matching CTF receipts');
  const payouts=(await q('select payout_yes,payout_no from arbdesk_private.original_side_settlements where settlement_id=$1',[split.settlement_id]))[0];
  assert.equal(Number(payouts.payout_yes),.5);assert.equal(Number(payouts.payout_no),.5);
+ for(const mutate of [x=>{delete x.ctf_payout.received_at;},x=>{for(const p of x.ctf_payout.providers)delete p.block.hash;},
+  x=>{for(const p of x.ctf_payout.providers)p.latest_block='NaN';}]){
+  const bad=JSON.parse(JSON.stringify(splitProof));mutate(bad);
+  const held=(await q(`select arbdesk_private.original_side_fractional_payout(identity||jsonb_build_object('target_date',target_date),$2) r
+    from arbdesk_private.original_side_calls where call_id=$1`,[splitId,bad]))[0].r;
+  assert.equal(held,null,'missing provenance or non-finite finality cannot verify a payout');
+ }
  assert.equal(await cash(),97.693,'100 - 9.997 + 15.38*.5');
  await q('select public.record_original_side_settlement($1,$2)',[splitId,splitProof]);assert.equal(await cash(),97.693,'retry cannot pay twice');
  const wrongProof=JSON.parse(JSON.stringify(splitProof));wrongProof.ctf_payout.providers[1].calls[0].result='0x'+word(3);
