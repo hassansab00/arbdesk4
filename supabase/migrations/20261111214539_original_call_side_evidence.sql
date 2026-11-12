@@ -1,31 +1,31 @@
 -- Original-bucket YES/NO paper v2. Private evidence and private funded sleeves.
 -- V1 tables, guards, settings, balances, predictions and model weights are untouched.
-create table arbdesk_private.original_side_owners(
+create table if not exists arbdesk_private.original_side_owners(
   owner_id uuid primary key default gen_random_uuid(), created_at timestamptz not null default clock_timestamp()
 );
-create table arbdesk_private.original_side_sessions(
+create table if not exists arbdesk_private.original_side_sessions(
   token_sha256 text primary key, owner_id uuid not null references arbdesk_private.original_side_owners,
   issued_at timestamptz not null default clock_timestamp(), expires_at timestamptz not null
 );
-create table arbdesk_private.original_side_rule_receipts(
+create table if not exists arbdesk_private.original_side_rule_receipts(
  rules_sha256 text primary key,rules_text text not null,received_at timestamptz not null,source_url text not null
 );
-create table arbdesk_private.original_side_ladder_receipts(
+create table if not exists arbdesk_private.original_side_ladder_receipts(
  ladder_sha256 text primary key,ladder jsonb not null
 );
-create table arbdesk_private.original_side_calls(
+create table if not exists arbdesk_private.original_side_calls(
   call_id uuid primary key, city_key text not null, target_date date not null,
   checkpoint text not null, source_kind text not null, frozen_at timestamptz,
   source jsonb not null, identity jsonb not null, eligibility text not null,
   cutoff_at timestamptz, registered_at timestamptz not null default clock_timestamp()
 );
-create index original_side_calls_scope on arbdesk_private.original_side_calls(target_date,city_key,checkpoint,call_id);
-create table arbdesk_private.original_side_books(
+create index if not exists original_side_calls_scope on arbdesk_private.original_side_calls(target_date,city_key,checkpoint,call_id);
+create table if not exists arbdesk_private.original_side_books(
   snapshot_id text primary key, depth_hash text not null, token_id text not null,
   observed_at timestamptz not null, received_at timestamptz not null default clock_timestamp(),
   payload jsonb not null
 );
-create table arbdesk_private.original_side_quotes(
+create table if not exists arbdesk_private.original_side_quotes(
   attempt_id uuid primary key, call_id uuid not null references arbdesk_private.original_side_calls,
   side text not null check(side in ('YES','NO')), quote_kind text not null check(quote_kind in ('direct','missing')),
   status text not null check(status in ('captured','blocked','failed')), reason text,
@@ -34,44 +34,44 @@ create table arbdesk_private.original_side_quotes(
   snapshot_id text references arbdesk_private.original_side_books,
   check((status='captured')=(snapshot_id is not null)), check((quote_kind='direct')=(snapshot_id is not null))
 );
-create index original_side_quotes_call_side on arbdesk_private.original_side_quotes(call_id,side,received_at,attempt_id);
-create table arbdesk_private.original_side_evaluations(
+create index if not exists original_side_quotes_call_side on arbdesk_private.original_side_quotes(call_id,side,received_at,attempt_id);
+create table if not exists arbdesk_private.original_side_evaluations(
   evaluation_id uuid primary key default gen_random_uuid(), quote_id uuid not null references arbdesk_private.original_side_quotes,
   calculation_version text not null, stake numeric not null check(stake>0 and stake<=1000000),
   result jsonb not null, created_at timestamptz not null default clock_timestamp(),
   unique(quote_id,calculation_version,stake)
 );
-create table arbdesk_private.original_side_policies(
+create table if not exists arbdesk_private.original_side_policies(
   policy_id uuid primary key default gen_random_uuid(), owner_id uuid not null,
   config jsonb not null, created_at timestamptz not null default clock_timestamp()
 );
-create table arbdesk_private.original_side_policy_events(
+create table if not exists arbdesk_private.original_side_policy_events(
   event_id bigint generated always as identity primary key,
   policy_id uuid not null references arbdesk_private.original_side_policies,
   action text not null check(action in ('activate','pause','resume')),
   recorded_at timestamptz not null default clock_timestamp()
 );
-create index original_side_policy_events_latest on arbdesk_private.original_side_policy_events(policy_id,event_id desc);
-create table arbdesk_private.original_side_accounts(
+create index if not exists original_side_policy_events_latest on arbdesk_private.original_side_policy_events(policy_id,event_id desc);
+create table if not exists arbdesk_private.original_side_accounts(
   account_id uuid primary key default gen_random_uuid(), owner_id uuid not null,
   policy_id uuid not null unique references arbdesk_private.original_side_policies,
   starting_cash numeric not null, cash numeric not null, reserved_cash numeric not null default 0 check(reserved_cash>=0),
   activated_at timestamptz not null default clock_timestamp()
 );
-create index original_side_accounts_owner on arbdesk_private.original_side_accounts(owner_id,account_id);
-create table arbdesk_private.original_side_allocation_plans(
+create index if not exists original_side_accounts_owner on arbdesk_private.original_side_accounts(owner_id,account_id);
+create table if not exists arbdesk_private.original_side_allocation_plans(
   plan_id uuid primary key default gen_random_uuid(), account_id uuid not null references arbdesk_private.original_side_accounts,
   policy_id uuid not null references arbdesk_private.original_side_policies, target_date date not null,
   available_settled_cash numeric not null, allocation_per_slot numeric not null,
   rounding_remainder numeric not null, frozen_at timestamptz not null default clock_timestamp(),
   unique(account_id,target_date)
 );
-create table arbdesk_private.original_side_allocations(
+create table if not exists arbdesk_private.original_side_allocations(
   allocation_id uuid primary key default gen_random_uuid(), plan_id uuid not null references arbdesk_private.original_side_allocation_plans,
   city_key text not null, checkpoint text not null, timezone text not null, side text not null check(side in ('YES','NO')),
   reserved_amount numeric not null check(reserved_amount>=0), unique(plan_id,city_key)
 );
-create table arbdesk_private.original_side_decisions(
+create table if not exists arbdesk_private.original_side_decisions(
   decision_id uuid primary key default gen_random_uuid(), allocation_id uuid not null unique references arbdesk_private.original_side_allocations,
   account_id uuid not null references arbdesk_private.original_side_accounts,
   policy_id uuid not null references arbdesk_private.original_side_policies,
@@ -82,7 +82,7 @@ create table arbdesk_private.original_side_decisions(
   snapshot jsonb not null, decided_at timestamptz not null default clock_timestamp(),
   unique(policy_id,account_id,call_id,side)
 );
-create table arbdesk_private.original_side_orders(
+create table if not exists arbdesk_private.original_side_orders(
   order_id uuid primary key default gen_random_uuid(), command_key uuid not null unique,
   account_id uuid not null references arbdesk_private.original_side_accounts,
   decision_id uuid not null unique references arbdesk_private.original_side_decisions,
@@ -98,17 +98,17 @@ create table arbdesk_private.original_side_orders(
   lease_token uuid, lease_until timestamptz, result jsonb,
   private_side boolean not null default true check(private_side)
 );
-create index original_side_orders_queue on arbdesk_private.original_side_orders(status,requested_at);
-create index original_side_orders_account_call on arbdesk_private.original_side_orders(account_id,call_id,side);
-create table arbdesk_private.original_side_execution_events(
+create index if not exists original_side_orders_queue on arbdesk_private.original_side_orders(status,requested_at);
+create index if not exists original_side_orders_account_call on arbdesk_private.original_side_orders(account_id,call_id,side);
+create table if not exists arbdesk_private.original_side_execution_events(
   order_id uuid primary key references arbdesk_private.original_side_orders,
   result jsonb not null, recorded_at timestamptz not null default clock_timestamp()
 );
-create table arbdesk_private.original_side_resolution_receipts(
+create table if not exists arbdesk_private.original_side_resolution_receipts(
   proof_hash text primary key, condition_id text not null, evidence jsonb not null,
   received_at timestamptz not null default clock_timestamp()
 );
-create table arbdesk_private.original_side_settlements(
+create table if not exists arbdesk_private.original_side_settlements(
   settlement_id uuid primary key default gen_random_uuid(), call_id uuid not null references arbdesk_private.original_side_calls,
   proof_hash text not null references arbdesk_private.original_side_resolution_receipts, state text not null check(state in ('verified_binary','verified_split','verified_void','pending','disputed','unverified')),
   payout_yes numeric, payout_no numeric, evidence jsonb not null,
@@ -116,20 +116,20 @@ create table arbdesk_private.original_side_settlements(
   check((state in ('verified_binary','verified_split','verified_void')) = (payout_yes is not null and payout_no is not null)),
   check(payout_yes between 0 and 1 and payout_no between 0 and 1)
 );
-create index original_side_settlements_latest on arbdesk_private.original_side_settlements(call_id,received_at desc,settlement_id);
-create table arbdesk_private.original_side_ledger(
+create index if not exists original_side_settlements_latest on arbdesk_private.original_side_settlements(call_id,received_at desc,settlement_id);
+create table if not exists arbdesk_private.original_side_ledger(
   entry_id bigint generated always as identity primary key, account_id uuid not null references arbdesk_private.original_side_accounts,
   event_key text not null unique, event_type text not null, call_id uuid, order_id uuid,
   settlement_id uuid references arbdesk_private.original_side_settlements,
   cash_delta numeric not null, reserved_delta numeric not null, detail jsonb not null default '{}',
   recorded_at timestamptz not null default clock_timestamp()
 );
-create index original_side_ledger_account on arbdesk_private.original_side_ledger(account_id,entry_id);
-create table arbdesk_private.original_side_stage_events(
+create index if not exists original_side_ledger_account on arbdesk_private.original_side_ledger(account_id,entry_id);
+create table if not exists arbdesk_private.original_side_stage_events(
   event_id bigint generated always as identity primary key, call_id uuid, account_id uuid, allocation_id uuid,
   stage text not null, reason text not null, recorded_at timestamptz not null default clock_timestamp()
 );
-create index original_side_stage_scope on arbdesk_private.original_side_stage_events(call_id,recorded_at desc);
+create index if not exists original_side_stage_scope on arbdesk_private.original_side_stage_events(call_id,recorded_at desc);
 
 -- This feature never feeds a public mirror or a browser raw-packet response.
 do $$ declare t text; begin
@@ -138,16 +138,16 @@ do $$ declare t text; begin
   execute format('revoke all on arbdesk_private.%I from public,anon,authenticated',t);
   execute format('grant all on arbdesk_private.%I to service_role',t);
   if t not in ('original_side_accounts','original_side_orders') then
-   execute format('create trigger original_side_immutable before update or delete on arbdesk_private.%I for each row execute function arbdesk_private.immutable_record()',t);
+   execute format('create or replace trigger original_side_immutable before update or delete on arbdesk_private.%I for each row execute function arbdesk_private.immutable_record()',t);
   end if;
-  execute format('create trigger original_side_no_truncate before truncate on arbdesk_private.%I for each statement execute function arbdesk_private.immutable_record()',t);
+  execute format('create or replace trigger original_side_no_truncate before truncate on arbdesk_private.%I for each statement execute function arbdesk_private.immutable_record()',t);
  end loop;
 end $$;
 grant usage,select on all sequences in schema arbdesk_private to service_role;
 
 -- Numeric finance is shared by observation, order sizing and all readers.
 -- Requested allocation is not a loss: only filled notional and per-level fees count.
-create function arbdesk_private.original_side_capacity() returns jsonb
+create or replace function arbdesk_private.original_side_capacity() returns jsonb
 language sql stable set search_path='' as $$
  select jsonb_build_object('bytes',coalesce(sum(pg_total_relation_size(c.oid)),0),
   'limit_bytes',16777216,'capture_allowed',coalesce(sum(pg_total_relation_size(c.oid)),0)<16777216)
@@ -157,7 +157,7 @@ $$;
 
 -- Same dated station/unit/window semantics as the existing authoritative
 -- adapters. Unknown primary sources cannot acquire a verified trade verdict.
-create function arbdesk_private.original_side_rule_identity(rules text,station text,unit text,target date,zone text)
+create or replace function arbdesk_private.original_side_rule_identity(rules text,station text,unit text,target date,zone text)
 returns boolean language plpgsql set search_path='' as $$
 declare lower_rules text:=lower(regexp_replace(rules,'\s+',' ','g'));u text;anchor timestamptz;hours integer;
 begin
@@ -182,7 +182,7 @@ begin
 exception when others then return false;
 end $$;
 
-create function arbdesk_private.original_side_calculate(p_book jsonb,p_stake numeric,p_max_shares numeric default null,p_limit numeric default null)
+create or replace function arbdesk_private.original_side_calculate(p_book jsonb,p_stake numeric,p_max_shares numeric default null,p_limit numeric default null)
 returns jsonb language plpgsql set search_path='' as $$
 declare level record; price numeric; available numeric; quantity numeric; take numeric;
  step numeric; tick numeric; rate numeric; minimum numeric; cost numeric:=0; shares numeric:=0; fees numeric:=0;
@@ -228,14 +228,14 @@ end $$;
 
 -- A direct packet without executable depth remains an observation attempt,
 -- not successful quote coverage. Later retries retain their own receipts.
-create function arbdesk_private.original_side_quote_usable(p_book jsonb,p_stake numeric)
+create or replace function arbdesk_private.original_side_quote_usable(p_book jsonb,p_stake numeric)
 returns boolean language plpgsql set search_path='' as $$
 begin
  return coalesce((arbdesk_private.original_side_calculate(p_book,p_stake)->>'shares')::numeric>0,false);
 exception when others then return false;
 end $$;
 
-create function arbdesk_private.original_side_observation_complete(p_call uuid,p_side text)
+create or replace function arbdesk_private.original_side_observation_complete(p_call uuid,p_side text)
 returns boolean language sql set search_path='' as $$
  select exists(select 1 from arbdesk_private.original_side_quotes q
   left join arbdesk_private.original_side_evaluations e on e.quote_id=q.attempt_id
@@ -244,7 +244,7 @@ returns boolean language sql set search_path='' as $$
    (q.status='blocked' or (q.status='captured' and (e.result->>'shares')::numeric>0)))
 $$;
 
-create function arbdesk_private.original_side_source(p_call uuid)
+create or replace function arbdesk_private.original_side_source(p_call uuid)
 returns jsonb language plpgsql set search_path='' as $$
 declare p public.prediction_checkpoints; b record; m record; c record; r record;
  ctx jsonb; stamp timestamptz:=clock_timestamp(); scheduled timestamptz; start_at timestamptz;
@@ -320,7 +320,7 @@ begin
    'ladder_sha256',encode(sha256(convert_to(ladder::text,'UTF8')),'hex'),'unit',m.unit));
 end $$;
 
-create function arbdesk_private.original_side_owner_valid(p_owner uuid) returns boolean
+create or replace function arbdesk_private.original_side_owner_valid(p_owner uuid) returns boolean
 language sql set search_path='' as $$
  select p_owner is not null and (exists(select 1 from auth.users u where u.id=p_owner)
   or exists(select 1 from arbdesk_private.original_side_owners o where o.owner_id=p_owner))
@@ -329,7 +329,7 @@ $$;
 -- A connected service operator may provision a short-lived, opaque owner
 -- session. Only its SHA is retained. This avoids publishing ledgers through
 -- the legacy anonymous route or requiring a new signup in single-user mode.
-create function public.issue_original_side_session(p_owner uuid default null) returns jsonb
+create or replace function public.issue_original_side_session(p_owner uuid default null) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare owner_key uuid; token text; until_at timestamptz:=clock_timestamp()+interval '7 days';
 begin
@@ -347,13 +347,13 @@ begin
  return jsonb_build_object('token',token,'owner_id',owner_key,'expires_at',until_at);
 end $$;
 
-create function public.verify_original_side_session(p_token text) returns uuid
+create or replace function public.verify_original_side_session(p_token text) returns uuid
 language sql security definer set search_path='' as $$
  select owner_id from arbdesk_private.original_side_sessions
  where length(p_token)=64 and token_sha256=encode(sha256(convert_to(p_token,'UTF8')),'hex') and expires_at>clock_timestamp()
 $$;
 
-create function public.save_original_side_policy(p_owner uuid,p_config jsonb) returns uuid
+create or replace function public.save_original_side_policy(p_owner uuid,p_config jsonb) returns uuid
 language plpgsql security definer set search_path='' as $$
 declare id uuid; slot jsonb; n integer;
 begin
@@ -373,7 +373,7 @@ begin
  return id; -- Saving is inactive. No account, contribution, order or schedule is created.
 end $$;
 
-create function public.set_original_side_policy_state(p_owner uuid,p_policy uuid,p_action text) returns jsonb
+create or replace function public.set_original_side_policy_state(p_owner uuid,p_policy uuid,p_action text) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare p arbdesk_private.original_side_policies; a arbdesk_private.original_side_accounts; last_action text;
 begin
@@ -393,7 +393,7 @@ begin
  return jsonb_build_object('account_id',a.account_id,'action',p_action,'paper_only',true);
 end $$;
 
-create function arbdesk_private.original_side_allocate(p_account uuid,p_target date)
+create or replace function arbdesk_private.original_side_allocate(p_account uuid,p_target date)
 returns arbdesk_private.original_side_allocation_plans language plpgsql set search_path='' as $$
 declare a arbdesk_private.original_side_accounts;p arbdesk_private.original_side_policies;ap arbdesk_private.original_side_allocation_plans;
  free_cash numeric;per_slot numeric;total numeric;n integer;x jsonb;
@@ -417,13 +417,14 @@ begin
  return ap;
 end $$;
 
-create function public.reserve_original_side_date(p_account uuid,p_call uuid) returns uuid
+create or replace function public.reserve_original_side_date(p_account uuid,p_call uuid) returns uuid
 language plpgsql security definer set search_path='' as $$
 declare a arbdesk_private.original_side_accounts;c arbdesk_private.original_side_calls;p arbdesk_private.original_side_policies;ap arbdesk_private.original_side_allocation_plans;checked jsonb;
 begin
  select * into a from arbdesk_private.original_side_accounts where account_id=p_account for update;
  select * into c from arbdesk_private.original_side_calls where call_id=p_call;
  select * into p from arbdesk_private.original_side_policies where policy_id=a.policy_id;
+ if c.source_kind is distinct from 'prediction_checkpoints' then raise exception 'v2_requires_native_named_checkpoint';end if;
  if (select e.action from arbdesk_private.original_side_policy_events e where e.policy_id=p.policy_id order by event_id desc limit 1) not in ('activate','resume')
   or c.frozen_at<a.activated_at or c.eligibility<>'eligible' or not exists(select 1 from jsonb_array_elements(p.config->'slots') s where s->>'city_key'=c.city_key and s->>'checkpoint'=c.checkpoint)
   or coalesce((select (value->>'halted')::boolean from public.settings where key='trading_halt'),false) then raise exception 'prospective_allocation_unavailable';end if;
@@ -432,7 +433,7 @@ begin
  ap:=arbdesk_private.original_side_allocate(p_account,c.target_date);return ap.plan_id;
 end $$;
 
-create function public.publish_original_side_order(p_account uuid,p_call uuid,p_quote uuid) returns jsonb
+create or replace function public.publish_original_side_order(p_account uuid,p_call uuid,p_quote uuid) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare a arbdesk_private.original_side_accounts; p arbdesk_private.original_side_policies; c arbdesk_private.original_side_calls;
  q arbdesk_private.original_side_quotes; book arbdesk_private.original_side_books;
@@ -449,6 +450,7 @@ begin
  if state not in ('activate','resume') then raise exception 'prospective_paper_policy_inactive';end if;
  if coalesce((select (value->>'halted')::boolean from public.settings where key='trading_halt'),false) then raise exception 'trading_halted';end if;
  select * into c from arbdesk_private.original_side_calls where call_id=p_call;
+ if c.source_kind is distinct from 'prediction_checkpoints' then raise exception 'v2_requires_native_named_checkpoint';end if;
  select * into q from arbdesk_private.original_side_quotes where attempt_id=p_quote and call_id=p_call;
  select choice into selected from jsonb_array_elements(p.config->'slots') choice where choice->>'city_key'=c.city_key;
  if selected is null or selected->>'checkpoint' is distinct from c.checkpoint or selected->>'side' is distinct from q.side
@@ -483,13 +485,13 @@ begin
  return jsonb_build_object('order_id',ord_id,'decision_id',dec_id,'allocation_id',slot.allocation_id,'paper_only',true);
 end $$;
 
-create function public.record_original_side_stage(p_call uuid,p_account uuid,p_stage text,p_reason text) returns void
+create or replace function public.record_original_side_stage(p_call uuid,p_account uuid,p_stage text,p_reason text) returns void
 language plpgsql security definer set search_path='' as $$ begin
  if length(p_stage)>80 or length(p_reason)>300 then raise exception 'stage_receipt_too_large';end if;
  insert into arbdesk_private.original_side_stage_events(call_id,account_id,stage,reason) values(p_call,p_account,p_stage,p_reason);
 end $$;
 
-create function public.claim_original_side_order() returns jsonb
+create or replace function public.claim_original_side_order() returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare a arbdesk_private.original_side_accounts; o arbdesk_private.original_side_orders;
 begin
@@ -505,7 +507,7 @@ begin
  return to_jsonb(o)||jsonb_build_object('original_identity',(select identity from arbdesk_private.original_side_calls where call_id=o.call_id));
 end $$;
 
-create function public.record_original_side_execution_book(p_order uuid,p_book jsonb) returns jsonb
+create or replace function public.record_original_side_execution_book(p_order uuid,p_book jsonb) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare o arbdesk_private.original_side_orders; attempt uuid:=gen_random_uuid(); receipt jsonb; b arbdesk_private.original_side_books;
 begin
@@ -517,7 +519,7 @@ begin
   'received_at',receipt->>'received_at');
 end $$;
 
-create function public.original_side_consumed_depth(p_order uuid,p_snapshot text) returns jsonb
+create or replace function public.original_side_consumed_depth(p_order uuid,p_snapshot text) returns jsonb
 language sql security definer set search_path='' as $$
  select coalesce(jsonb_object_agg(t.price,t.shares::text),'{}') from(
   select (f->>'price')::numeric::text price,sum((f->>'shares')::numeric) shares
@@ -529,7 +531,7 @@ language sql security definer set search_path='' as $$
  ) t
 $$;
 
-create function public.complete_original_side_order(p_order uuid,p_lease uuid,p_result jsonb) returns jsonb
+create or replace function public.complete_original_side_order(p_order uuid,p_lease uuid,p_result jsonb) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare o arbdesk_private.original_side_orders; a arbdesk_private.original_side_accounts; b arbdesk_private.original_side_books;
  c arbdesk_private.original_side_calls; al arbdesk_private.original_side_allocations; q numeric; cost numeric; fee numeric; f jsonb; used jsonb;
@@ -590,7 +592,7 @@ begin
  return p_result;
 end $$;
 
-create function public.expire_original_side_allocations() returns integer
+create or replace function public.expire_original_side_allocations() returns integer
 language plpgsql security definer set search_path='' as $$
 declare a arbdesk_private.original_side_accounts; slot record; n int:=0;
 begin
@@ -609,7 +611,7 @@ begin
  return n;
 end $$;
 
-create function public.register_original_side_call(p_call uuid) returns jsonb
+create or replace function public.register_original_side_call(p_call uuid) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare packet jsonb; existing arbdesk_private.original_side_calls;
 begin
@@ -638,7 +640,7 @@ end $$;
 
 -- Freeze metadata in the same transaction as the actual source insert. A
 -- failed observation stage must never abort the original forecast freeze.
-create function arbdesk_private.original_side_freeze_receipt() returns trigger language plpgsql set search_path='' as $$
+create or replace function arbdesk_private.original_side_freeze_receipt() returns trigger language plpgsql set search_path='' as $$
 begin
  perform public.register_original_side_call((to_jsonb(new)->>case when tg_table_name='prediction_checkpoints' then 'checkpoint_id' else 'call_id' end)::uuid);
  return new;
@@ -648,12 +650,12 @@ exception when others then
  exception when others then null;end;
  return new;
 end $$;
-create trigger original_side_freeze_receipt after insert on public.prediction_checkpoints
+create or replace trigger original_side_freeze_receipt after insert on public.prediction_checkpoints
  for each row execute function arbdesk_private.original_side_freeze_receipt();
-create trigger original_side_freeze_receipt after insert on public.day_max_day_ahead_calls
+create or replace trigger original_side_freeze_receipt after insert on public.day_max_day_ahead_calls
  for each row execute function arbdesk_private.original_side_freeze_receipt();
 
-create function public.record_original_side_quote(p_call uuid,p_side text,p_attempt uuid,p_requested timestamptz,p_book jsonb default null,p_reason text default null)
+create or replace function public.record_original_side_quote(p_call uuid,p_side text,p_attempt uuid,p_requested timestamptz,p_book jsonb default null,p_reason text default null)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare c arbdesk_private.original_side_calls; stamp timestamptz:=clock_timestamp(); snap text; token text;
  payload jsonb; meta jsonb; raw jsonb; mapped text; status text:='failed'; reason text:=p_reason; e jsonb;
@@ -709,7 +711,7 @@ begin
   'received_at',stamp);
 end $$;
 
-create function public.original_side_runtime(p_limit integer default 100) returns jsonb
+create or replace function public.original_side_runtime(p_limit integer default 100) returns jsonb
 language sql security definer set search_path='' as $$
  select jsonb_build_object('capacity',arbdesk_private.original_side_capacity(),'calls',coalesce((select jsonb_agg(to_jsonb(t)) from(
   select p.checkpoint_id,p.city_key,p.target_date,p.checkpoint,p.decided_at,p.frozen_at,
@@ -736,13 +738,13 @@ language sql security definer set search_path='' as $$
   where (select e.action from arbdesk_private.original_side_policy_events e where e.policy_id=p.policy_id order by event_id desc limit 1) in ('activate','resume')),'[]'))
 $$;
 
-create function public.original_side_quote_for_order(p_call uuid,p_side text) returns uuid
+create or replace function public.original_side_quote_for_order(p_call uuid,p_side text) returns uuid
 language sql security definer set search_path='' as $$
  select attempt_id from arbdesk_private.original_side_quotes where call_id=p_call and side=p_side and status='captured'
   and received_at>=clock_timestamp()-interval '120 seconds' order by received_at desc,attempt_id limit 1
 $$;
 
-create function public.original_side_settlement_candidates(p_limit integer default 12) returns jsonb
+create or replace function public.original_side_settlement_candidates(p_limit integer default 12) returns jsonb
 language sql security definer set search_path='' as $$
  select coalesce(jsonb_agg(to_jsonb(t)),'[]') from(
   select c.call_id,c.city_key,c.target_date,c.identity,
@@ -756,7 +758,7 @@ language sql security definer set search_path='' as $$
  ) t
 $$;
 
-create function arbdesk_private.original_side_hex(v text) returns numeric
+create or replace function arbdesk_private.original_side_hex(v text) returns numeric
 language plpgsql immutable set search_path='' as $$
 declare n numeric:=0;i integer;digit integer;
 begin
@@ -765,7 +767,7 @@ begin
  return n;
 end $$;
 
-create function arbdesk_private.original_side_fractional_payout(identity jsonb,evidence jsonb) returns jsonb
+create or replace function arbdesk_private.original_side_fractional_payout(identity jsonb,evidence jsonb) returns jsonb
 language plpgsql set search_path='' as $$
 declare proof jsonb:=evidence->'ctf_payout';provider jsonb;calls jsonb;block jsonb;previous jsonb;
  den numeric;yn numeric;nn numeric;i integer;side text;collection text;cond text:=lower(identity->>'condition_id');
@@ -810,7 +812,7 @@ end $$;
 
 -- Both venues must identify the same original condition and tokens. A price,
 -- closed flag, weather maximum or a YES miss alone cannot prove a NO payout.
-create function public.record_original_side_settlement(p_call uuid,p_evidence jsonb) returns jsonb
+create or replace function public.record_original_side_settlement(p_call uuid,p_evidence jsonb) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare c arbdesk_private.original_side_calls; g jsonb; cl jsonb; labels jsonb; tokens jsonb; prices jsonb; t jsonb;
  yp numeric; np numeric; token_yes text; token_no text; winner text; state text; proof text; id uuid;
@@ -887,7 +889,7 @@ begin
  return jsonb_build_object('settlement_id',id,'state',state,'paper_only',true);
 end $$;
 
-create function arbdesk_private.original_side_order_guard() returns trigger language plpgsql set search_path='' as $$
+create or replace function arbdesk_private.original_side_order_guard() returns trigger language plpgsql set search_path='' as $$
 begin
  if (to_jsonb(old)-array['status','lease_token','lease_until','result']) is distinct from (to_jsonb(new)-array['status','lease_token','lease_until','result']) then raise exception 'original_side_order_identity_immutable';end if;
  if old.status in ('filled','partial','rejected','expired') then raise exception 'original_side_terminal_execution_immutable';end if;
@@ -897,9 +899,9 @@ begin
   then raise exception 'terminal_execution_requires_immutable_event_and_ledger';end if;
  return new;
 end $$;
-create trigger original_side_order_guard before update on arbdesk_private.original_side_orders for each row execute function arbdesk_private.original_side_order_guard();
-create trigger original_side_order_no_delete before delete on arbdesk_private.original_side_orders for each row execute function arbdesk_private.immutable_record();
-create function arbdesk_private.original_side_account_guard() returns trigger language plpgsql set search_path='' as $$
+create or replace trigger original_side_order_guard before update on arbdesk_private.original_side_orders for each row execute function arbdesk_private.original_side_order_guard();
+create or replace trigger original_side_order_no_delete before delete on arbdesk_private.original_side_orders for each row execute function arbdesk_private.immutable_record();
+create or replace function arbdesk_private.original_side_account_guard() returns trigger language plpgsql set search_path='' as $$
 declare cash_total numeric; reserve_total numeric;
 begin
  if (to_jsonb(old)-array['cash','reserved_cash']) is distinct from (to_jsonb(new)-array['cash','reserved_cash']) then raise exception 'original_side_funding_and_ownership_immutable';end if;
@@ -907,12 +909,12 @@ begin
  if new.cash<>cash_total or new.reserved_cash<>reserve_total then raise exception 'original_side_balances_require_append_only_ledger';end if;
  return new;
 end $$;
-create trigger original_side_account_guard before update on arbdesk_private.original_side_accounts for each row execute function arbdesk_private.original_side_account_guard();
-create trigger original_side_account_no_delete before delete on arbdesk_private.original_side_accounts for each row execute function arbdesk_private.immutable_record();
+create or replace trigger original_side_account_guard before update on arbdesk_private.original_side_accounts for each row execute function arbdesk_private.original_side_account_guard();
+create or replace trigger original_side_account_no_delete before delete on arbdesk_private.original_side_accounts for each row execute function arbdesk_private.immutable_record();
 
 -- Compact shared projection. No raw depth, forecasts, coefficients or full
 -- financial packets leave the private read boundary. A prediction stays one row.
-create function arbdesk_private.original_side_projection(p_call uuid,p_owner uuid,p_account uuid,p_stake numeric)
+create or replace function arbdesk_private.original_side_projection(p_call uuid,p_owner uuid,p_account uuid,p_stake numeric)
 returns jsonb language plpgsql set search_path='' as $$
 declare c arbdesk_private.original_side_calls; s arbdesk_private.original_side_settlements; v_side text; q record;
  calc jsonb; paper jsonb; legacy jsonb; packet jsonb;sides jsonb:='{}'; payout numeric; label text; state text; prediction text:='pending';
@@ -1004,7 +1006,7 @@ begin
   'sides',sides);
 end $$;
 
-create function public.read_original_side_history(p_owner uuid,p_from date,p_to date,p_cities text[] default null,p_checkpoints text[] default null,
+create or replace function public.read_original_side_history(p_owner uuid,p_from date,p_to date,p_cities text[] default null,p_checkpoints text[] default null,
  p_account uuid default null,p_stake numeric default 10,p_offset integer default 0,p_limit integer default 100)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare result jsonb; total integer; lim integer:=least(greatest(p_limit,1),200);coverage jsonb;
@@ -1036,7 +1038,7 @@ begin
   'capacity',arbdesk_private.original_side_capacity(),'comparison_stake',p_stake::text,'calculation_version','original-bucket-sides-v2.1','paper_only',true);
 end $$;
 
-create function public.resolve_original_side_history_rows(p_owner uuid,p_rows jsonb,p_account uuid default null,p_stake numeric default 10)
+create or replace function public.resolve_original_side_history_rows(p_owner uuid,p_rows jsonb,p_account uuid default null,p_stake numeric default 10)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare row jsonb; id uuid; out_rows jsonb:='[]';
 begin
@@ -1074,7 +1076,7 @@ begin
  return jsonb_build_object('rows',out_rows,'truncated',false,'comparison_stake',p_stake::text);
 end $$;
 
-create function public.read_original_side_desk(p_owner uuid) returns jsonb
+create or replace function public.read_original_side_desk(p_owner uuid) returns jsonb
 language sql security definer set search_path='' as $$
  select jsonb_build_object('policies',coalesce((select jsonb_agg(jsonb_build_object('policy_id',p.policy_id,'config',p.config,'created_at',p.created_at,
   'state',coalesce((select e.action from arbdesk_private.original_side_policy_events e where e.policy_id=p.policy_id order by e.event_id desc limit 1),'inactive'),
@@ -1087,7 +1089,7 @@ language sql security definer set search_path='' as $$
   'capacity',arbdesk_private.original_side_capacity(),'truncated',(select count(*)>20 from arbdesk_private.original_side_policies pp where pp.owner_id=p_owner),'paper_only',true)
 $$;
 
-create function public.read_original_side_call(p_owner uuid,p_call uuid,p_account uuid default null,p_stake numeric default 10)
+create or replace function public.read_original_side_call(p_owner uuid,p_call uuid,p_account uuid default null,p_stake numeric default 10)
 returns jsonb language plpgsql security definer set search_path='' as $$
 begin
  if not arbdesk_private.original_side_owner_valid(p_owner) or p_stake is null or p_stake<=0 or p_stake>1000000 then raise exception 'bounded_owner_read_required';end if;
@@ -1095,7 +1097,7 @@ begin
  return arbdesk_private.original_side_projection(p_call,p_owner,p_account,p_stake);
 end $$;
 
-create function public.read_original_side_ledger(p_owner uuid,p_account uuid,p_before bigint default null) returns jsonb
+create or replace function public.read_original_side_ledger(p_owner uuid,p_account uuid,p_before bigint default null) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare entries jsonb; plans jsonb; stages jsonb; next_id bigint;
 begin
@@ -1120,7 +1122,7 @@ end $$;
 -- A private archive first freezes the exact immutable membership and mutable
 -- account/order projections in ONE MVCC snapshot. Later bounded pages read
 -- only those immutable IDs. Concurrent new receipts cannot enter the backup.
-create function public.begin_original_side_archive() returns jsonb
+create or replace function public.begin_original_side_archive() returns jsonb
 language plpgsql stable security definer set search_path='' as $$
 declare t text;pk text;ids jsonb;rows jsonb;entities jsonb:='[]';body text;n integer;
 begin
@@ -1145,7 +1147,7 @@ begin
  return jsonb_build_object('payload',body,'sha256',encode(sha256(convert_to(body,'UTF8')),'hex'));
 end $$;
 
-create function public.read_original_side_archive_rows(p_table text,p_ids text[]) returns jsonb
+create or replace function public.read_original_side_archive_rows(p_table text,p_ids text[]) returns jsonb
 language plpgsql stable security definer set search_path='' as $$
 declare pk text;kind text;rows jsonb;n integer;
 begin

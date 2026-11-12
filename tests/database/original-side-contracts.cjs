@@ -27,6 +27,11 @@ module.exports=async function(db){
  assert.equal((await q('select count(*) n from arbdesk_private.original_side_calls where call_id=$1',[p.checkpoint_id]))[0].n,1,'native AFTER INSERT retains identity without a later observation stage');
  assert.equal(call.eligibility,'eligible');assert.equal(call.identity.predicted_band_id,band);
  assert.equal(call.source.probs[band],.7,'canonical p stays YES probability');
+ const wrongSource='f5555555-0000-0000-0000-000000000014';
+ await q(`insert into arbdesk_private.original_side_calls(call_id,city_key,target_date,checkpoint,source_kind,frozen_at,source,identity,eligibility,cutoff_at,registered_at)
+  select $1::uuid,city_key,target_date,checkpoint,'day_max_day_ahead_calls',frozen_at,source,identity,eligibility,cutoff_at,registered_at
+  from arbdesk_private.original_side_calls where call_id=$2`,[wrongSource,p.checkpoint_id]);
+ await assert.rejects(()=>q('select public.reserve_original_side_date($1,$2)',[account,wrongSource]),/native_named_checkpoint/);
  function makeBook(side,price){
   const observed=new Date().toISOString();const raw={asset_id:side==='YES'?'side-yes':'side-no',timestamp:String(new Date(observed).getTime()),asks:[{price,size:'1000'}],bids:[{price:'.3',size:'1000'}],tick_size:'.001',min_order_size:'5'};
   return {token_id:raw.asset_id,quote_kind:'direct',observed_at:observed,received_at:observed,tradeable:true,asks:raw.asks,bids:raw.bids,tick_size:'.001',share_step:'.01',fee_rate:'0',fee_rounding:'half_up_5dp',min_order_size:'5',min_order_size_unit:'shares',raw_book:raw,
@@ -77,11 +82,12 @@ module.exports=async function(db){
  const balance=(await q('select cash,reserved_cash from arbdesk_private.original_side_accounts'))[0];
  assert.equal(Number(balance.reserved_cash),0);assert.ok(Number(balance.cash)>=0);
  const view=(await q("select public.read_original_side_history($1,current_date-1,current_date+1,array['side_fixture'],null,$2,10,0,100) r",[owner,account]))[0].r;
- assert.equal(view.total_calls,1,'both side attempts count as one prediction');
- assert.equal(view.rows[0].prediction_outcome,'pending');assert.equal(view.rows[0].sides.NO.hypothetical_net_pnl,null);
- assert.equal(view.rows[0].sides.NO.paper_orders[0].paper_net_pnl,null,'no zero for unverified settlement');
- assert.equal(view.rows[0].sides.NO.quote_id,noId,'comparison uses the first executable own-side quote for this stake, after retaining empty-book attempts');
- assert.equal(view.rows[0].sides.YES.paper_orders.length,0,'observing YES never spends it');
+ assert.equal(view.total_calls,2,'two explicit synthetic source IDs stay distinct; YES/NO attempts do not multiply either prediction');
+ const originalView=view.rows.find(r=>r.call_id===p.checkpoint_id);
+ assert.equal(originalView.prediction_outcome,'pending');assert.equal(originalView.sides.NO.hypothetical_net_pnl,null);
+ assert.equal(originalView.sides.NO.paper_orders[0].paper_net_pnl,null,'no zero for unverified settlement');
+ assert.equal(originalView.sides.NO.quote_id,noId,'comparison uses the first executable own-side quote for this stake, after retaining empty-book attempts');
+ assert.equal(originalView.sides.YES.paper_orders.length,0,'observing YES never spends it');
  const hist='f5555555-0000-0000-0000-000000000009';
  // Explicit synthetic historical fixture, never inserted by a live runner.
  await q(`insert into arbdesk_private.original_side_calls(call_id,city_key,target_date,checkpoint,source_kind,frozen_at,source,identity,eligibility,cutoff_at,registered_at)
@@ -190,6 +196,9 @@ module.exports=async function(db){
  const changedPayload=JSON.stringify(corrupt);
  await assert.rejects(()=>require('../../tools/restore_original_sides.cjs').restore({payload:changedPayload,
   sha256:crypto.createHash('sha256').update(changedPayload).digest('hex')}),/reconcile.*ledger/);
+ await db.exec(fs.readFileSync(path.join(__dirname,'../../supabase/migrations/20261111214539_original_call_side_evidence.sql'),'utf8'));
+ const reinstalled=JSON.parse((await q('select public.begin_original_side_archive() r'))[0].r.payload);
+ assert.deepEqual(reinstalled.entities,manifest.entities,'reinstall retains every original receipt, account/order projection and ledger row');
  const session=(await q('select public.issue_original_side_session() r'))[0].r;
  assert.equal((await q('select public.verify_original_side_session($1) id',[session.token]))[0].id,session.owner_id);
  assert.equal((await q('select public.verify_original_side_session($1) id',['0'.repeat(64)]))[0].id,null);
