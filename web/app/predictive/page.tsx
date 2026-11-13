@@ -16,6 +16,7 @@ import SettlementStatus from "@/components/SettlementStatus";
 import CheckpointScoreboard from "@/components/CheckpointScoreboard";
 import PredictionLineup from "@/components/PredictionLineup";
 import CityPredictionValidation from "@/components/CityPredictionValidation";
+import RegressionAudit from "@/components/RegressionAudit";
 import PredictionClocks from "@/components/PredictionClocks";
 import CityCards from "@/components/CityCards";
 import ProductReleaseStatus from "@/components/ProductReleaseStatus";
@@ -770,6 +771,9 @@ function PredictiveContent() {
       </div>
       <div id="predictive-accuracy" className="scroll-mt-20" tabIndex={-1}>
         <CityPredictionValidation cities={selected} moment={moment} setMoment={setMoment} />
+      </div>
+      <div id="predictive-regression-audit" className="scroll-mt-20" tabIndex={-1}>
+        <RegressionAudit cities={cities.map(c=>c.city_key)} />
       </div>
       <div id="predictive-results" className="scroll-mt-20" tabIndex={-1}>
         <PredictionHindsight rows={hindsightQ.data ?? []} loading={hindsightQ.loading} error={hindsightQ.error}

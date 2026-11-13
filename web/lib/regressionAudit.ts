@@ -1,0 +1,21 @@
+import {HORIZONS, type EarlyComparison, type Readiness} from './cityValidation';
+
+export const AUDIT_HORIZONS=HORIZONS.filter(([key])=>key!=='overall');
+export type AuditCursor={city_key:string;checkpoint:string};
+type Measured=number|null;
+export type AuditCohort={start?:string;end_exclusive?:string;calls?:Measured;n?:Measured;dates?:Measured;
+ pending?:Measured;hits?:Measured;hit_rate?:Measured;log_loss?:Measured;claimed?:Measured;verified?:Measured;version_count?:Measured;
+ market?:{n?:Measured;dates?:Measured;model_hits?:Measured;market_hits?:Measured;model_hit_rate?:Measured;market_hit_rate?:Measured};
+ correction?:{n?:Measured;helped?:Measured;hurt?:Measured;log_loss_gain?:Measured}};
+export type AuditRow=AuditCursor&{source_as_of:string;source_report_fingerprint:string|null;flags:string[];findings:string[];
+ recent:AuditCohort;prior:AuditCohort;hit_rate_change:Measured;comparable_dates_ready:boolean|null;
+ learning:Array<{policy?:string;phase?:string;model_version?:string;as_of?:string;active?:boolean;decision?:string;reason?:string;
+ train_dates?:Measured;validation_dates?:Measured;readiness?:Readiness}>;
+ retained_daily_details:Array<{date:string;n:Measured;pending:Measured;hits:Measured;hit_rate:Measured;early_comparison:EarlyComparison|null}>;
+ daily_details_complete:boolean;causal_attribution_confirmed:false};
+export type AuditPage={policy:string;rows:AuditRow[];has_more:boolean;next_cursor:AuditCursor|null;
+ changes_serving:false;changes_training_gates:false;interpretation:string};
+export const auditNumber=(value:number|null|undefined,digits=0)=>value==null?'Not measured':value.toFixed(digits);
+export const auditPercent=(value:number|null|undefined)=>value==null?'Not measured':`${(100*value).toFixed(1)}%`;
+export const auditHorizon=(key:string)=>AUDIT_HORIZONS.find(([k])=>k===key)?.[1]??key;
+export const auditWords=(value:string)=>value.replaceAll('_',' ');

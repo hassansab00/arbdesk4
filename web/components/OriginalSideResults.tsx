@@ -37,11 +37,11 @@ export function useOriginalSideRows(identities:HistoryIdentity[]){
  const calls=useMemo(()=>new Map(query.data?.rows.map(x=>[x.row_key,x.call])??[]),[query.data]);
  return {...query,calls,truncated:identities.length>300};
 }
-export function PrivateSideAccess({error}:{error?:string|null}){
+export function PrivateSideAccess({error,purpose='paper'}:{error?:string|null;purpose?:'paper'|'audit'}){
  const [token,setToken]=useState(''),[notice,setNotice]=useState<string|null>(null);
  return <details className="rounded border border-border p-2 text-xs text-muted">
   <summary className="cursor-pointer">{error??'Private paper evidence access'}</summary>
-  <p className="my-2">Quotes and paper ledgers require an owner session. The connected operator can install a temporary access receipt; this does not activate a paper policy.</p>
+  <p className="my-2">{purpose==='audit'?'Regression evidence requires an owner session.':'Quotes and paper ledgers require an owner session.'} The connected operator can install a temporary access receipt; this does not activate a paper policy.</p>
   <form onSubmit={async e=>{e.preventDefault();const result=await privateSideRead<{authorized:boolean}>('/api/original-sides',{op:'session',token});
    if(result.data){setToken('');setNotice('Private evidence unlocked.');window.dispatchEvent(new Event('ad4-private-evidence'));}
    else setNotice((result.error as {message?:string})?.message??'Access receipt was not accepted.');}} className="flex flex-wrap gap-2">
