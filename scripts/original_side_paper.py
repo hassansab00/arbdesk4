@@ -16,6 +16,20 @@ from original_side_finance import VERSION
 BUDGET_S = 60
 
 
+def evidence_capacity_state(capacity):
+    """Early operator warning; the existing database limit still owns capture.
+
+    The 80% warning is an operational headroom threshold, not a model gate.
+    Emit only its state in normal public logs, never private archive contents.
+    """
+    if not isinstance(capacity,dict):return 'unknown'
+    used,limit,allowed=(capacity.get(k) for k in ('bytes','limit_bytes','capture_allowed'))
+    if type(used) is not int or type(limit) is not int or used<0 or limit<=0 or type(allowed) is not bool:
+        return 'unknown'
+    if not allowed or used>=limit:return 'hold'
+    return 'warning' if used*5>=limit*4 else 'ok'
+
+
 def observe(row):
     saved = rpc('register_original_side_call', {'p_call': row['checkpoint_id']})
     result = Counter()
@@ -128,6 +142,7 @@ def run(*, budget_s=BUDGET_S):
         except Exception as exc:
             failures['call_read_'+type(exc).__name__]+=1
             runtime={'calls':[],'accounts':[]}  # settlement recovery remains independent
+        capacity_state=evidence_capacity_state(runtime.get('capacity'))
         observation_deadline=min(started+35,started+budget_s-12)
         for row in runtime.get('historical_calls',[]):
             if time.monotonic()+2>=observation_deadline:break
@@ -207,8 +222,8 @@ def run(*, budget_s=BUDGET_S):
                 try:counts.update(future.result())
                 except Exception as exc:failures[type(exc).__name__]+=1
     detail = dict(version=VERSION, counts=dict(counts), failures=dict(failures),
-        seconds=round(time.monotonic()-started, 2), paper_only=True)
-    log_run('original_side_paper', 'attention' if failures or counts.get('deferred_calls') else 'ok',
+        seconds=round(time.monotonic()-started, 2), paper_only=True,evidence_capacity_state=capacity_state)
+    log_run('original_side_paper', 'attention' if failures or counts.get('deferred_calls') or capacity_state!='ok' else 'ok',
         counts.get('YES_captured', 0)+counts.get('NO_captured', 0), detail)
     return detail
 
