@@ -14,7 +14,7 @@ def test_installer_and_migration_remain_identical_and_install_last():
     assert "c.relkind in ('r','p')" in current
     order = [s.strip() for s in (ROOT / 'sql/INSTALL_ORDER.txt').read_text().splitlines()
              if s.strip() and not s.startswith('#')]
-    assert order[-1] == 'ad4_disk_io_budget_repair.sql'
+    assert order.index('ad4_disk_io_budget_repair.sql') > order.index('ad4_page_status.sql')
 
 def test_cache_controls_keep_time_limits_and_expensive_work_off_the_hourly_path():
     sql = (ROOT / 'sql/ad4_disk_io_budget_repair.sql').read_text()

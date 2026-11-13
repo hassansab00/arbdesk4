@@ -1815,12 +1815,12 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_forecasts"
   ],
   "v_outcome_evidence_health": [
+    "bands",
     "fact_band_outcome",
     "fact_forecast_outcome",
-    "paper_resolution_evidence",
-    "bands",
-    "resolution_verdicts",
     "markets",
+    "paper_resolution_evidence",
+    "resolution_verdicts",
     "weather_resolution_evidence"
   ],
   "v_outcome_pipeline": [
