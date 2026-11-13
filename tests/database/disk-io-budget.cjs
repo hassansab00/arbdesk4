@@ -1,7 +1,8 @@
 const {PGlite}=require('@electric-sql/pglite');
 const fs=require('node:fs'),assert=require('node:assert/strict');
 const root=require('node:path').join(__dirname,'../..');
-const migration=fs.readFileSync(root+'/supabase/migrations/20261112234255_disk_io_budget_repair.sql','utf8');
+const migration=fs.readFileSync(root+'/supabase/migrations/20261112234255_disk_io_budget_repair.sql','utf8')+
+ fs.readFileSync(root+'/supabase/migrations/20261113081006_cache_source_invalidation.sql','utf8');
 (async()=>{
  const db=new PGlite();
  const q=async(sql,args=[])=>(await db.query(sql,args)).rows;
@@ -30,6 +31,14 @@ const migration=fs.readFileSync(root+'/supabase/migrations/20261112234255_disk_i
  assert.equal((await q("select cadence_minutes,max_age_minutes from job_sla"))[0].max_age_minutes,90);
  assert.equal((await q("select schedule from cron.job where jobname='ad4_refresh_research_cache'"))[0].schedule,'47 3,9,15,21 * * *');
  assert.match((await q("select reloptions::text opts from pg_class where oid='weather_forecasts'::regclass"))[0].opts,/autovacuum_enabled=true/);
+ const tokenDefinition=(await q("select pg_get_functiondef('arbdesk_private.page_cache_source_token()'::regprocedure) body"))[0].body;
+ assert.match(tokenDefinition,/c.relkind in \('r','p'\)/);
+ await db.exec('update input_data set value=11;select pg_stat_force_next_flush();select pg_stat_clear_snapshot();');
+ const tokenBefore=(await q('select arbdesk_private.page_cache_source_token() token'))[0].token;
+ await q("select arbdesk_private.refresh_page_cache_group('fast')");
+ await db.exec('select pg_stat_force_next_flush();select pg_stat_clear_snapshot();');
+ assert.equal((await q('select arbdesk_private.page_cache_source_token() token'))[0].token,tokenBefore,
+   'refreshing materialized views must not change the source token');
  // Deterministic source changes exercise invalidation without waiting for statistics.
  await db.exec(`create or replace function arbdesk_private.page_cache_source_token() returns text language sql stable as $$select value::text from input_data where id=1$$;
  update input_data set value=11;`);
