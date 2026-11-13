@@ -247,7 +247,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_opportunities": "ad4_13_reconcile.sql",
   "v_opportunities_live": "ad4_89_page_cache.sql",
   "v_opportunity_context": "ad4_22_opportunity_context.sql",
-  "v_outcome_evidence_health": "supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql",
+  "v_outcome_evidence_health": "ad4_outcome_health_shared_resolution.sql",
   "v_outcome_pipeline": "supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql",
   "v_page_city_volume": "ad4_page_status.sql",
   "v_page_data_freshness": "ad4_page_status.sql",
