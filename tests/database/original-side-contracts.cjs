@@ -208,8 +208,32 @@ module.exports=async function(db){
  const crypto=require('node:crypto'),payload=JSON.stringify({manifest:archive,packets});
  const restored=await require('../../tools/restore_original_sides.cjs').restore({payload,sha256:crypto.createHash('sha256').update(payload).digest('hex')});
  assert.ok(restored.verified&&restored.rows>0,'full private snapshot restores with exact original row arithmetic and references');
+ const restoreData=async(data)=>{
+  data.manifest.sha256=crypto.createHash('sha256').update(data.manifest.payload).digest('hex');
+  const body=JSON.stringify(data);
+  return require('../../tools/restore_original_sides.cjs').restore({payload:body,sha256:crypto.createHash('sha256').update(body).digest('hex')});
+ };
+ const editMembership=(data,edit)=>{const m=JSON.parse(data.manifest.payload);edit(m);data.manifest.payload=JSON.stringify(m);};
+ const omitted=JSON.parse(payload);
+ editMembership(omitted,m=>{m.entities=[];});omitted.packets=[];
+ await assert.rejects(()=>restoreData(omitted),/complete.*table membership/,'a freshly hashed empty archive is not a verified backup');
+ const missing=JSON.parse(payload),missingTable=missing.packets[0].table;
+ missing.packets.shift();editMembership(missing,m=>{m.entities=m.entities.filter(x=>x.table!==missingTable);});
+ await assert.rejects(()=>restoreData(missing),/complete.*table membership/);
+ const duplicate=JSON.parse(payload);duplicate.packets[1]=duplicate.packets[0];
+ await assert.rejects(()=>restoreData(duplicate),/duplicate.*packet table/);
+ const extra=JSON.parse(payload);extra.packets.push(extra.packets[0]);
+ await assert.rejects(()=>restoreData(extra),/complete.*table membership/);
+ const wrongPk=JSON.parse(payload);editMembership(wrongPk,m=>{m.entities[0].pk='not_the_primary_key';});
+ await assert.rejects(()=>restoreData(wrongPk),/unexpected.*entity/);
+ const changedProjection=JSON.parse(payload),changedOrder=changedProjection.packets.find(x=>x.table==='original_side_orders');
+ const orderProjection=JSON.parse(changedOrder.rows[0]);orderProjection.limit_price=.123;changedOrder.rows[0]=JSON.stringify(orderProjection);
+ await assert.rejects(()=>restoreData(changedProjection),/mutable projection differs from frozen snapshot/);
  const corrupt=JSON.parse(payload),accountPacket=corrupt.packets.find(x=>x.table==='original_side_accounts');
  const changed=JSON.parse(accountPacket.rows[0]);changed.cash=999;accountPacket.rows[0]=JSON.stringify(changed);
+ // Even a matching mutable snapshot cannot mask an unbalanced immutable ledger.
+ editMembership(corrupt,m=>{m.entities.find(x=>x.table==='original_side_accounts').mutable_snapshot=accountPacket.rows;});
+ corrupt.manifest.sha256=crypto.createHash('sha256').update(corrupt.manifest.payload).digest('hex');
  const changedPayload=JSON.stringify(corrupt);
  await assert.rejects(()=>require('../../tools/restore_original_sides.cjs').restore({payload:changedPayload,
   sha256:crypto.createHash('sha256').update(changedPayload).digest('hex')}),/reconcile.*ledger/);

@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 
 from common import rpc
 
@@ -36,9 +37,22 @@ def export(path, *, call=rpc):
     if path.is_relative_to(ROOT) and not path.is_relative_to(ROOT/'.private'):
         raise ValueError('private evidence cannot be written into tracked/public repository paths')
     path.parent.mkdir(parents=True,exist_ok=True)
-    with os.fdopen(os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600),'w') as fh:
-        fh.write(document)
-    subprocess.run(['node',str(ROOT/'tools/restore_original_sides.cjs'),str(path)],cwd=ROOT,check=True)
+    # A final filename is evidence that offline verification completed. Never
+    # leave an apparently usable bundle when the verifier fails or is killed.
+    if path.exists():
+        raise FileExistsError(path)
+    fd,temporary=tempfile.mkstemp(prefix='.'+path.name+'.',suffix='.unverified',dir=path.parent)
+    try:
+        with os.fdopen(fd,'w') as fh:
+            fh.write(document)
+            fh.flush()
+            os.fsync(fh.fileno())
+        subprocess.run(['node',str(ROOT/'tools/restore_original_sides.cjs'),temporary],cwd=ROOT,check=True)
+        # Hard-link publication is atomic and refuses a concurrently created
+        # target; os.replace would silently overwrite a different archive.
+        os.link(temporary,path)
+    finally:
+        os.unlink(temporary)
     return dict(verified=True,tables=len(packets),rows=sum(len(x['rows']) for x in packets),sha256=hashlib.sha256(body.encode()).hexdigest())
 
 

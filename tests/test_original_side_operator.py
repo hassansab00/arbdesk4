@@ -1,5 +1,37 @@
 """Bounded queue draining and independent settlement recovery (synthetic)."""
 import original_side_paper as operator
+import pytest
+
+
+@pytest.mark.parametrize('used,limit,allowed,state',[
+    (79,100,True,'ok'),(80,100,True,'warning'),(99,100,True,'warning'),
+    (100,100,True,'hold'),(1,100,False,'hold'),(True,100,True,'unknown'),
+    (10,0,True,'unknown'),(-1,100,True,'unknown'),(10.5,100,True,'unknown'),
+    (10,100,'true','unknown'),
+])
+def test_capacity_receipt_is_validated(used,limit,allowed,state):
+    assert operator.evidence_capacity_state(dict(bytes=used,limit_bytes=limit,capture_allowed=allowed))==state
+
+
+@pytest.mark.parametrize('capacity,state',[
+    (dict(bytes=80,limit_bytes=100,capture_allowed=True),'warning'),
+    (dict(bytes=100,limit_bytes=100,capture_allowed=False),'hold'),(None,'unknown'),
+    (dict(bytes=10,limit_bytes=100,capture_allowed=True),'ok'),
+])
+def test_capacity_pressure_is_reported_without_skipping_execution_or_settlement(monkeypatch,capacity,state):
+    calls=[];logs=[]
+    def rpc(name,params=None):
+        calls.append(name)
+        if name=='original_side_runtime':return dict(calls=[],accounts=[],capacity=capacity)
+        if name=='original_side_settlement_candidates':return []
+        return None
+    monkeypatch.setattr(operator,'rpc',rpc)
+    monkeypatch.setattr(operator,'log_run',lambda *args,**kwargs:logs.append(args))
+    result=operator.run()
+    assert result['evidence_capacity_state']==state
+    assert logs[0][1]==('ok' if state=='ok' else 'attention')
+    assert 'claim_original_side_order' in calls and 'original_side_settlement_candidates' in calls
+    assert 'capacity' not in result # no raw private capacity packet in public logs
 
 
 def test_more_than_four_paper_orders_are_drained_before_their_expiry(monkeypatch):
