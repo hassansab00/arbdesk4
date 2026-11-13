@@ -45,6 +45,9 @@ def _sla():
     rows = [r for path in [SLA_MIGRATION] + SLA_ADDED for r in _sla_rows(path)]
     out = {job: (c, cadence, by) for job, c, cadence, by, _ in rows}
     assert len(out) == len(rows), "a job is listed twice"
+    repair = (MIGRATIONS / "20261112234255_disk_io_budget_repair.sql").read_text()
+    assert "cadence='hourly at :42',cadence_minutes=60" in repair
+    out["refresh_page_cache"] = (60, "hourly at :42", "pg_cron ad4_refresh_page_cache")
     return out
 
 

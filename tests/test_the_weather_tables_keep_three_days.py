@@ -113,7 +113,8 @@ def test_the_migration_schedules_the_reclaims_ad4_66_does():
     jobs = dict(re.findall(r"cron\.schedule\('(ad4_reclaim_weather_(?:forecasts|observations))', '([^']+)'", text))
     reclaim = (SQL / "ad4_66_reclaim_archived_tables.sql").read_text(encoding="utf-8")
     want = dict(re.findall(r"cron\.schedule\(\s*'(ad4_reclaim_weather_(?:forecasts|observations))'\s*,\s*'([^']+)'", reclaim))
-    assert jobs == want == {"ad4_reclaim_weather_forecasts": "20 6 * * *",
+    assert want == {} and "autovacuum_enabled=true" in reclaim
+    assert jobs == {"ad4_reclaim_weather_forecasts": "20 6 * * *",
                             "ad4_reclaim_weather_observations": "35 6 * * *"}
     # PGlite (tests/database/paper-contracts.cjs) has no cron schema.
     assert "if exists (select 1 from pg_namespace where nspname = 'cron') then" in text

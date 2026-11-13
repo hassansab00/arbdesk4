@@ -260,6 +260,6 @@ notify pgrst, 'reload schema';
 do $$
 begin
   if exists (select 1 from pg_namespace where nspname = 'cron') then
-    perform cron.schedule('ad4_refresh_page_cache', '12,42 * * * *', 'select public.refresh_page_cache()');
+    perform cron.schedule('ad4_refresh_page_cache', '42 * * * *', 'set statement_timeout = ''120s''; select public.refresh_page_cache()');
   end if;
 end $$;

@@ -61,8 +61,11 @@ def test_the_pipelines_refresh_after_they_write():
 
 
 def test_no_vacuum_full_is_scheduled_for_the_middle_of_the_day():
-    for text in (MIG, (ROOT / "sql/ad4_66_reclaim_archived_tables.sql").read_text()):
+    for text in (MIG,):
         body = text[text.index("create or replace function public.request_reclaim"):]
         assert "if v_hour < 6 then" in body
         assert "interval '1 day' + interval '1 hour'" in body
         assert re.search(r"2 \* \(array_position\(v_allowed, p_table\) - 1\)", body), "staggered"
+    current = (ROOT / "sql/ad4_66_reclaim_archived_tables.sql").read_text()
+    assert "cron.schedule(" not in current
+    assert "autovacuum_enabled=true" in current
