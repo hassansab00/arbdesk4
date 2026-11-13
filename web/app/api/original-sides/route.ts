@@ -1,5 +1,6 @@
 import {NextResponse} from 'next/server';
 import {privateOperatorOwner,requireOperator,serviceClient} from '../../../lib/operatorAuth';
+import {AUDIT_HORIZONS} from '../../../lib/regressionAudit';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -23,6 +24,20 @@ async function read(request:Request){
  const client=serviceClient();if(!client)return fail('Private paper evidence is not configured.',503);
  const id=await owner(request,client);if(!id)return fail('Private owner session required for paper evidence.',401);
  const url=new URL(request.url),op=url.searchParams.get('op')??'history';
+ if(op==='regression-audit'){
+  const p=url.searchParams,city=p.get('city')||null,checkpoint=p.get('checkpoint')||null;
+  const afterCity=p.get('after_city'),afterCheckpoint=p.get('after_checkpoint');
+  const limit=p.get('limit')??'20',flagged=p.get('flagged')??'true';
+  const validCity=(value:string)=>/^[a-z0-9_]{1,100}$/.test(value);
+  const validCheckpoint=(value:string)=>AUDIT_HORIZONS.some(([key])=>key===value);
+  if((city&&!validCity(city))||(checkpoint&&!validCheckpoint(checkpoint))
+   ||!/^\d{1,2}$/.test(limit)||Number(limit)<1||Number(limit)>25||!['true','false'].includes(flagged)
+   ||(afterCity===null)!==(afterCheckpoint===null)
+   ||(afterCity!==null&&(!validCity(afterCity)||!validCheckpoint(afterCheckpoint!))))return fail('Invalid audit scope or complete city/checkpoint cursor. Use a page size of 1–25.',400);
+  const {data,error}=await client.rpc('predictive_regression_audit',{p_city_key:city,p_checkpoint:checkpoint,
+   p_limit:Number(limit),p_after_city:afterCity,p_after_checkpoint:afterCheckpoint,p_flagged_only:flagged==='true'});
+  return error?fail(error.message,503):data==null?fail('Private audit returned no report; no result was assumed.',503):answer({data,error:null});
+ }
  if(op==='desk'){
   const {data,error}=await client.rpc('read_original_side_desk',{p_owner:id});
   return error?fail(error.message,503):answer({data,error:null});
