@@ -13,6 +13,12 @@ def test_capacity_receipt_is_validated(used,limit,allowed,state):
     assert operator.evidence_capacity_state(dict(bytes=used,limit_bytes=limit,capture_allowed=allowed))==state
 
 
+def test_temporary_headroom_never_hides_missing_cold_tier():
+    capacity=dict(bytes=10,limit_bytes=100,capture_allowed=True,
+                  temporary_bridge=True,cold_tier_ready=False)
+    assert operator.evidence_capacity_state(capacity)=='warning'
+
+
 @pytest.mark.parametrize('capacity,state',[
     (dict(bytes=80,limit_bytes=100,capture_allowed=True),'warning'),
     (dict(bytes=100,limit_bytes=100,capture_allowed=False),'hold'),(None,'unknown'),
