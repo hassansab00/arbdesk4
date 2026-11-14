@@ -33,6 +33,14 @@ SOURCES = ('tools/wxpredict/temperature_model.py', 'tools/wxpredict/temperature_
            'tools/wxpredict/temperature_points.py',
            'tools/wxpredict/pre_day_hourly.py', 'scripts/temperature_forward.py')
 
+# This repair changes training admission only. Keep the already registered
+# zero-coefficient reference collecting its fixed trial without re-registration.
+# Every other source hash must still match; fitted artifacts get no exception.
+PRE_LABEL_GATE_SOURCES = {
+    'tools/wxpredict/temperature_model.py': 'f792ab26e015558d1ec1c983c568bab16ee3cd16970ccf0a495997de9c943f79',
+    'tools/wxpredict/temperature_learning.py': '75458e27bbb1230d9806ba8282cab1745d34200ad053244a9ba39188e452ce93',
+}
+
 
 def number(v):
     if isinstance(v, bool):
@@ -200,8 +208,11 @@ def reference():
 
 def model(a):
     prior = reference()
+    sources = source_hashes()
+    compatible_reference = (a.get('state') == 'unfitted_reference'
+                            and a.get('sources') == dict(sources, **PRE_LABEL_GATE_SOURCES))
     if (a.get('policy') != POLICY or a.get('features') != list(FEATURES)
-            or a.get('sources') != source_hashes() or a.get('limits') != prior['limits']
+            or (a.get('sources') != sources and not compatible_reference) or a.get('limits') != prior['limits']
             or a.get('changes_serving') is not False or a.get('eligible_for_promotion') is not False
             or pp.digest({k: v for k, v in a.items() if k != 'sha256'}) != a.get('sha256')
             or a.get('state') not in ('unfitted_reference', 'fitted_candidate')):
@@ -252,6 +263,19 @@ def predict(a, r, *, registered_at=None, now=None):
                 q10_c=quantile(.1), q90_c=quantile(.9), probs=distribution(r, mean, sigma))
 
 
+def validate_training_label(r, evidence_cutoff):
+    """Shared preparation/fit gate over the original city-local label receipt."""
+    validate(r)
+    cutoff = pp.timestamp(evidence_cutoff)
+    label = r.get('label') or {}
+    end = dt.datetime.combine(dt.date.fromisoformat(r['date'])+dt.timedelta(days=1), dt.time(), ZoneInfo(r['timezone']))
+    if (label.get('winner') not in r['band_ids'] or not label.get('settled_at')
+            or not label.get('available_at') or not r.get('frozen_at')
+            or not pp.timestamp(r['as_of']) <= pp.timestamp(r['frozen_at']) < pp.timestamp(label['settled_at']) <= pp.timestamp(label['available_at']) < cutoff
+            or (pp.timestamp(r['frozen_at'])-pp.timestamp(r['as_of'])).total_seconds() > 300 or end > cutoff):
+        raise ValueError('temperature training label unavailable or not original')
+
+
 def fit(records, evidence_cutoff, budget_s=60):
     """Date-balanced interval likelihood; a venue band is never a point label.
 
@@ -270,19 +294,12 @@ def fit(records, evidence_cutoff, budget_s=60):
     for r in records:
         if time.monotonic() > started+budget_s:
             raise ValueError('temperature fit deadline exceeded')
-        validate(r)
+        validate_training_label(r, evidence_cutoff)
         key = (r['city'], r['date'], r['checkpoint'])
         if key in seen:
             raise ValueError('duplicate temperature city/date/horizon')
         seen.add(key)
         dates[r['date']].add(r['city'])
-        label = r.get('label') or {}
-        end = dt.datetime.combine(dt.date.fromisoformat(r['date'])+dt.timedelta(days=1), dt.time(), ZoneInfo(r['timezone']))
-        if (label.get('winner') not in r['band_ids'] or not label.get('settled_at')
-                or not label.get('available_at') or not r.get('frozen_at')
-                or not pp.timestamp(r['as_of']) <= pp.timestamp(r['frozen_at']) < pp.timestamp(label['settled_at']) <= pp.timestamp(label['available_at']) < cutoff
-                or (pp.timestamp(r['frozen_at'])-pp.timestamp(r['as_of'])).total_seconds() > 300 or end > cutoff):
-            raise ValueError('temperature training label unavailable or not original')
     if len(dates) < MIN_DATES or len(records) < MIN_ROWS or any(len(c) < MIN_CITIES for c in dates.values()):
         raise ValueError('insufficient legitimate temperature dates/cities/rows')
     import numpy as np

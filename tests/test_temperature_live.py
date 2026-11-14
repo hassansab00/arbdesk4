@@ -96,6 +96,66 @@ def test_insufficient_learning_history_records_health_without_a_fit_or_serving_w
     assert calls==['temperature_learning_inputs','temperature_fit_report']
 
 
+@pytest.mark.parametrize('zone,cutoff', [
+    ('America/Los_Angeles','2026-08-02T05:00:00Z'),
+    ('Asia/Kathmandu','2026-08-01T18:00:00Z'),
+    ('America/New_York','2026-11-02T04:30:00Z'),
+])
+def test_preparation_excludes_labels_before_the_city_local_day_ends(zone,cutoff):
+    day='2026-11-01' if '11-02' in cutoff else '2026-08-01'
+    r=record(day=day,zone=zone)
+    c=dict(record=r,call_id='first',city_key=r['city'],target_date=day,
+           checkpoint=r['checkpoint'],frozen_at=r['as_of'])
+    at=pp.timestamp(cutoff)
+    s=dict(winner_band_id='b',confirmed_at=(at-dt.timedelta(hours=2)).isoformat(),
+           scored_at=(at-dt.timedelta(hours=1)).isoformat())
+    before=copy.deepcopy((c,s))
+    rows,detail=learning.prepare([dict(call=c,score=s)],cutoff)
+    assert not rows and detail['eligible_rows']==0
+    assert detail['exclusions']=={'invalid:temperature training label unavailable or not original':1}
+    assert (c,s)==before
+    training=dict(r,frozen_at=c['frozen_at'],label=dict(winner='b',
+        settled_at=s['confirmed_at'],available_at=s['scored_at']))
+    with pytest.raises(ValueError,match='temperature training label unavailable or not original'):
+        m.fit([training],cutoff)
+
+
+@pytest.mark.parametrize('seconds,expected', [(300,1),(301,0)])
+def test_preparation_enforces_the_same_five_minute_freeze_bound_as_fitting(seconds,expected):
+    r=record()
+    c=dict(record=r,call_id='first',city_key=r['city'],target_date=r['date'],
+           checkpoint=r['checkpoint'],frozen_at=(pp.timestamp(r['as_of'])+dt.timedelta(seconds=seconds)).isoformat())
+    s=dict(winner_band_id='b',confirmed_at='2026-08-02T00:00:00Z',scored_at='2026-08-02T01:00:00Z')
+    rows,detail=learning.prepare([dict(call=c,score=s)],'2026-08-03T00:00:00Z')
+    assert len(rows)==detail['eligible_rows']==expected
+
+
+def test_existing_fixed_zero_reference_keeps_exact_artifact_and_probabilities():
+    current=artifact();old=copy.deepcopy(current)
+    old['sources'].update(m.PRE_LABEL_GATE_SOURCES)
+    old['sha256']=pp.digest({k:v for k,v in old.items() if k!='sha256'})
+    before=copy.deepcopy(old)
+    original_prediction=m.predict(old,record());current_prediction=m.predict(current,record())
+    for field in ('adjustment_version','uncertainty_version'):
+        assert original_prediction.pop(field)==old['sha256']
+        assert current_prediction.pop(field)==current['sha256']
+    assert original_prediction==current_prediction
+    assert old==before
+    old['sources']['tools/wxpredict/temperature_live.py']='f'*64
+    old['sha256']=pp.digest({k:v for k,v in old.items() if k!='sha256'})
+    with pytest.raises(ValueError,match='artifact identity'):m.model(old)
+
+
+def test_legacy_source_exception_cannot_accept_fitted_or_nonzero_reference():
+    a=artifact();a['sources'].update(m.PRE_LABEL_GATE_SOURCES)
+    a['state']='fitted_candidate'
+    a['sha256']=pp.digest({k:v for k,v in a.items() if k!='sha256'})
+    with pytest.raises(ValueError,match='artifact identity'):m.model(a)
+    a['state']='unfitted_reference';a['mean_coefficients'][0]=float(1).hex()
+    a['sha256']=pp.digest({k:v for k,v in a.items() if k!='sha256'})
+    with pytest.raises(ValueError,match='unfitted reference contains learned'):m.model(a)
+
+
 def test_warmups_stay_preserved_but_cannot_block_the_declared_full_training_window():
     r=record();c=dict(record=r,call_id='a',city_key=r['city'],target_date=r['date'],checkpoint=r['checkpoint'],frozen_at=r['as_of'])
     rows,detail=learning.prepare([dict(call=c,score=None)],'2026-08-05T00:00:00Z',training_first='2026-08-03')
