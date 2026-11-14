@@ -24,10 +24,7 @@ def prepare(items, cutoff, training_first=None):
             continue
         r = dict(c['record'], frozen_at=c['frozen_at'], label=dict(winner=s['winner_band_id'], settled_at=s['confirmed_at'], available_at=s['scored_at']))
         try:
-            model.validate(r)
-            if (not pp.timestamp(r['as_of']) <= pp.timestamp(r['frozen_at']) < pp.timestamp(s['confirmed_at']) <= pp.timestamp(s['scored_at']) < pp.timestamp(cutoff)
-                    or s['winner_band_id'] not in r['band_ids']):
-                raise ValueError('invalid original label chronology')
+            model.validate_training_label(r, cutoff)
             hi=r['bounds'][r['band_ids'].index(s['winner_band_id'])][1]
             if r.get('floor_c') is not None and hi is not None and model.edge(hi,r['unit'])<=r['floor_c']:
                 raise ValueError('winner contradicts received contractual floor')
