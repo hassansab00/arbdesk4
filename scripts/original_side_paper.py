@@ -27,6 +27,9 @@ def evidence_capacity_state(capacity):
     if type(used) is not int or type(limit) is not int or used<0 or limit<=0 or type(allowed) is not bool:
         return 'unknown'
     if not allowed or used>=limit:return 'hold'
+    # Headroom is not offload. Keep the worker at attention until the
+    # database explicitly reports verified private cold-tier read-through.
+    if capacity.get('cold_tier_ready') is False:return 'warning'
     return 'warning' if used*5>=limit*4 else 'ok'
 
 
