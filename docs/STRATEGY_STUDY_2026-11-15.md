@@ -479,3 +479,66 @@ evening-before call, one dollar a trade at the touch with the fee, over all
 - **How long a test takes.** The spread of a date's mean return is 0.38. For 80%
   power to put the rule above zero: 8 dates if its true return is +35% a dollar,
   23 dates at +20%, 90 dates at +10%.
+
+## 13. Hassan's six frozen cities: is it profitable, and the profit to date (added 15 Nov)
+
+Hassan, 15 Nov: "You and codex are giving me different results and answers. I
+need to fucking know. Is this strategy profitable. And how much profit did we
+make to date. We will pick 6 cities from now on and freeze and trade on them
+... BUY YES on predicted bucket: Shanghai, Helsinki, Amsterdam. BUY NO on
+predicted bucket: Houston, Austin, Sao Paulo." He records the trades 23:00-02:00
+Beirut. `tools/frozen6_study.py` rebuilds `data/eval/frozen6_2026-11-15/result.json`.
+
+**Profit to date: the 18 trades of the Codex test, 12-14 Nov.** $100 a trade,
+held to settlement, taker fee on the price paid, outcomes the venue's (the list's
+for the three not settled in our record):
+
+| Priced at | Trades | Profit | Per dollar staked |
+|---|---|---|---|
+| The evening call's frozen book (as listed) | 18 | +$719.30 on $1,800 | +40.0% |
+| The list's own prices where given | 18 | +$646.29 on $1,800 | +35.9% |
+| Live book 21:36Z (23:36 Beirut) | 18 | +$406.52 on $1,800 | +22.6% |
+| Live book 22:36Z (00:36 Beirut) | 18 | +$407.61 on $1,800 | +22.6% |
+| Live book 23:36Z (01:36 Beirut) | 18 | +$365.72 on $1,800 | +20.3% |
+
+**Is it profitable? Not shown.** The six frozen cities, the rule applied to
+every evening with a graded outcome, $100 a trade:
+
+| Priced at | Dates | Trades | Per dollar | 90% | Profit | Same rule on every city |
+|---|---|---|---|---|---|---|
+| The evening call's frozen book | 51 | 297 | +5.0% | -5.1% to +14.3% | +$1,489.25 | -7.7% |
+| Live book 21:36Z (23:36 Beirut) | 33 | 194 | +1.4% | -10.5% to +12.5% | +$263.81 | -8.6% |
+| Live book 22:36Z (00:36 Beirut) | 33 | 194 | -0.4% | -12.7% to +10.6% | -$87.20 | -9.6% |
+| Live book 23:36Z (01:36 Beirut) | 33 | 194 | -2.0% | -13.7% to +9.2% | -$387.91 | -9.8% |
+
+- **At the prices available in your window the six cities are break-even over
+  their record:** +1.4%, -0.4% and -2.0% a dollar, each with an interval of about plus or minus 12
+  points. The frozen evening-call book (hours before your window for Shanghai,
+  Helsinki and Amsterdam) gives +5.0%.
+- **They do beat the average city** (-9.6% a dollar at the same prices, the same rule on all
+  cities) **by about 8 to 10 points, but they were chosen on this record.**
+  A city's accuracy rank does not carry into the next dates at this call (rank
+  correlation +0.06), so the average city is the fair expectation until these six
+  prove otherwise.
+- **The record is lumpy.** At the evening call the six returned -7.1% to 24 Oct and +22.4%
+  after. Since 12 Nov (14 graded trades) they returned +35.6% at the 22:36Z book.
+
+By city, per dollar, over each city's dates:
+
+| City | Side | Call book: trades | Call book | 22:36Z book: trades | 22:36Z book |
+|---|---|---|---|---|---|
+| Amsterdam | YES | 49 | +21.3% | 32 | +9.7% |
+| Helsinki | YES | 51 | +15.3% | 33 | -14.5% |
+| Shanghai | YES | 50 | -3.5% | 33 | -8.2% |
+| Austin | NO | 49 | -5.9% | 32 | +3.3% |
+| Houston | NO | 49 | +12.2% | 32 | +22.8% |
+| Sao Paulo | NO | 49 | -9.6% | 32 | -15.0% |
+
+- **Three of the six lost money at the live book over the record** (Helsinki,
+  Shanghai, Sao Paulo); Houston and Amsterdam carry it.
+- **Houston's and Austin's evening forecasts are made at 00:37Z, 02:37 Beirut,
+  after your window ends.** Sao Paulo's is at 21:37Z, 23:37 Beirut.
+- **The touch is thin:** 33 of the 194 trades at the 22:36Z book have a
+  touch smaller than a $4 order needs.
+- **From 16 Nov** the forward ledger is `python tools/frozen6_study.py --ledger`
+  (`docs/FROZEN6_PREREG.md`).

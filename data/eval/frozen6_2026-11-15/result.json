@@ -1,0 +1,880 @@
+{
+ "cities": {
+  "yes": [
+   "shanghai",
+   "helsinki",
+   "amsterdam"
+  ],
+  "no": [
+   "houston",
+   "austin",
+   "sao_paulo"
+  ]
+ },
+ "first_date": "2026-09-25",
+ "last_date": "2026-11-14",
+ "first_window_date": "2026-10-13",
+ "forward_from": "2026-11-16",
+ "call": {
+  "six": {
+   "yes": {
+    "n": 150,
+    "dates": 51,
+    "return_per_dollar": 0.1101,
+    "ci90": [
+     -0.0491,
+     0.2656
+    ],
+    "win_rate": 0.5133,
+    "mean_cost": 0.4741
+   },
+   "no": {
+    "n": 147,
+    "dates": 49,
+    "return_per_dollar": -0.011,
+    "ci90": [
+     -0.1064,
+     0.0806
+    ],
+    "win_rate": 0.7143,
+    "mean_cost": 0.7057
+   },
+   "both": {
+    "n": 297,
+    "dates": 51,
+    "return_per_dollar": 0.0501,
+    "ci90": [
+     -0.0506,
+     0.1427
+    ],
+    "win_rate": 0.6128,
+    "mean_cost": 0.5887
+   },
+   "profit_of_100_a_trade": 1489.25,
+   "staked_at_100_a_trade": 29700
+  },
+  "every_city": {
+   "yes": {
+    "n": 2336,
+    "dates": 51,
+    "return_per_dollar": -0.1048,
+    "ci90": [
+     -0.1536,
+     -0.0522
+    ],
+    "win_rate": 0.3878,
+    "mean_cost": 0.4118
+   },
+   "no": {
+    "n": 2334,
+    "dates": 51,
+    "return_per_dollar": -0.0486,
+    "ci90": [
+     -0.0792,
+     -0.0195
+    ],
+    "win_rate": 0.6118,
+    "mean_cost": 0.6353
+   },
+   "both": {
+    "n": 4670,
+    "dates": 51,
+    "return_per_dollar": -0.0767,
+    "ci90": [
+     -0.0911,
+     -0.0615
+    ],
+    "win_rate": 0.4998,
+    "mean_cost": 0.5235
+   },
+   "profit_of_100_a_trade": -35830.87,
+   "staked_at_100_a_trade": 467000
+  },
+  "by_city": {
+   "amsterdam:YES": {
+    "n": 49,
+    "dates": 49,
+    "return_per_dollar": 0.2133,
+    "ci90": [
+     -0.063,
+     0.5033
+    ],
+    "win_rate": 0.5714,
+    "mean_cost": 0.5008
+   },
+   "helsinki:YES": {
+    "n": 51,
+    "dates": 51,
+    "return_per_dollar": 0.1528,
+    "ci90": [
+     -0.1673,
+     0.5116
+    ],
+    "win_rate": 0.549,
+    "mean_cost": 0.499
+   },
+   "shanghai:YES": {
+    "n": 50,
+    "dates": 50,
+    "return_per_dollar": -0.0348,
+    "ci90": [
+     -0.3296,
+     0.2736
+    ],
+    "win_rate": 0.42,
+    "mean_cost": 0.4225
+   },
+   "austin:NO": {
+    "n": 49,
+    "dates": 49,
+    "return_per_dollar": -0.0587,
+    "ci90": [
+     -0.2253,
+     0.102
+    ],
+    "win_rate": 0.6531,
+    "mean_cost": 0.6629
+   },
+   "houston:NO": {
+    "n": 49,
+    "dates": 49,
+    "return_per_dollar": 0.1215,
+    "ci90": [
+     -0.0536,
+     0.2943
+    ],
+    "win_rate": 0.7347,
+    "mean_cost": 0.6417
+   },
+   "sao_paulo:NO": {
+    "n": 49,
+    "dates": 49,
+    "return_per_dollar": -0.0958,
+    "ci90": [
+     -0.2364,
+     0.0282
+    ],
+    "win_rate": 0.7551,
+    "mean_cost": 0.8125
+   }
+  },
+  "since_12_nov": {
+   "yes": {
+    "n": 8,
+    "dates": 3,
+    "return_per_dollar": 0.9267,
+    "ci90": [
+     0.2759,
+     1.4329
+    ],
+    "win_rate": 0.875,
+    "mean_cost": 0.4812
+   },
+   "no": {
+    "n": 6,
+    "dates": 2,
+    "return_per_dollar": 0.0567,
+    "ci90": [
+     0.0421,
+     0.0713
+    ],
+    "win_rate": 1.0,
+    "mean_cost": 0.9489
+   },
+   "both": {
+    "n": 14,
+    "dates": 3,
+    "return_per_dollar": 0.5538,
+    "ci90": [
+     0.2057,
+     0.7876
+    ],
+    "win_rate": 0.9286,
+    "mean_cost": 0.6816
+   },
+   "profit_of_100_a_trade": 775.36,
+   "staked_at_100_a_trade": 1400
+  },
+  "first_half": {
+   "yes": {
+    "n": 88,
+    "dates": 30,
+    "return_per_dollar": -0.0047,
+    "ci90": [
+     -0.2243,
+     0.2406
+    ],
+    "win_rate": 0.4091,
+    "mean_cost": 0.437
+   },
+   "no": {
+    "n": 87,
+    "dates": 29,
+    "return_per_dollar": -0.1379,
+    "ci90": [
+     -0.2664,
+     -0.0225
+    ],
+    "win_rate": 0.6207,
+    "mean_cost": 0.6873
+   },
+   "both": {
+    "n": 175,
+    "dates": 30,
+    "return_per_dollar": -0.0709,
+    "ci90": [
+     -0.1914,
+     0.0514
+    ],
+    "win_rate": 0.5143,
+    "mean_cost": 0.5615
+   },
+   "profit_of_100_a_trade": -1241.52,
+   "staked_at_100_a_trade": 17500
+  },
+  "second_half": {
+   "yes": {
+    "n": 62,
+    "dates": 21,
+    "return_per_dollar": 0.273,
+    "ci90": [
+     0.0893,
+     0.4674
+    ],
+    "win_rate": 0.6613,
+    "mean_cost": 0.5267
+   },
+   "no": {
+    "n": 60,
+    "dates": 20,
+    "return_per_dollar": 0.173,
+    "ci90": [
+     0.0629,
+     0.2886
+    ],
+    "win_rate": 0.85,
+    "mean_cost": 0.7324
+   },
+   "both": {
+    "n": 122,
+    "dates": 21,
+    "return_per_dollar": 0.2238,
+    "ci90": [
+     0.1024,
+     0.3436
+    ],
+    "win_rate": 0.7541,
+    "mean_cost": 0.6278
+   },
+   "profit_of_100_a_trade": 2730.77,
+   "staked_at_100_a_trade": 12200
+  }
+ },
+ "window": {
+  "21:36Z": {
+   "six": {
+    "yes": {
+     "n": 98,
+     "dates": 33,
+     "return_per_dollar": -0.0153,
+     "ci90": [
+      -0.1894,
+      0.1474
+     ],
+     "win_rate": 0.5612,
+     "mean_cost": 0.5338
+    },
+    "no": {
+     "n": 96,
+     "dates": 32,
+     "return_per_dollar": 0.0431,
+     "ci90": [
+      -0.0793,
+      0.1534
+     ],
+     "win_rate": 0.7292,
+     "mean_cost": 0.6912
+    },
+    "both": {
+     "n": 194,
+     "dates": 33,
+     "return_per_dollar": 0.0136,
+     "ci90": [
+      -0.1049,
+      0.1246
+     ],
+     "win_rate": 0.6443,
+     "mean_cost": 0.6117
+    },
+    "profit_of_100_a_trade": 263.81,
+    "staked_at_100_a_trade": 19400
+   },
+   "every_city": {
+    "yes": {
+     "n": 1531,
+     "dates": 33,
+     "return_per_dollar": -0.1169,
+     "ci90": [
+      -0.1814,
+      -0.0505
+     ],
+     "win_rate": 0.3932,
+     "mean_cost": 0.4227
+    },
+    "no": {
+     "n": 1522,
+     "dates": 33,
+     "return_per_dollar": -0.0544,
+     "ci90": [
+      -0.0928,
+      -0.0153
+     ],
+     "win_rate": 0.6045,
+     "mean_cost": 0.6274
+    },
+    "both": {
+     "n": 3053,
+     "dates": 33,
+     "return_per_dollar": -0.0857,
+     "ci90": [
+      -0.1075,
+      -0.0638
+     ],
+     "win_rate": 0.4985,
+     "mean_cost": 0.5247
+    },
+    "profit_of_100_a_trade": -26176.14,
+    "staked_at_100_a_trade": 305300
+   },
+   "by_city": {
+    "amsterdam:YES": {
+     "n": 32,
+     "dates": 32,
+     "return_per_dollar": 0.099,
+     "ci90": [
+      -0.1837,
+      0.3682
+     ],
+     "win_rate": 0.5938,
+     "mean_cost": 0.5343
+    },
+    "helsinki:YES": {
+     "n": 33,
+     "dates": 33,
+     "return_per_dollar": -0.0854,
+     "ci90": [
+      -0.3263,
+      0.161
+     ],
+     "win_rate": 0.5455,
+     "mean_cost": 0.5237
+    },
+    "shanghai:YES": {
+     "n": 33,
+     "dates": 33,
+     "return_per_dollar": -0.056,
+     "ci90": [
+      -0.3132,
+      0.2074
+     ],
+     "win_rate": 0.5455,
+     "mean_cost": 0.5434
+    },
+    "austin:NO": {
+     "n": 32,
+     "dates": 32,
+     "return_per_dollar": 0.0384,
+     "ci90": [
+      -0.1667,
+      0.2271
+     ],
+     "win_rate": 0.7188,
+     "mean_cost": 0.657
+    },
+    "houston:NO": {
+     "n": 32,
+     "dates": 32,
+     "return_per_dollar": 0.2474,
+     "ci90": [
+      0.0119,
+      0.4619
+     ],
+     "win_rate": 0.7812,
+     "mean_cost": 0.6277
+    },
+    "sao_paulo:NO": {
+     "n": 32,
+     "dates": 32,
+     "return_per_dollar": -0.1565,
+     "ci90": [
+      -0.3198,
+      0.0063
+     ],
+     "win_rate": 0.6875,
+     "mean_cost": 0.7891
+    }
+   },
+   "since_12_nov": {
+    "yes": {
+     "n": 8,
+     "dates": 3,
+     "return_per_dollar": 0.5025,
+     "ci90": [
+      0.0492,
+      0.855
+     ],
+     "win_rate": 0.875,
+     "mean_cost": 0.5583
+    },
+    "no": {
+     "n": 6,
+     "dates": 2,
+     "return_per_dollar": 0.0856,
+     "ci90": [
+      0.0714,
+      0.0999
+     ],
+     "win_rate": 1.0,
+     "mean_cost": 0.9268
+    },
+    "both": {
+     "n": 14,
+     "dates": 3,
+     "return_per_dollar": 0.3238,
+     "ci90": [
+      0.0559,
+      0.4727
+     ],
+     "win_rate": 0.9286,
+     "mean_cost": 0.7162
+    },
+    "profit_of_100_a_trade": 453.36,
+    "staked_at_100_a_trade": 1400
+   },
+   "touch_smaller_than_a_4_dollar_order": 26,
+   "trades": 194
+  },
+  "22:36Z": {
+   "six": {
+    "yes": {
+     "n": 98,
+     "dates": 33,
+     "return_per_dollar": -0.0449,
+     "ci90": [
+      -0.2142,
+      0.1198
+     ],
+     "win_rate": 0.5612,
+     "mean_cost": 0.5474
+    },
+    "no": {
+     "n": 96,
+     "dates": 32,
+     "return_per_dollar": 0.0367,
+     "ci90": [
+      -0.0858,
+      0.1477
+     ],
+     "win_rate": 0.7292,
+     "mean_cost": 0.6941
+    },
+    "both": {
+     "n": 194,
+     "dates": 33,
+     "return_per_dollar": -0.0045,
+     "ci90": [
+      -0.1265,
+      0.1064
+     ],
+     "win_rate": 0.6443,
+     "mean_cost": 0.62
+    },
+    "profit_of_100_a_trade": -87.2,
+    "staked_at_100_a_trade": 19400
+   },
+   "every_city": {
+    "yes": {
+     "n": 1531,
+     "dates": 33,
+     "return_per_dollar": -0.134,
+     "ci90": [
+      -0.1968,
+      -0.0703
+     ],
+     "win_rate": 0.3932,
+     "mean_cost": 0.4254
+    },
+    "no": {
+     "n": 1520,
+     "dates": 33,
+     "return_per_dollar": -0.0578,
+     "ci90": [
+      -0.0969,
+      -0.0185
+     ],
+     "win_rate": 0.6039,
+     "mean_cost": 0.6268
+    },
+    "both": {
+     "n": 3051,
+     "dates": 33,
+     "return_per_dollar": -0.096,
+     "ci90": [
+      -0.115,
+      -0.076
+     ],
+     "win_rate": 0.4982,
+     "mean_cost": 0.5258
+    },
+    "profit_of_100_a_trade": -29304.58,
+    "staked_at_100_a_trade": 305100
+   },
+   "by_city": {
+    "amsterdam:YES": {
+     "n": 32,
+     "dates": 32,
+     "return_per_dollar": 0.0965,
+     "ci90": [
+      -0.1822,
+      0.3669
+     ],
+     "win_rate": 0.5938,
+     "mean_cost": 0.5316
+    },
+    "helsinki:YES": {
+     "n": 33,
+     "dates": 33,
+     "return_per_dollar": -0.1452,
+     "ci90": [
+      -0.3742,
+      0.0908
+     ],
+     "win_rate": 0.5455,
+     "mean_cost": 0.5568
+    },
+    "shanghai:YES": {
+     "n": 33,
+     "dates": 33,
+     "return_per_dollar": -0.0816,
+     "ci90": [
+      -0.3321,
+      0.1828
+     ],
+     "win_rate": 0.5455,
+     "mean_cost": 0.5532
+    },
+    "austin:NO": {
+     "n": 32,
+     "dates": 32,
+     "return_per_dollar": 0.0329,
+     "ci90": [
+      -0.1737,
+      0.2221
+     ],
+     "win_rate": 0.7188,
+     "mean_cost": 0.6581
+    },
+    "houston:NO": {
+     "n": 32,
+     "dates": 32,
+     "return_per_dollar": 0.2277,
+     "ci90": [
+      -0.0071,
+      0.4392
+     ],
+     "win_rate": 0.7812,
+     "mean_cost": 0.6382
+    },
+    "sao_paulo:NO": {
+     "n": 32,
+     "dates": 32,
+     "return_per_dollar": -0.1504,
+     "ci90": [
+      -0.314,
+      0.0143
+     ],
+     "win_rate": 0.6875,
+     "mean_cost": 0.7861
+    }
+   },
+   "since_12_nov": {
+    "yes": {
+     "n": 8,
+     "dates": 3,
+     "return_per_dollar": 0.5689,
+     "ci90": [
+      0.0364,
+      0.9831
+     ],
+     "win_rate": 0.875,
+     "mean_cost": 0.5584
+    },
+    "no": {
+     "n": 6,
+     "dates": 2,
+     "return_per_dollar": 0.0718,
+     "ci90": [
+      0.0713,
+      0.0723
+     ],
+     "win_rate": 1.0,
+     "mean_cost": 0.9357
+    },
+    "both": {
+     "n": 14,
+     "dates": 3,
+     "return_per_dollar": 0.3559,
+     "ci90": [
+      0.0468,
+      0.5275
+     ],
+     "win_rate": 0.9286,
+     "mean_cost": 0.7201
+    },
+    "profit_of_100_a_trade": 498.2,
+    "staked_at_100_a_trade": 1400
+   },
+   "touch_smaller_than_a_4_dollar_order": 33,
+   "trades": 194
+  },
+  "23:36Z": {
+   "six": {
+    "yes": {
+     "n": 98,
+     "dates": 33,
+     "return_per_dollar": -0.063,
+     "ci90": [
+      -0.2242,
+      0.0935
+     ],
+     "win_rate": 0.5612,
+     "mean_cost": 0.5518
+    },
+    "no": {
+     "n": 96,
+     "dates": 32,
+     "return_per_dollar": 0.0239,
+     "ci90": [
+      -0.0971,
+      0.1357
+     ],
+     "win_rate": 0.7292,
+     "mean_cost": 0.6983
+    },
+    "both": {
+     "n": 194,
+     "dates": 33,
+     "return_per_dollar": -0.02,
+     "ci90": [
+      -0.1369,
+      0.0919
+     ],
+     "win_rate": 0.6443,
+     "mean_cost": 0.6243
+    },
+    "profit_of_100_a_trade": -387.91,
+    "staked_at_100_a_trade": 19400
+   },
+   "every_city": {
+    "yes": {
+     "n": 1531,
+     "dates": 33,
+     "return_per_dollar": -0.1376,
+     "ci90": [
+      -0.1979,
+      -0.0727
+     ],
+     "win_rate": 0.3932,
+     "mean_cost": 0.4249
+    },
+    "no": {
+     "n": 1513,
+     "dates": 33,
+     "return_per_dollar": -0.0579,
+     "ci90": [
+      -0.096,
+      -0.0184
+     ],
+     "win_rate": 0.6021,
+     "mean_cost": 0.6245
+    },
+    "both": {
+     "n": 3044,
+     "dates": 33,
+     "return_per_dollar": -0.098,
+     "ci90": [
+      -0.1174,
+      -0.0773
+     ],
+     "win_rate": 0.497,
+     "mean_cost": 0.5241
+    },
+    "profit_of_100_a_trade": -29831.61,
+    "staked_at_100_a_trade": 304400
+   },
+   "by_city": {
+    "amsterdam:YES": {
+     "n": 32,
+     "dates": 32,
+     "return_per_dollar": 0.0786,
+     "ci90": [
+      -0.188,
+      0.3446
+     ],
+     "win_rate": 0.5938,
+     "mean_cost": 0.5289
+    },
+    "helsinki:YES": {
+     "n": 33,
+     "dates": 33,
+     "return_per_dollar": -0.1709,
+     "ci90": [
+      -0.3944,
+      0.0545
+     ],
+     "win_rate": 0.5455,
+     "mean_cost": 0.5628
+    },
+    "shanghai:YES": {
+     "n": 33,
+     "dates": 33,
+     "return_per_dollar": -0.0925,
+     "ci90": [
+      -0.3343,
+      0.1721
+     ],
+     "win_rate": 0.5455,
+     "mean_cost": 0.5628
+    },
+    "austin:NO": {
+     "n": 32,
+     "dates": 32,
+     "return_per_dollar": 0.021,
+     "ci90": [
+      -0.1836,
+      0.2046
+     ],
+     "win_rate": 0.7188,
+     "mean_cost": 0.6591
+    },
+    "houston:NO": {
+     "n": 32,
+     "dates": 32,
+     "return_per_dollar": 0.1952,
+     "ci90": [
+      -0.0403,
+      0.401
+     ],
+     "win_rate": 0.7812,
+     "mean_cost": 0.6532
+    },
+    "sao_paulo:NO": {
+     "n": 32,
+     "dates": 32,
+     "return_per_dollar": -0.1444,
+     "ci90": [
+      -0.3084,
+      0.0204
+     ],
+     "win_rate": 0.6875,
+     "mean_cost": 0.7828
+    }
+   },
+   "since_12_nov": {
+    "yes": {
+     "n": 8,
+     "dates": 3,
+     "return_per_dollar": 0.5247,
+     "ci90": [
+      0.0321,
+      0.9079
+     ],
+     "win_rate": 0.875,
+     "mean_cost": 0.5697
+    },
+    "no": {
+     "n": 6,
+     "dates": 2,
+     "return_per_dollar": 0.0827,
+     "ci90": [
+      0.0469,
+      0.1186
+     ],
+     "win_rate": 1.0,
+     "mean_cost": 0.9315
+    },
+    "both": {
+     "n": 14,
+     "dates": 3,
+     "return_per_dollar": 0.3353,
+     "ci90": [
+      0.0365,
+      0.5013
+     ],
+     "win_rate": 0.9286,
+     "mean_cost": 0.7247
+    },
+    "profit_of_100_a_trade": 469.43,
+    "staked_at_100_a_trade": 1400
+   },
+   "touch_smaller_than_a_4_dollar_order": 29,
+   "trades": 194
+  }
+ },
+ "codex_test_to_date": {
+  "trades": 18,
+  "listed_results": {
+   "won": 14,
+   "provisional": 5
+  },
+  "at_the_evening_calls_book": {
+   "trades_priced": 18,
+   "profit_of_100_a_trade": 719.3,
+   "staked": 1800,
+   "return_per_dollar": 0.3996
+  },
+  "at_the_listed_prices_where_given": {
+   "trades_priced": 18,
+   "profit_of_100_a_trade": 646.29,
+   "staked": 1800,
+   "return_per_dollar": 0.359
+  },
+  "at_the_live_book_21:36Z": {
+   "trades_priced": 18,
+   "profit_of_100_a_trade": 406.52,
+   "staked": 1800,
+   "return_per_dollar": 0.2258
+  },
+  "at_the_live_book_22:36Z": {
+   "trades_priced": 18,
+   "profit_of_100_a_trade": 407.61,
+   "staked": 1800,
+   "return_per_dollar": 0.2264
+  },
+  "at_the_live_book_23:36Z": {
+   "trades_priced": 18,
+   "profit_of_100_a_trade": 365.72,
+   "staked": 1800,
+   "return_per_dollar": 0.2032
+  }
+ },
+ "forward": {
+  "from": "2026-11-16",
+  "capture": "22:36Z",
+  "days": [],
+  "valid_dates": 0,
+  "result": {
+   "n": 0
+  },
+  "looks": {
+   "23": {
+    "needs": 23,
+    "due": false
+   },
+   "46": {
+    "needs": 46,
+    "due": false
+   }
+  }
+ }
+}
