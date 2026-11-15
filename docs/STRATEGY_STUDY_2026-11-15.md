@@ -219,3 +219,30 @@ record to 14 Nov; each city's own numbers):
   record look good on that record.
 - **For scale:** YES on every city's top pick at the morning call returns
   -15.9%.
+
+**The evening-before call is the one Hassan trades** (15 Nov: "We're trading
+evening before / night before the trade date"). The six cities the rule names
+there, on the whole record to 14 Nov:
+
+| City | Side | Picks | Model's pick right | Mean cost | Trade won | Return per dollar | 90% |
+|---|---|---|---|---|---|---|---|
+| amsterdam | YES | 49 | 57.1% | 0.501 | 57.1% | +21.3% | -6.3% to +50.3% |
+| miami | YES | 49 | 57.1% | 0.494 | 57.1% | +3.7% | -18.8% to +25.7% |
+| helsinki | YES | 51 | 54.9% | 0.499 | 54.9% | +15.3% | -16.7% to +51.2% |
+| busan | NO | 50 | 26.0% | 0.667 | 74.0% | +11.9% | -6.4% to +28.6% |
+| sao_paulo | NO | 49 | 24.5% | 0.812 | 75.5% | -9.6% | -23.6% to +2.8% |
+| buenos_aires | NO | 49 | 22.4% | 0.713 | 77.5% | +9.7% | -6.0% to +24.1% |
+
+- **On these six, on the record that chose them** (hindsight, not a rule):
+  YES leg +13.5% (-3.2% to +30.1%), NO leg +4.1% (-5.7% to +13.1%),
+  both legs +8.8% (-0.5% to +16.9%).
+- **The same rule traded forward at the evening-before call:** YES leg
+  -8.1% (-25.1% to +8.6%), NO leg -7.2% (-20.5% to +6.8%),
+  both legs -7.6% (-17.2% to +2.2%), on 248 trades.
+- **Ranking the cities by their past YES return instead of their hit rate:**
+  both legs +1.8% (-11.3% to +16.7%). Not distinguishable from zero.
+- **A city's rank does not carry forward at this call:** the rank correlation
+  between halves of the record is +0.06 for hit rate and -0.02 for
+  return.
+- **For scale at this call:** YES on every city's top pick returns
+  -10.5%, NO on every city's top pick -4.9%.
