@@ -205,6 +205,51 @@ legacy signal chain, labels suspended strategies in the desk selector, and
 shows their 14-day eligibility time without offering an ineffective Start.
 No portfolio allocation, risk limits, or workflow schedules change.
 
+## Two shadow tests fixed — 15 Nov: `postpeak-v1` and `own_w:v1`
+
+Hassan, 15 Nov, on the two shadow proposals of the audit and the strategy
+study: "Yes do whats recommended and necessary". Both are pre-registered and
+scored from the repository's record. Neither prices, trades, writes to the
+database or adds a schedule (Rules 6 and 7).
+
+**`postpeak-v1`** (`docs/POSTPEAK_PREREG.md`, `tools/postpeak_forward.py`,
+`data/eval/postpeak/design_2026-11-15.json`).
+- **Rule:** at the first post-peak call, YES on the top bucket when the model
+  gives it 0.90 or more and its recorded ask is below 0.97; one dollar a
+  trade, held to settlement.
+- **On the study's dates** (they chose it): 80 trades, +4.3% a dollar (90%
+  -0.6% to +8.8%); +2.4% without its best date; the same call below 0.90
+  returns -13.8%.
+- **Forward from 16 Nov.** First look at 110 graded trades (it can only stop
+  the test), last at 220 (80% power at +4.3% and the study's spread). At the
+  study's 2.76 trades a day that is about 40 and 80 days.
+- **Next:** `python tools/postpeak_forward.py --count` (counts only) until a
+  look is due; then `--look 1 --out data/eval/postpeak` and append the result
+  to the prereg.
+
+**`own_w:v1`** (`docs/OWN_W_PREREG.md`, `tools/own_w_forward.py`,
+`data/eval/own_w/design_2026-11-15.json`).
+- **Candidate:** the station bias learned from the served forecasts' own
+  errors, each model weighted by its skill at the city, under Rule 11 (5
+  city-days before a cell leaves its pool; bias within 3.0 C; skill 0.5 to
+  2.0; steps of 0.25 C and 0.10 a night; versioned).
+- **On the study's dates** (they chose it), 32 dates: evening-before call
+  +0.0156 log loss (90% +0.0112 to +0.0196), morning call +0.0355 (+0.0277 to
+  +0.0434) over the combination as it is. Rule 11 costs under 0.002 against
+  the study's unbounded recipe. It does not reach the market.
+- **Forward from 17 Nov.** First look at 20 valid dates (about 9 Dec), one
+  more at 40 if that is insufficient. Accepted only if the gain's interval is
+  above zero at both calls.
+- **It is a replay of the mirror, not a live capture:** the database was not
+  reachable, and the nightly learner is untouched. An acceptance is a proposal
+  to build it into the nightly fit.
+- **Next:** `python tools/own_w_forward.py --count` until a look is due.
+
+**Still to run, by Hassan or a session with a database connection:**
+`supabase/migrations/20261115120000_same_day_station_pricing.sql`. The
+Supabase connector was off in this session, so the morning fix merged in #509
+is not live.
+
 ## Strategy study — 15 Nov: no rule on the predictions paid at the book's prices
 
 Hassan, 15 Nov: "devise the best most profitable strategy based on the
@@ -228,6 +273,7 @@ predictions", YES or NO, across cities by accuracy. The study is
   trades), +4.3% over both with an interval that includes zero.
 - **Recommendation:** no capital on any rule; accuracy first. The post-peak
   rule is the only candidate for a pre-registered shadow test.
+- **Follow-up:** that test is fixed as `postpeak-v1` (above).
 - **Not tested:** resting orders, exits before settlement, the direct NO book.
 
 ## Model audit — 15 Nov: the same-day forecast path prices from the station correction
@@ -262,6 +308,7 @@ calibration, and implement what needs improving. The audit is
   lead 2 0.994 to 0.963. On the long record, with yesterday's miss added back:
   0.906 to 0.855 C and +0.040 log loss on 9,902 venue ladders. It needs a
   stored weight per cell and a shadow build first.
+- **Follow-up:** the shadow test is fixed as `own_w:v1` (above).
 - **Checked and not supported:** stale inputs at the evening call (they were a
   median 1.7 h old); a `wxrd3` refit (the challenger scores the same on 13
   dates). More forecast models: not measured (Open-Meteo's daily limit).
@@ -301,7 +348,8 @@ the first look's row definition), so the last look is due. The prereg runs it
 as a query on the live database with its md5 checked, and the session had no
 Supabase connector on 14 Nov. It was not scored from the mirror instead: over
 4-24 Oct the mirror gives 4,671 rows against the query's 4,666. The trigger
-retries daily (`trig_01D6fCuEL6KDsHRe1EVPmMeq`, 15 Nov 10:45Z).
+retries daily (`trig_01D6fCuEL6KDsHRe1EVPmMeq`). 15 Nov: still no database
+connection (the Supabase connector is installed but off in the session).
 
 ## sd_corr:v1 first look — 26 Oct: insufficient evidence
 
