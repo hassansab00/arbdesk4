@@ -888,13 +888,33 @@ STATION_MAX_AGE_HOURS = 36.0
 # starts off, and a failed read of the switch leaves it off.
 STATION_WIDTH_MAX_LEAD_DAYS = 1
 
+# THE SAME-DAY FORECAST PATH PRICES FROM THE COMBINATION TOO (15 Nov 2026).
+# At lead 0 the engine priced from the public forecast less a per-city bias,
+# while the evening before it had priced the same day from the station-
+# corrected combination. sd_corr:v1's forward rows (docs/SD_CORR_PREREG.md)
+# compare the two on the same calls: where the forecast path served (41 dates,
+# 5 Oct - 14 Nov), log loss served minus corrected, 90% by date: morning
+# +0.2413 [+0.2044, +0.2814] (1,866 calls; top pick 35.7% -> 40.1%), noon
+# +0.1566 [+0.0906, +0.2202], two hours before the peak +0.1484, one hour
+# +0.1232, one hour after +0.0809 (608-612 calls each). On the 20 dates after
+# its first look the morning gain is +0.2320 [+0.1864, +0.2758]. The corrected
+# path lost only to wxrd3, which keeps noon and later
+# (docs/MODEL_AUDIT_2026-11-15.md). So while settings.station_same_day_pricing
+# is on, a same-day price on the forecast path takes what sd_corr took: the
+# combination's own centre (never the station-model blend, which was not in
+# that test) and the width stored beside it, whatever the row's lead. A row
+# without a width prices nothing here. It starts off; a failed read leaves it off.
+STATION_SAME_DAY_POLICY = "station-same-day-v1"
+_station_same_day_cfg = None
+
 
 def _station_corrected_for(city_key, for_date, lead_days):
     """The station-corrected combination for this city-day, or None."""
-    global _station_cache, _station_width_cfg
+    global _station_cache, _station_width_cfg, _station_same_day_cfg
     if _station_cache is None:
         _station_cache = {}
         _station_width_cfg = {}
+        _station_same_day_cfg = {}
         try:
             cfg = rest("settings", [("select", "value"), ("key", "eq.station_correction_pricing")])
             cfg = (cfg[0].get("value") if cfg else None) or {}
@@ -920,6 +940,7 @@ def _station_corrected_for(city_key, for_date, lead_days):
                     _station_cache[(r["city_key"], str(r["for_date"]))] = r
                 _blend_station_model(_station_cache)
                 _station_width_cfg = _station_width_switch()
+                _station_same_day_cfg = _station_switch("station_same_day_pricing", "same-day station pricing")
         except Exception as e:
             print(f"  note: station correction unavailable ({str(e)[:80]}) - "
                   f"pricing from the public forecast path", file=sys.stderr)
@@ -957,6 +978,9 @@ def _blend_station_model(cache):
             updates.append((row, float(m["blend_c"]), m))
         for row, blend, m in updates:          # all or nothing: nothing above wrote
             row["p39_c"] = row["combined_c"]
+            row["p39_version"] = row.get("version")
+            row["p39_width_c"] = row.get("width_c")
+            row["p39_width_version"] = row.get("width_version")
             row["mos_c"] = m.get("mos_c")
             row["mos_inputs"] = copy.deepcopy(m.get("inputs"))
             row["combined_c"] = blend
@@ -983,16 +1007,46 @@ def _blend_station_model(cache):
         return 0
 
 
-def _station_width_switch():
-    """settings.station_width_pricing, or {} (off) when it cannot be read."""
+def _station_switch(key, name):
+    """settings.<key>, or {} (off) when it cannot be read."""
     try:
-        cfg = rest("settings", [("select", "value"), ("key", "eq.station_width_pricing")])
+        cfg = rest("settings", [("select", "value"), ("key", f"eq.{key}")])
         cfg = (cfg[0].get("value") if cfg else None) or {}
         return cfg if isinstance(cfg, dict) else {}
     except Exception as e:
-        print(f"  note: station width switch unreadable ({str(e)[:80]}) - "
+        print(f"  note: {name} switch unreadable ({str(e)[:80]}) - "
               f"it stays off", file=sys.stderr)
         return {}
+
+
+def _station_width_switch():
+    """settings.station_width_pricing, or {} (off) when it cannot be read."""
+    return _station_switch("station_width_pricing", "station width")
+
+
+def _station_same_day_for(city_key, for_date):
+    """The combination's own centre and width for a same-day price, or None:
+    the row sd_corr:v1 priced from (STATION_SAME_DAY_POLICY above). The cache
+    holds only rows the correction's switch, age and source checks let in."""
+    _station_corrected_for(None, None, None)
+    if (_station_same_day_cfg or {}).get("enabled") is not True:
+        return None
+    row = (_station_cache or {}).get((city_key, str(for_date)))
+    if row is None:
+        return None
+    try:
+        centre = float(row["p39_c"] if "p39_c" in row else row["combined_c"])
+        width = float(row["p39_width_c"] if "p39_width_c" in row else row.get("width_c"))
+    except (TypeError, ValueError, KeyError):
+        return None
+    width_version = row["p39_width_version"] if "p39_width_version" in row else row.get("width_version")
+    if not math.isfinite(centre) or not math.isfinite(width) or not width > 0 or not width_version:
+        return None
+    blend = ("p39_c", "p39_version", "p39_width_c", "p39_width_version", "mos_c", "mos_inputs", "mos_calibration")
+    out = {k: copy.deepcopy(v) for k, v in row.items() if k not in blend}
+    out.update(combined_c=centre, version=row.get("p39_version", row.get("version")),
+               width_c=width, width_version=width_version, same_day=STATION_SAME_DAY_POLICY)
+    return out
 
 
 def _station_width_for(srow):
@@ -1607,6 +1661,10 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     # width fitted to this centre's own errors replaces it. Either way the
     # stored width is recorded beside the price, for the forward score.
     srow = None if model_priced else _station_corrected_for(city_key, for_date, lead_days)
+    same_day = False
+    if srow is None and not model_priced and int(lead_days) == 0:
+        srow = _station_same_day_for(city_key, for_date)
+        same_day = srow is not None
     station_width_c, width_priced = None, False
     if srow is not None:
         public_centre = centre_corrected
@@ -1617,6 +1675,10 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
             f":spread{'-' if spread is None else format(float(spread), '.2f')}C"
             f":centre{centre_corrected:.2f}C_vs_public{public_centre:.2f}C")
         station_width_c, width_priced = _station_width_for(srow)
+        if same_day:
+            # The centre and its width go together, as they were tested.
+            width_priced = True
+            reasons.append(f"station_same_day:{STATION_SAME_DAY_POLICY}")
         if width_priced:
             reasons.append(
                 f"station_width:{srow.get('width_version')}:lead{srow.get('lead_days')}"
@@ -1625,7 +1687,9 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
 
     forecast_sigma_c = sigma
     uncertainty = None
-    if int(lead_days) == 0 and not model_priced and pp is None:
+    if int(lead_days) == 0 and not model_priced and pp is None and not same_day:
+        # (A same-day station price already carries an advance width, measured
+        # on its own centre's errors: nothing is borrowed for it.)
         # Skill at lead zero is measured on the newest run of each date;
         # that run can be issued after the high. It is not a morning error
         # distribution. Borrow only an independently measured advance width,
@@ -1696,7 +1760,7 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
                 "city_key", "for_date", "lead_days", "combined_c", "p39_c", "mos_c",
                 "n_sources", "sources", "spread_c", "version", "computed_at",
                 "inputs_oldest_run_at", "inputs_newest_run_at", "width_c",
-                "width_version", "mos_calibration", "mos_inputs") if key in srow}
+                "width_version", "mos_calibration", "mos_inputs", "same_day") if key in srow}
     forecast_version = model_version_id(
         "forecast", forecast_label, config=forecast_config, structural=False)
     # The readable label too, for a caller that records the path (the tick's

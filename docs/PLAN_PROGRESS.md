@@ -205,6 +205,44 @@ legacy signal chain, labels suspended strategies in the desk selector, and
 shows their 14-day eligibility time without offering an ineffective Start.
 No portfolio allocation, risk limits, or workflow schedules change.
 
+## Model audit — 15 Nov: the same-day forecast path prices from the station correction
+
+Hassan, 15 Nov: audit the prediction model city by city, its learning and
+calibration, and implement what needs improving. The audit is
+`docs/MODEL_AUDIT_2026-11-15.md`; its numbers are rebuilt by
+`tools/model_audit.py` and `tools/station_weights_study.py` into
+`data/eval/model_audit_2026-11-15/`.
+
+- **Found:** the morning call scored worse than the evening-before call
+  (17 Oct - 14 Nov: top pick 34.6% against 39.4%, log loss 1.681 against
+  1.518). At lead 0 the engine dropped the station-corrected combination and
+  priced from the public forecast less a per-city bias.
+- **Evidence:** `sd_corr:v1`'s forward rows, split by what served the call.
+  Against the forecast path the corrected ladder gains at every same-day
+  checkpoint (morning +0.2413 log loss, 90% +0.2044 to +0.2814, 1,866 calls,
+  41 dates); it loses only to `wxrd3`. Not pre-registered; the morning gain on
+  the 20 dates after the first look is +0.2320 (+0.1864 to +0.2758).
+- **Built:** `probability_engine` prices a same-day call on the forecast path
+  from the combination's own centre and stored width while
+  `settings.station_same_day_pricing` is on. `wxrd3` keeps noon and later.
+  Day-ahead prices are unchanged.
+- **To run:** `supabase/migrations/20261115120000_same_day_station_pricing.sql`
+  turns it on. Until it is run the engine behaves as before.
+- **Acceptance after it is on:** morning first calls carry
+  `station_correction:` in `priced_from`, and the morning log loss over the
+  next 14 settled dates is below the forecast path's 1.68.
+- **Measured, not built:** learning the station bias from the served
+  forecasts' own history, with skill weights. Mean absolute error on the rows
+  served, 12 Oct - 14 Nov: lead 0 0.752 to 0.700 C, lead 1 0.892 to 0.846,
+  lead 2 0.994 to 0.960. On the long record, with yesterday's miss added back:
+  0.906 to 0.855 C and +0.040 log loss on 9,902 venue ladders. It needs a
+  stored weight per cell and a shadow build first.
+- **Checked and not supported:** stale inputs at the evening call (they were a
+  median 1.7 h old); a `wxrd3` refit (the challenger scores the same on 13
+  dates). More forecast models: not measured (Open-Meteo's daily limit).
+- **Not verified:** the settings in force (the mirror's last snapshot is 13
+  Oct); the database was not reachable from this session.
+
 ## sd_corr:v1 second and last look — 15 Nov: rejected, capture switched off
 
 The pre-registered last look (`docs/SD_CORR_PREREG.md`) was run from the

@@ -1,0 +1,198 @@
+{
+ "priors": {
+  "k": 10.0,
+  "min_n": 5,
+  "bound_c": 3.0,
+  "window_days": 45
+ },
+ "forward": {
+  "from_run_night": "2026-10-12",
+  "by_lead": {
+   "0": {
+    "n": 1548,
+    "run_nights": 34,
+    "mae_prod": 0.7518,
+    "mae_own": 0.7336,
+    "mae_own_w": 0.7004,
+    "mae_gain_prod_minus_own_w": {
+     "mean": 0.0514,
+     "ci90": [
+      0.0434,
+      0.06
+     ],
+     "dates": 34,
+     "n": 1548
+    }
+   },
+   "1": {
+    "n": 2196,
+    "run_nights": 33,
+    "mae_prod": 0.8921,
+    "mae_own": 0.8672,
+    "mae_own_w": 0.8461,
+    "mae_gain_prod_minus_own_w": {
+     "mean": 0.046,
+     "ci90": [
+      0.0387,
+      0.053
+     ],
+     "dates": 33,
+     "n": 2196
+    }
+   },
+   "2": {
+    "n": 1439,
+    "run_nights": 31,
+    "mae_prod": 0.994,
+    "mae_own": 0.9772,
+    "mae_own_w": 0.9597,
+    "mae_gain_prod_minus_own_w": {
+     "mean": 0.0343,
+     "ci90": [
+      0.0232,
+      0.045
+     ],
+     "dates": 31,
+     "n": 1439
+    }
+   }
+  },
+  "served_calls_replayed": {
+   "d1_eve": {
+    "n": 1432,
+    "dates": 31,
+    "first_date": "2026-10-14",
+    "last_date": "2026-11-13",
+    "market": {
+     "n": 1321,
+     "log_loss": 1.2044,
+     "top1": 0.5049
+    },
+    "served": {
+     "log_loss": 1.5142,
+     "top1": 0.3966
+    },
+    "own_w": {
+     "log_loss": 1.4825,
+     "top1": 0.3959,
+     "log_loss_gain_over_served": {
+      "mean": 0.0317,
+      "ci90": [
+       0.0217,
+       0.0419
+      ],
+      "dates": 31,
+      "n": 1432
+     }
+    },
+    "replay_of_served_max_log_loss_difference": 0.016351
+   },
+   "morning": {
+    "n": 1438,
+    "dates": 31,
+    "first_date": "2026-10-14",
+    "last_date": "2026-11-13",
+    "market": {
+     "n": 1226,
+     "log_loss": 1.0976,
+     "top1": 0.5277
+    },
+    "served": {
+     "log_loss": 1.686,
+     "top1": 0.354
+    },
+    "combination": {
+     "log_loss": 1.4423,
+     "top1": 0.4117,
+     "log_loss_gain_over_served": {
+      "mean": 0.2437,
+      "ci90": [
+       0.2021,
+       0.2856
+      ],
+      "dates": 31,
+      "n": 1438
+     }
+    },
+    "own_w": {
+     "log_loss": 1.4008,
+     "top1": 0.4367,
+     "log_loss_gain_over_served": {
+      "mean": 0.2851,
+      "ci90": [
+       0.2442,
+       0.3262
+      ],
+      "dates": 31,
+      "n": 1438
+     }
+    }
+   }
+  }
+ },
+ "record": {
+  "from": "2025-10-01",
+  "to": "2026-11-14",
+  "city_days": 19500,
+  "mae_c": {
+   "base": 0.9058,
+   "weights": 0.8779,
+   "ar": 0.877,
+   "weights_ar": 0.8547,
+   "base_lead2": 1.0166
+  },
+  "ladders_at_00": {
+   "n": 9902,
+   "dates": 252,
+   "first_date": "2025-12-30",
+   "last_date": "2026-10-28",
+   "market": {
+    "log_loss": 1.2781,
+    "top1": 0.4707
+   },
+   "base": {
+    "log_loss": 1.4502,
+    "top1": 0.4151
+   },
+   "weights": {
+    "log_loss": 1.4263,
+    "top1": 0.424,
+    "log_loss_gain_over_base": {
+     "mean": 0.024,
+     "ci90": [
+      0.0206,
+      0.0273
+     ],
+     "dates": 252,
+     "n": 9902
+    }
+   },
+   "ar": {
+    "log_loss": 1.4276,
+    "top1": 0.4243,
+    "log_loss_gain_over_base": {
+     "mean": 0.0226,
+     "ci90": [
+      0.0183,
+      0.027
+     ],
+     "dates": 252,
+     "n": 9902
+    }
+   },
+   "weights_ar": {
+    "log_loss": 1.4098,
+    "top1": 0.4358,
+    "log_loss_gain_over_base": {
+     "mean": 0.0404,
+     "ci90": [
+      0.0345,
+      0.0465
+     ],
+     "dates": 252,
+     "n": 9902
+    }
+   }
+  }
+ }
+}
