@@ -205,6 +205,34 @@ legacy signal chain, labels suspended strategies in the desk selector, and
 shows their 14-day eligibility time without offering an ineffective Start.
 No portfolio allocation, risk limits, or workflow schedules change.
 
+## Hassan's Codex test, 12-14 Nov — 15 Nov: the trades check out; three days are not evidence
+
+Hassan, 15 Nov: his Codex test of the three-YES / three-NO strategy "is up
++98% supposedly", with the 18 trades listed. Section 12 of
+`docs/STRATEGY_STUDY_2026-11-15.md`; `tools/codex_trade_check.py` rebuilds
+`data/eval/codex_test_2026-11-12/result.json` from the list
+(`trades.json`, as pasted).
+
+- **Section 11's "not reproduced" is withdrawn for his trades.** It was my own
+  build of the rule. With his list, on the recorded evening-before book with
+  the fee, from $30 and staking 80% of the equity a day: +125.0% (+35.5% per
+  dollar staked); +84.8% with Buenos Aires on 14 Nov as a loss.
+- **Checks passed:** 14 of 15 listed prices are the recorded evening book
+  (the other, Shanghai on 14 Nov at 80 cents, is the next morning's); all 15
+  venue-settled buckets agree; shares and P&L follow from the stakes. The list
+  has no fee ($1.38 on these trades).
+- **Why it is not evidence yet:** 18 trades on 3 dates; one trade is 36% of the
+  profit; on 14 Nov two buckets (Helsinki, Warsaw NO) are not the model's pick
+  and, on the model's pick, the three days return +31.4%; three 14 Nov
+  outcomes are not settled in our record (Buenos Aires conflicts with our last
+  call).
+- **The rule the cities fit** (ten-day hit rate): -6.0% over 279 trades on
+  47 dates; 1.5% of random tie-breaks end above zero; 12-14 Nov is
+  the best of 45 runs of three dates.
+- **A forward test needs** 10 dates if the true return is +35%, 29 at +20%, 114 at +10%.
+- **Open:** how Codex chooses each bucket and its exact city ranking; not
+  pre-registered until Hassan gives them.
+
 ## The evening-before call, where Hassan trades — 15 Nov: fairly priced, one thin lead
 
 Hassan, 15 Nov: he trades the evening before, and his own test of the
