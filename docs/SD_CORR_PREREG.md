@@ -260,3 +260,22 @@ it.
 **The market, descriptive.** It was measured on 7,825 rows with a whole book:
 - served minus market: +0.3880 (90% +0.3389 to +0.4406);
 - `sd_corr` minus market: +0.4405 (90% +0.4055 to +0.4766).
+
+### After the verdict, 15 Nov 2026: what the forecast path prices on the day
+
+The verdict above stands, and the capture stays off. The audit of the same day
+(`docs/MODEL_AUDIT_2026-11-15.md`) split the second look's rows by what served
+each call, a reading this document did not pre-register:
+
+- Where the forecast path served, `sd_corr` gained at every checkpoint:
+  morning +0.2413 (90% +0.2044 to +0.2814, 1,866 calls), noon +0.1566, two
+  hours before the peak +0.1484, one hour before +0.1232, one hour after
+  +0.0809.
+- Where `wxrd3` served (noon and later, from 17 Oct), it lost at every
+  checkpoint. Those rows are why the pooled result is below zero.
+- The morning gain on the 20 dates after the first look is +0.2320 (+0.1864 to
+  +0.2758).
+
+So `settings.station_same_day_pricing` lets the forecast path price a same-day
+call from the combination and its width, as these rows did. It does not change
+any call `wxrd3` serves, and it is not `sd_corr` served at five checkpoints.
