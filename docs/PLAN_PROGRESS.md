@@ -205,6 +205,30 @@ legacy signal chain, labels suspended strategies in the desk selector, and
 shows their 14-day eligibility time without offering an ineffective Start.
 No portfolio allocation, risk limits, or workflow schedules change.
 
+## YES on the three best cities, NO on the three worst — 15 Nov: not supported
+
+Hassan, 15 Nov: "bet YES on the top performing 3 cities, and NO on the least
+performing ... recommend to me the 6 cities". Section 10 of
+`docs/STRATEGY_STUDY_2026-11-15.md`; `tools/city_sides_study.py` rebuilds
+`data/eval/city_sides_2026-11-15/result.json`.
+
+- **Traded forward** (cities chosen each date on their outcomes settled before
+  its first call): both legs lose at every call, from -2.6% a dollar at the
+  morning call (90% -13.7% to +8.6%) to -34.3% one hour after the peak.
+- **The NO leg** had a positive return in 0 of 12 tests; no test of 24 had an
+  interval above zero.
+- **Codex on #512, fixed before merge:** the first version ranked cities on
+  outcomes not yet settled at the call, and dropped a NO whose pick had no
+  ask. The same settled-only rule now applies to the study's section 5
+  (cities chosen by past profit); its figures moved by up to 4 points and its
+  conclusion did not.
+- **A city's rank does not carry forward** at the evening and morning calls
+  (rank correlation +0.06 and -0.07 between halves of the record).
+- **The six cities the rule names at the morning call** (record to 14 Nov):
+  YES on NYC, Miami and Helsinki; NO on Buenos Aires, São Paulo and Beijing.
+  On the record that chose them they return +14.0%; that is hindsight.
+- **No capital and no shadow registration:** it is Hassan's own test.
+
 ## Two shadow tests fixed — 15 Nov: `postpeak-v1` and `own_w:v1`
 
 Hassan, 15 Nov, on the two shadow proposals of the audit and the strategy

@@ -68,16 +68,32 @@ def test_the_cost_and_the_return():
     assert S.result([]) == {"n": 0}
 
 
+def _city_trades(settle_h):
+    import datetime as dt
+    ts = []
+    for i in range(16):   # "good" wins its first 8 dates and loses every date after; "bad" the reverse
+        day = dt.datetime(2026, 10, 1, tzinfo=dt.timezone.utc) + dt.timedelta(days=i)
+        for city, win in (("good", int(i < 8)), ("bad", int(i >= 8))):
+            ts.append({"city": city, "date": day.date().isoformat(), "win": win, "cost": 0.5,
+                       "decided_at": (day + dt.timedelta(hours=9)).isoformat(),
+                       "settled_at": (day + dt.timedelta(hours=settle_h)).isoformat()})
+    return ts
+
+
 def test_a_city_is_chosen_only_on_its_record_before_the_date():
     np = pytest.importorskip("numpy")  # noqa: F841
     import strategy_study as S
-    # "good" wins its first 8 dates and loses every date after; "bad" the reverse
-    ts = []
-    for i in range(16):
-        d = f"2026-10-{i + 1:02d}"
-        ts.append({"city": "good", "date": d, "win": int(i < 8), "cost": 0.5})
-        ts.append({"city": "bad", "date": d, "win": int(i >= 8), "cost": 0.5})
-    r = S.by_city(ts)
+    r = S.by_city(_city_trades(settle_h=30))     # settled at 06:00 the next day, before its 09:00 call
     paid = r["cities_that_paid_so_far"]
     assert paid["n"] == 8 and paid["win_rate"] == 0.0, "good is traded only after its 8 wins, and loses them all"
     assert r["all_cities"]["n"] == 32
+
+
+def test_an_outcome_not_yet_settled_at_the_call_is_not_part_of_the_record():
+    """Codex on #512: an earlier target date is not an earlier outcome."""
+    np = pytest.importorskip("numpy")  # noqa: F841
+    import strategy_study as S
+    r = S.by_city(_city_trades(settle_h=36))     # settled at 12:00 the next day, after its 09:00 call
+    paid = r["cities_that_paid_so_far"]
+    assert (paid["n"], paid["dates"]) == (7, 7), "good's 8th win is known a day later, so it trades one date fewer"
+    assert paid["win_rate"] == 0.0

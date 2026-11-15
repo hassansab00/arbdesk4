@@ -1,0 +1,1916 @@
+{
+ "k": 3,
+ "min_trades": 8,
+ "first_date": "2026-09-25",
+ "last_date": "2026-11-14",
+ "checkpoints": {
+  "d1_eve": {
+   "picks": 2336,
+   "with_a_yes": 2336,
+   "with_a_no": 2334,
+   "all": {
+    "yes_on_every_city": {
+     "n": 2336,
+     "dates": 51,
+     "return_per_dollar": -0.1048,
+     "ci90": [
+      -0.1536,
+      -0.0522
+     ],
+     "win_rate": 0.3878,
+     "mean_cost": 0.4118
+    },
+    "no_on_every_city": {
+     "n": 2334,
+     "dates": 51,
+     "return_per_dollar": -0.0486,
+     "ci90": [
+      -0.0792,
+      -0.0195
+     ],
+     "win_rate": 0.6118,
+     "mean_cost": 0.6353
+    }
+   },
+   "walk": {
+    "hit": {
+     "yes_on_the_3_best": {
+      "n": 124,
+      "dates": 42,
+      "return_per_dollar": -0.0808,
+      "ci90": [
+       -0.2514,
+       0.086
+      ],
+      "win_rate": 0.4355,
+      "mean_cost": 0.4587
+     },
+     "no_on_the_3_worst": {
+      "n": 124,
+      "dates": 42,
+      "return_per_dollar": -0.0721,
+      "ci90": [
+       -0.205,
+       0.0678
+      ],
+      "win_rate": 0.6371,
+      "mean_cost": 0.6884
+     },
+     "both_legs": {
+      "n": 248,
+      "dates": 42,
+      "return_per_dollar": -0.0765,
+      "ci90": [
+       -0.1719,
+       0.0223
+      ],
+      "win_rate": 0.5363,
+      "mean_cost": 0.5735
+     }
+    },
+    "yes_return": {
+     "yes_on_the_3_best": {
+      "n": 124,
+      "dates": 42,
+      "return_per_dollar": 0.0952,
+      "ci90": [
+       -0.1396,
+       0.3616
+      ],
+      "win_rate": 0.4274,
+      "mean_cost": 0.3849
+     },
+     "no_on_the_3_worst": {
+      "n": 123,
+      "dates": 41,
+      "return_per_dollar": -0.0591,
+      "ci90": [
+       -0.2036,
+       0.0853
+      ],
+      "win_rate": 0.6179,
+      "mean_cost": 0.6687
+     },
+     "both_legs": {
+      "n": 247,
+      "dates": 42,
+      "return_per_dollar": 0.0184,
+      "ci90": [
+       -0.1133,
+       0.1672
+      ],
+      "win_rate": 0.5223,
+      "mean_cost": 0.5262
+     }
+    }
+   },
+   "persist": {
+    "cities": 47,
+    "later_half_from": "2026-10-20",
+    "hit_rate_rank_correlation": 0.06,
+    "yes_return_rank_correlation": -0.022
+   },
+   "now": {
+    "cities_ranked": 47,
+    "yes_on": [
+     {
+      "city": "amsterdam",
+      "picks": 49,
+      "hit_rate": 0.5714,
+      "mean_yes_ask": 0.489,
+      "yes": {
+       "n": 49,
+       "dates": 49,
+       "return_per_dollar": 0.2133,
+       "ci90": [
+        -0.063,
+        0.5033
+       ],
+       "win_rate": 0.5714,
+       "mean_cost": 0.5008
+      },
+      "no": {
+       "n": 49,
+       "dates": 49,
+       "return_per_dollar": -0.2187,
+       "ci90": [
+        -0.4324,
+        0.0004
+       ],
+       "win_rate": 0.4286,
+       "mean_cost": 0.5491
+      }
+     },
+     {
+      "city": "miami",
+      "picks": 49,
+      "hit_rate": 0.5714,
+      "mean_yes_ask": 0.4836,
+      "yes": {
+       "n": 49,
+       "dates": 49,
+       "return_per_dollar": 0.0374,
+       "ci90": [
+        -0.1876,
+        0.257
+       ],
+       "win_rate": 0.5714,
+       "mean_cost": 0.4942
+      },
+      "no": {
+       "n": 48,
+       "dates": 48,
+       "return_per_dollar": -0.2851,
+       "ci90": [
+        -0.4987,
+        -0.057
+       ],
+       "win_rate": 0.4167,
+       "mean_cost": 0.5445
+      }
+     },
+     {
+      "city": "helsinki",
+      "picks": 51,
+      "hit_rate": 0.549,
+      "mean_yes_ask": 0.4878,
+      "yes": {
+       "n": 51,
+       "dates": 51,
+       "return_per_dollar": 0.1528,
+       "ci90": [
+        -0.1673,
+        0.5116
+       ],
+       "win_rate": 0.549,
+       "mean_cost": 0.499
+      },
+      "no": {
+       "n": 51,
+       "dates": 51,
+       "return_per_dollar": -0.2034,
+       "ci90": [
+        -0.4217,
+        0.03
+       ],
+       "win_rate": 0.451,
+       "mean_cost": 0.5497
+      }
+     }
+    ],
+    "no_on": [
+     {
+      "city": "busan",
+      "picks": 50,
+      "hit_rate": 0.26,
+      "mean_yes_ask": 0.3663,
+      "yes": {
+       "n": 50,
+       "dates": 50,
+       "return_per_dollar": -0.3218,
+       "ci90": [
+        -0.6093,
+        0.0375
+       ],
+       "win_rate": 0.26,
+       "mean_cost": 0.3769
+      },
+      "no": {
+       "n": 50,
+       "dates": 50,
+       "return_per_dollar": 0.1191,
+       "ci90": [
+        -0.0643,
+        0.2857
+       ],
+       "win_rate": 0.74,
+       "mean_cost": 0.6673
+      }
+     },
+     {
+      "city": "sao_paulo",
+      "picks": 49,
+      "hit_rate": 0.2449,
+      "mean_yes_ask": 0.2187,
+      "yes": {
+       "n": 49,
+       "dates": 49,
+       "return_per_dollar": -0.2585,
+       "ci90": [
+        -0.5649,
+        0.0934
+       ],
+       "win_rate": 0.2449,
+       "mean_cost": 0.2265
+      },
+      "no": {
+       "n": 49,
+       "dates": 49,
+       "return_per_dollar": -0.0958,
+       "ci90": [
+        -0.2364,
+        0.0282
+       ],
+       "win_rate": 0.7551,
+       "mean_cost": 0.8125
+      }
+     },
+     {
+      "city": "buenos_aires",
+      "picks": 49,
+      "hit_rate": 0.2245,
+      "mean_yes_ask": 0.3205,
+      "yes": {
+       "n": 49,
+       "dates": 49,
+       "return_per_dollar": -0.3187,
+       "ci90": [
+        -0.6172,
+        0.0551
+       ],
+       "win_rate": 0.2245,
+       "mean_cost": 0.3307
+      },
+      "no": {
+       "n": 49,
+       "dates": 49,
+       "return_per_dollar": 0.0968,
+       "ci90": [
+        -0.0602,
+        0.2413
+       ],
+       "win_rate": 0.7755,
+       "mean_cost": 0.7132
+      }
+     }
+    ],
+    "hindsight_not_a_rule": {
+     "yes_on_the_3_best": {
+      "n": 149,
+      "dates": 51,
+      "return_per_dollar": 0.1348,
+      "ci90": [
+       -0.0316,
+       0.3007
+      ],
+      "win_rate": 0.5638,
+      "mean_cost": 0.498
+     },
+     "no_on_the_3_worst": {
+      "n": 148,
+      "dates": 50,
+      "return_per_dollar": 0.0406,
+      "ci90": [
+       -0.0572,
+       0.1306
+      ],
+      "win_rate": 0.7568,
+      "mean_cost": 0.7306
+     },
+     "both_legs": {
+      "n": 297,
+      "dates": 51,
+      "return_per_dollar": 0.0878,
+      "ci90": [
+       -0.005,
+       0.1692
+      ],
+      "win_rate": 0.6599,
+      "mean_cost": 0.6139
+     }
+    }
+   }
+  },
+  "morning": {
+   "picks": 1866,
+   "with_a_yes": 1865,
+   "with_a_no": 1865,
+   "all": {
+    "yes_on_every_city": {
+     "n": 1865,
+     "dates": 41,
+     "return_per_dollar": -0.1588,
+     "ci90": [
+      -0.2026,
+      -0.1077
+     ],
+     "win_rate": 0.4005,
+     "mean_cost": 0.4531
+    },
+    "no_on_every_city": {
+     "n": 1865,
+     "dates": 41,
+     "return_per_dollar": 0.0772,
+     "ci90": [
+      -0.0747,
+      0.3447
+     ],
+     "win_rate": 0.5989,
+     "mean_cost": 0.6094
+    }
+   },
+   "walk": {
+    "hit": {
+     "yes_on_the_3_best": {
+      "n": 94,
+      "dates": 32,
+      "return_per_dollar": 0.1108,
+      "ci90": [
+       -0.052,
+       0.2877
+      ],
+      "win_rate": 0.6383,
+      "mean_cost": 0.5638
+     },
+     "no_on_the_3_worst": {
+      "n": 94,
+      "dates": 32,
+      "return_per_dollar": -0.1633,
+      "ci90": [
+       -0.2816,
+       -0.0417
+      ],
+      "win_rate": 0.5851,
+      "mean_cost": 0.6475
+     },
+     "both_legs": {
+      "n": 188,
+      "dates": 32,
+      "return_per_dollar": -0.0262,
+      "ci90": [
+       -0.137,
+       0.086
+      ],
+      "win_rate": 0.6117,
+      "mean_cost": 0.6057
+     }
+    },
+    "yes_return": {
+     "yes_on_the_3_best": {
+      "n": 93,
+      "dates": 31,
+      "return_per_dollar": 0.0107,
+      "ci90": [
+       -0.1724,
+       0.1987
+      ],
+      "win_rate": 0.5699,
+      "mean_cost": 0.5336
+     },
+     "no_on_the_3_worst": {
+      "n": 96,
+      "dates": 32,
+      "return_per_dollar": -0.2181,
+      "ci90": [
+       -0.3938,
+       -0.0302
+      ],
+      "win_rate": 0.4583,
+      "mean_cost": 0.6018
+     },
+     "both_legs": {
+      "n": 189,
+      "dates": 32,
+      "return_per_dollar": -0.1055,
+      "ci90": [
+       -0.2363,
+       0.027
+      ],
+      "win_rate": 0.5132,
+      "mean_cost": 0.5682
+     }
+    }
+   },
+   "persist": {
+    "cities": 47,
+    "later_half_from": "2026-10-25",
+    "hit_rate_rank_correlation": -0.065,
+    "yes_return_rank_correlation": -0.283
+   },
+   "now": {
+    "cities_ranked": 47,
+    "yes_on": [
+     {
+      "city": "nyc",
+      "picks": 40,
+      "hit_rate": 0.75,
+      "mean_yes_ask": 0.5853,
+      "yes": {
+       "n": 40,
+       "dates": 40,
+       "return_per_dollar": 0.2581,
+       "ci90": [
+        0.0138,
+        0.4817
+       ],
+       "win_rate": 0.75,
+       "mean_cost": 0.595
+      },
+      "no": {
+       "n": 40,
+       "dates": 40,
+       "return_per_dollar": -0.6045,
+       "ci90": [
+        -0.77,
+        -0.4134
+       ],
+       "win_rate": 0.25,
+       "mean_cost": 0.4576
+      }
+     },
+     {
+      "city": "miami",
+      "picks": 40,
+      "hit_rate": 0.725,
+      "mean_yes_ask": 0.5644,
+      "yes": {
+       "n": 40,
+       "dates": 40,
+       "return_per_dollar": 0.3021,
+       "ci90": [
+        0.0578,
+        0.5258
+       ],
+       "win_rate": 0.725,
+       "mean_cost": 0.5756
+      },
+      "no": {
+       "n": 40,
+       "dates": 40,
+       "return_per_dollar": -0.4669,
+       "ci90": [
+        -0.7055,
+        -0.2099
+       ],
+       "win_rate": 0.275,
+       "mean_cost": 0.4919
+      }
+     },
+     {
+      "city": "helsinki",
+      "picks": 40,
+      "hit_rate": 0.65,
+      "mean_yes_ask": 0.6187,
+      "yes": {
+       "n": 40,
+       "dates": 40,
+       "return_per_dollar": 0.0332,
+       "ci90": [
+        -0.201,
+        0.2686
+       ],
+       "win_rate": 0.65,
+       "mean_cost": 0.6285
+      },
+      "no": {
+       "n": 40,
+       "dates": 40,
+       "return_per_dollar": -0.3237,
+       "ci90": [
+        -0.5828,
+        -0.0619
+       ],
+       "win_rate": 0.35,
+       "mean_cost": 0.4429
+      }
+     }
+    ],
+    "no_on": [
+     {
+      "city": "buenos_aires",
+      "picks": 40,
+      "hit_rate": 0.225,
+      "mean_yes_ask": 0.3505,
+      "yes": {
+       "n": 40,
+       "dates": 40,
+       "return_per_dollar": -0.4026,
+       "ci90": [
+        -0.6809,
+        -0.0901
+       ],
+       "win_rate": 0.225,
+       "mean_cost": 0.361
+      },
+      "no": {
+       "n": 40,
+       "dates": 40,
+       "return_per_dollar": 0.1428,
+       "ci90": [
+        -0.0355,
+        0.316
+       ],
+       "win_rate": 0.775,
+       "mean_cost": 0.6946
+      }
+     },
+     {
+      "city": "sao_paulo",
+      "picks": 40,
+      "hit_rate": 0.225,
+      "mean_yes_ask": 0.2654,
+      "yes": {
+       "n": 40,
+       "dates": 40,
+       "return_per_dollar": -0.2683,
+       "ci90": [
+        -0.6582,
+        0.1821
+       ],
+       "win_rate": 0.225,
+       "mean_cost": 0.2736
+      },
+      "no": {
+       "n": 40,
+       "dates": 40,
+       "return_per_dollar": -0.0293,
+       "ci90": [
+        -0.1677,
+        0.1041
+       ],
+       "win_rate": 0.775,
+       "mean_cost": 0.7763
+      }
+     },
+     {
+      "city": "beijing",
+      "picks": 39,
+      "hit_rate": 0.1538,
+      "mean_yes_ask": 0.2745,
+      "yes": {
+       "n": 39,
+       "dates": 39,
+       "return_per_dollar": -0.4364,
+       "ci90": [
+        -0.795,
+        -0.0366
+       ],
+       "win_rate": 0.1538,
+       "mean_cost": 0.283
+      },
+      "no": {
+       "n": 39,
+       "dates": 39,
+       "return_per_dollar": 0.1306,
+       "ci90": [
+        -0.0183,
+        0.2749
+       ],
+       "win_rate": 0.8462,
+       "mean_cost": 0.7717
+      }
+     }
+    ],
+    "hindsight_not_a_rule": {
+     "yes_on_the_3_best": {
+      "n": 120,
+      "dates": 41,
+      "return_per_dollar": 0.1978,
+      "ci90": [
+       0.0808,
+       0.3105
+      ],
+      "win_rate": 0.7083,
+      "mean_cost": 0.5997
+     },
+     "no_on_the_3_worst": {
+      "n": 119,
+      "dates": 41,
+      "return_per_dollar": 0.081,
+      "ci90": [
+       -0.0166,
+       0.1695
+      ],
+      "win_rate": 0.7983,
+      "mean_cost": 0.7474
+     },
+     "both_legs": {
+      "n": 239,
+      "dates": 41,
+      "return_per_dollar": 0.1396,
+      "ci90": [
+       0.0719,
+       0.2084
+      ],
+      "win_rate": 0.7531,
+      "mean_cost": 0.6732
+     }
+    }
+   }
+  },
+  "noon": {
+   "picks": 1337,
+   "with_a_yes": 1336,
+   "with_a_no": 1334,
+   "all": {
+    "yes_on_every_city": {
+     "n": 1336,
+     "dates": 29,
+     "return_per_dollar": -0.0952,
+     "ci90": [
+      -0.1482,
+      -0.0422
+     ],
+     "win_rate": 0.5464,
+     "mean_cost": 0.5839
+    },
+    "no_on_every_city": {
+     "n": 1334,
+     "dates": 29,
+     "return_per_dollar": -0.2388,
+     "ci90": [
+      -0.2897,
+      -0.185
+     ],
+     "win_rate": 0.452,
+     "mean_cost": 0.5259
+    }
+   },
+   "walk": {
+    "hit": {
+     "yes_on_the_3_best": {
+      "n": 61,
+      "dates": 21,
+      "return_per_dollar": -0.1218,
+      "ci90": [
+       -0.2962,
+       0.0539
+      ],
+      "win_rate": 0.6885,
+      "mean_cost": 0.7647
+     },
+     "no_on_the_3_worst": {
+      "n": 57,
+      "dates": 20,
+      "return_per_dollar": -0.2162,
+      "ci90": [
+       -0.4496,
+       0.0404
+      ],
+      "win_rate": 0.4737,
+      "mean_cost": 0.5823
+     },
+     "both_legs": {
+      "n": 118,
+      "dates": 21,
+      "return_per_dollar": -0.1674,
+      "ci90": [
+       -0.3193,
+       -0.0146
+      ],
+      "win_rate": 0.5847,
+      "mean_cost": 0.6766
+     }
+    },
+    "yes_return": {
+     "yes_on_the_3_best": {
+      "n": 61,
+      "dates": 21,
+      "return_per_dollar": -0.0381,
+      "ci90": [
+       -0.2352,
+       0.1615
+      ],
+      "win_rate": 0.623,
+      "mean_cost": 0.6253
+     },
+     "no_on_the_3_worst": {
+      "n": 59,
+      "dates": 21,
+      "return_per_dollar": -0.0979,
+      "ci90": [
+       -0.3022,
+       0.1234
+      ],
+      "win_rate": 0.5593,
+      "mean_cost": 0.5915
+     },
+     "both_legs": {
+      "n": 120,
+      "dates": 21,
+      "return_per_dollar": -0.0675,
+      "ci90": [
+       -0.1965,
+       0.0538
+      ],
+      "win_rate": 0.5917,
+      "mean_cost": 0.6087
+     }
+    }
+   },
+   "persist": {
+    "cities": 47,
+    "later_half_from": "2026-10-31",
+    "hit_rate_rank_correlation": 0.451,
+    "yes_return_rank_correlation": 0.138
+   },
+   "now": {
+    "cities_ranked": 47,
+    "yes_on": [
+     {
+      "city": "jeddah",
+      "picks": 29,
+      "hit_rate": 0.8621,
+      "mean_yes_ask": 0.8835,
+      "yes": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": -0.051,
+       "ci90": [
+        -0.1869,
+        0.0655
+       ],
+       "win_rate": 0.8571,
+       "mean_cost": 0.8879
+      },
+      "no": {
+       "n": 29,
+       "dates": 29,
+       "return_per_dollar": -0.3367,
+       "ci90": [
+        -0.9166,
+        0.6183
+       ],
+       "win_rate": 0.1379,
+       "mean_cost": 0.2073
+      }
+     },
+     {
+      "city": "shanghai",
+      "picks": 29,
+      "hit_rate": 0.8276,
+      "mean_yes_ask": 0.7834,
+      "yes": {
+       "n": 29,
+       "dates": 29,
+       "return_per_dollar": 0.0622,
+       "ci90": [
+        -0.1155,
+        0.256
+       ],
+       "win_rate": 0.8276,
+       "mean_cost": 0.7898
+      },
+      "no": {
+       "n": 29,
+       "dates": 29,
+       "return_per_dollar": -0.6626,
+       "ci90": [
+        -0.8801,
+        -0.4196
+       ],
+       "win_rate": 0.1724,
+       "mean_cost": 0.2998
+      }
+     },
+     {
+      "city": "helsinki",
+      "picks": 29,
+      "hit_rate": 0.7931,
+      "mean_yes_ask": 0.717,
+      "yes": {
+       "n": 29,
+       "dates": 29,
+       "return_per_dollar": 0.0116,
+       "ci90": [
+        -0.1873,
+        0.1914
+       ],
+       "win_rate": 0.7931,
+       "mean_cost": 0.7234
+      },
+      "no": {
+       "n": 29,
+       "dates": 29,
+       "return_per_dollar": -0.6964,
+       "ci90": [
+        -0.8614,
+        -0.4764
+       ],
+       "win_rate": 0.2069,
+       "mean_cost": 0.3621
+      }
+     }
+    ],
+    "no_on": [
+     {
+      "city": "san_francisco",
+      "picks": 26,
+      "hit_rate": 0.3462,
+      "mean_yes_ask": 0.4304,
+      "yes": {
+       "n": 26,
+       "dates": 26,
+       "return_per_dollar": -0.2895,
+       "ci90": [
+        -0.6251,
+        0.0986
+       ],
+       "win_rate": 0.3462,
+       "mean_cost": 0.4401
+      },
+      "no": {
+       "n": 26,
+       "dates": 26,
+       "return_per_dollar": -0.0516,
+       "ci90": [
+        -0.3264,
+        0.2315
+       ],
+       "win_rate": 0.6538,
+       "mean_cost": 0.6858
+      }
+     },
+     {
+      "city": "seattle",
+      "picks": 26,
+      "hit_rate": 0.3462,
+      "mean_yes_ask": 0.5369,
+      "yes": {
+       "n": 26,
+       "dates": 26,
+       "return_per_dollar": -0.4527,
+       "ci90": [
+        -0.6942,
+        -0.181
+       ],
+       "win_rate": 0.3462,
+       "mean_cost": 0.5471
+      },
+      "no": {
+       "n": 26,
+       "dates": 26,
+       "return_per_dollar": 0.1692,
+       "ci90": [
+        -0.1418,
+        0.4662
+       ],
+       "win_rate": 0.6538,
+       "mean_cost": 0.5527
+      }
+     },
+     {
+      "city": "denver",
+      "picks": 28,
+      "hit_rate": 0.2857,
+      "mean_yes_ask": 0.4937,
+      "yes": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": -0.5705,
+       "ci90": [
+        -0.7869,
+        -0.3347
+       ],
+       "win_rate": 0.2857,
+       "mean_cost": 0.5034
+      },
+      "no": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": 0.1081,
+       "ci90": [
+        -0.1691,
+        0.3775
+       ],
+       "win_rate": 0.7143,
+       "mean_cost": 0.6323
+      }
+     }
+    ],
+    "hindsight_not_a_rule": {
+     "yes_on_the_3_best": {
+      "n": 86,
+      "dates": 29,
+      "return_per_dollar": 0.0083,
+      "ci90": [
+       -0.0805,
+       0.0929
+      ],
+      "win_rate": 0.8256,
+      "mean_cost": 0.7993
+     },
+     "no_on_the_3_worst": {
+      "n": 80,
+      "dates": 28,
+      "return_per_dollar": 0.0761,
+      "ci90": [
+       -0.0998,
+       0.2411
+      ],
+      "win_rate": 0.675,
+      "mean_cost": 0.6238
+     },
+     "both_legs": {
+      "n": 166,
+      "dates": 29,
+      "return_per_dollar": 0.0409,
+      "ci90": [
+       -0.0417,
+       0.1231
+      ],
+      "win_rate": 0.753,
+      "mean_cost": 0.7147
+     }
+    }
+   }
+  },
+  "prepeak_2h": {
+   "picks": 1321,
+   "with_a_yes": 1321,
+   "with_a_no": 1316,
+   "all": {
+    "yes_on_every_city": {
+     "n": 1321,
+     "dates": 29,
+     "return_per_dollar": -0.0768,
+     "ci90": [
+      -0.1282,
+      -0.0256
+     ],
+     "win_rate": 0.5072,
+     "mean_cost": 0.5392
+    },
+    "no_on_every_city": {
+     "n": 1316,
+     "dates": 29,
+     "return_per_dollar": -0.1932,
+     "ci90": [
+      -0.2333,
+      -0.154
+     ],
+     "win_rate": 0.4909,
+     "mean_cost": 0.5678
+    }
+   },
+   "walk": {
+    "hit": {
+     "yes_on_the_3_best": {
+      "n": 47,
+      "dates": 20,
+      "return_per_dollar": -0.0856,
+      "ci90": [
+       -0.291,
+       0.1333
+      ],
+      "win_rate": 0.5957,
+      "mean_cost": 0.6417
+     },
+     "no_on_the_3_worst": {
+      "n": 60,
+      "dates": 21,
+      "return_per_dollar": -0.0845,
+      "ci90": [
+       -0.3017,
+       0.1275
+      ],
+      "win_rate": 0.5333,
+      "mean_cost": 0.5905
+     },
+     "both_legs": {
+      "n": 107,
+      "dates": 21,
+      "return_per_dollar": -0.085,
+      "ci90": [
+       -0.2452,
+       0.0789
+      ],
+      "win_rate": 0.5607,
+      "mean_cost": 0.613
+     }
+    },
+    "yes_return": {
+     "yes_on_the_3_best": {
+      "n": 62,
+      "dates": 21,
+      "return_per_dollar": -0.0654,
+      "ci90": [
+       -0.2997,
+       0.1956
+      ],
+      "win_rate": 0.4839,
+      "mean_cost": 0.5232
+     },
+     "no_on_the_3_worst": {
+      "n": 60,
+      "dates": 21,
+      "return_per_dollar": -0.0636,
+      "ci90": [
+       -0.278,
+       0.1782
+      ],
+      "win_rate": 0.5333,
+      "mean_cost": 0.587
+     },
+     "both_legs": {
+      "n": 122,
+      "dates": 21,
+      "return_per_dollar": -0.0645,
+      "ci90": [
+       -0.2276,
+       0.1135
+      ],
+      "win_rate": 0.5082,
+      "mean_cost": 0.5546
+     }
+    }
+   },
+   "persist": {
+    "cities": 46,
+    "later_half_from": "2026-10-31",
+    "hit_rate_rank_correlation": 0.378,
+    "yes_return_rank_correlation": 0.176
+   },
+   "now": {
+    "cities_ranked": 47,
+    "yes_on": [
+     {
+      "city": "helsinki",
+      "picks": 15,
+      "hit_rate": 0.8,
+      "mean_yes_ask": 0.7122,
+      "yes": {
+       "n": 15,
+       "dates": 15,
+       "return_per_dollar": 0.0567,
+       "ci90": [
+        -0.18,
+        0.2853
+       ],
+       "win_rate": 0.8,
+       "mean_cost": 0.7199
+      },
+      "no": {
+       "n": 15,
+       "dates": 15,
+       "return_per_dollar": -0.6761,
+       "ci90": [
+        -0.923,
+        -0.3603
+       ],
+       "win_rate": 0.2,
+       "mean_cost": 0.3707
+      }
+     },
+     {
+      "city": "chicago",
+      "picks": 28,
+      "hit_rate": 0.75,
+      "mean_yes_ask": 0.657,
+      "yes": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": 0.1349,
+       "ci90": [
+        -0.12,
+        0.3776
+       ],
+       "win_rate": 0.75,
+       "mean_cost": 0.6651
+      },
+      "no": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": -0.5792,
+       "ci90": [
+        -0.7996,
+        -0.3337
+       ],
+       "win_rate": 0.25,
+       "mean_cost": 0.4697
+      }
+     },
+     {
+      "city": "toronto",
+      "picks": 28,
+      "hit_rate": 0.7143,
+      "mean_yes_ask": 0.5672,
+      "yes": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": 0.2389,
+       "ci90": [
+        -0.063,
+        0.5102
+       ],
+       "win_rate": 0.7143,
+       "mean_cost": 0.5773
+      },
+      "no": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": -0.5538,
+       "ci90": [
+        -0.7811,
+        -0.3167
+       ],
+       "win_rate": 0.2857,
+       "mean_cost": 0.5272
+      }
+     }
+    ],
+    "no_on": [
+     {
+      "city": "seattle",
+      "picks": 26,
+      "hit_rate": 0.3462,
+      "mean_yes_ask": 0.5465,
+      "yes": {
+       "n": 26,
+       "dates": 26,
+       "return_per_dollar": -0.4606,
+       "ci90": [
+        -0.6962,
+        -0.1992
+       ],
+       "win_rate": 0.3462,
+       "mean_cost": 0.5561
+      },
+      "no": {
+       "n": 25,
+       "dates": 25,
+       "return_per_dollar": 0.3293,
+       "ci90": [
+        -0.0935,
+        0.7582
+       ],
+       "win_rate": 0.64,
+       "mean_cost": 0.5277
+      }
+     },
+     {
+      "city": "guangzhou",
+      "picks": 29,
+      "hit_rate": 0.3103,
+      "mean_yes_ask": 0.4354,
+      "yes": {
+       "n": 29,
+       "dates": 29,
+       "return_per_dollar": -0.3561,
+       "ci90": [
+        -0.6407,
+        -0.0458
+       ],
+       "win_rate": 0.3103,
+       "mean_cost": 0.4458
+      },
+      "no": {
+       "n": 29,
+       "dates": 29,
+       "return_per_dollar": 0.0903,
+       "ci90": [
+        -0.1768,
+        0.3358
+       ],
+       "win_rate": 0.6897,
+       "mean_cost": 0.6748
+      }
+     },
+     {
+      "city": "jeddah",
+      "picks": 29,
+      "hit_rate": 0.3103,
+      "mean_yes_ask": 0.4205,
+      "yes": {
+       "n": 29,
+       "dates": 29,
+       "return_per_dollar": -0.1174,
+       "ci90": [
+        -0.6173,
+        0.4706
+       ],
+       "win_rate": 0.3103,
+       "mean_cost": 0.4313
+      },
+      "no": {
+       "n": 29,
+       "dates": 29,
+       "return_per_dollar": 0.1179,
+       "ci90": [
+        -0.1535,
+        0.3824
+       ],
+       "win_rate": 0.6897,
+       "mean_cost": 0.6415
+      }
+     }
+    ],
+    "hindsight_not_a_rule": {
+     "yes_on_the_3_best": {
+      "n": 71,
+      "dates": 28,
+      "return_per_dollar": 0.1594,
+      "ci90": [
+       -0.0168,
+       0.3358
+      ],
+      "win_rate": 0.7465,
+      "mean_cost": 0.642
+     },
+     "no_on_the_3_worst": {
+      "n": 83,
+      "dates": 29,
+      "return_per_dollar": 0.1719,
+      "ci90": [
+       -0.0609,
+       0.4041
+      ],
+      "win_rate": 0.6747,
+      "mean_cost": 0.6188
+     },
+     "both_legs": {
+      "n": 154,
+      "dates": 29,
+      "return_per_dollar": 0.1661,
+      "ci90": [
+       0.014,
+       0.3098
+      ],
+      "win_rate": 0.7078,
+      "mean_cost": 0.6295
+     }
+    }
+   }
+  },
+  "prepeak_1h": {
+   "picks": 1319,
+   "with_a_yes": 1317,
+   "with_a_no": 1313,
+   "all": {
+    "yes_on_every_city": {
+     "n": 1317,
+     "dates": 29,
+     "return_per_dollar": -0.0715,
+     "ci90": [
+      -0.1276,
+      -0.0083
+     ],
+     "win_rate": 0.5816,
+     "mean_cost": 0.6133
+    },
+    "no_on_every_city": {
+     "n": 1313,
+     "dates": 29,
+     "return_per_dollar": -0.2293,
+     "ci90": [
+      -0.3067,
+      -0.1332
+     ],
+     "win_rate": 0.4151,
+     "mean_cost": 0.5003
+    }
+   },
+   "walk": {
+    "hit": {
+     "yes_on_the_3_best": {
+      "n": 47,
+      "dates": 20,
+      "return_per_dollar": -0.0308,
+      "ci90": [
+       -0.2707,
+       0.2407
+      ],
+      "win_rate": 0.6596,
+      "mean_cost": 0.6771
+     },
+     "no_on_the_3_worst": {
+      "n": 60,
+      "dates": 21,
+      "return_per_dollar": -0.4867,
+      "ci90": [
+       -0.6622,
+       -0.3046
+      ],
+      "win_rate": 0.3333,
+      "mean_cost": 0.5208
+     },
+     "both_legs": {
+      "n": 107,
+      "dates": 21,
+      "return_per_dollar": -0.2865,
+      "ci90": [
+       -0.4362,
+       -0.1362
+      ],
+      "win_rate": 0.4766,
+      "mean_cost": 0.5895
+     }
+    },
+    "yes_return": {
+     "yes_on_the_3_best": {
+      "n": 62,
+      "dates": 21,
+      "return_per_dollar": -0.3025,
+      "ci90": [
+       -0.438,
+       -0.1691
+      ],
+      "win_rate": 0.5,
+      "mean_cost": 0.6175
+     },
+     "no_on_the_3_worst": {
+      "n": 61,
+      "dates": 21,
+      "return_per_dollar": -0.5021,
+      "ci90": [
+       -0.7201,
+       -0.2494
+      ],
+      "win_rate": 0.2623,
+      "mean_cost": 0.4768
+     },
+     "both_legs": {
+      "n": 123,
+      "dates": 21,
+      "return_per_dollar": -0.4015,
+      "ci90": [
+       -0.5346,
+       -0.2596
+      ],
+      "win_rate": 0.3821,
+      "mean_cost": 0.5477
+     }
+    }
+   },
+   "persist": {
+    "cities": 46,
+    "later_half_from": "2026-10-31",
+    "hit_rate_rank_correlation": 0.255,
+    "yes_return_rank_correlation": -0.145
+   },
+   "now": {
+    "cities_ranked": 47,
+    "yes_on": [
+     {
+      "city": "helsinki",
+      "picks": 15,
+      "hit_rate": 0.9333,
+      "mean_yes_ask": 0.7975,
+      "yes": {
+       "n": 14,
+       "dates": 14,
+       "return_per_dollar": 0.1937,
+       "ci90": [
+        0.0139,
+        0.3491
+       ],
+       "win_rate": 0.9286,
+       "mean_cost": 0.8045
+      },
+      "no": {
+       "n": 15,
+       "dates": 15,
+       "return_per_dollar": -0.7853,
+       "ci90": [
+        -1.0,
+        -0.3559
+       ],
+       "win_rate": 0.0667,
+       "mean_cost": 0.2513
+      }
+     },
+     {
+      "city": "london",
+      "picks": 28,
+      "hit_rate": 0.8214,
+      "mean_yes_ask": 0.6947,
+      "yes": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": 0.2838,
+       "ci90": [
+        -0.027,
+        0.6172
+       ],
+       "win_rate": 0.8214,
+       "mean_cost": 0.7018
+      },
+      "no": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": -0.6899,
+       "ci90": [
+        -0.9031,
+        -0.4449
+       ],
+       "win_rate": 0.1786,
+       "mean_cost": 0.3611
+      }
+     },
+     {
+      "city": "nyc",
+      "picks": 28,
+      "hit_rate": 0.8214,
+      "mean_yes_ask": 0.7738,
+      "yes": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": -0.0329,
+       "ci90": [
+        -0.1935,
+        0.1116
+       ],
+       "win_rate": 0.8214,
+       "mean_cost": 0.7794
+      },
+      "no": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": -0.7916,
+       "ci90": [
+        -0.9202,
+        -0.6396
+       ],
+       "win_rate": 0.1786,
+       "mean_cost": 0.3175
+      }
+     }
+    ],
+    "no_on": [
+     {
+      "city": "manila",
+      "picks": 29,
+      "hit_rate": 0.4138,
+      "mean_yes_ask": 0.6027,
+      "yes": {
+       "n": 29,
+       "dates": 29,
+       "return_per_dollar": -0.3746,
+       "ci90": [
+        -0.6034,
+        -0.1229
+       ],
+       "win_rate": 0.4138,
+       "mean_cost": 0.613
+      },
+      "no": {
+       "n": 29,
+       "dates": 29,
+       "return_per_dollar": 0.0223,
+       "ci90": [
+        -0.2787,
+        0.3108
+       ],
+       "win_rate": 0.5862,
+       "mean_cost": 0.5478
+      }
+     },
+     {
+      "city": "sao_paulo",
+      "picks": 28,
+      "hit_rate": 0.3929,
+      "mean_yes_ask": 0.5147,
+      "yes": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": -0.4098,
+       "ci90": [
+        -0.6537,
+        -0.1619
+       ],
+       "win_rate": 0.3929,
+       "mean_cost": 0.523
+      },
+      "no": {
+       "n": 27,
+       "dates": 27,
+       "return_per_dollar": -0.1043,
+       "ci90": [
+        -0.3527,
+        0.1607
+       ],
+       "win_rate": 0.5926,
+       "mean_cost": 0.5713
+      }
+     },
+     {
+      "city": "panama_city",
+      "picks": 28,
+      "hit_rate": 0.3214,
+      "mean_yes_ask": 0.4638,
+      "yes": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": -0.1967,
+       "ci90": [
+        -0.6436,
+        0.3783
+       ],
+       "win_rate": 0.3214,
+       "mean_cost": 0.4745
+      },
+      "no": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": 0.0054,
+       "ci90": [
+        -0.2192,
+        0.2509
+       ],
+       "win_rate": 0.6786,
+       "mean_cost": 0.6676
+      }
+     }
+    ],
+    "hindsight_not_a_rule": {
+     "yes_on_the_3_best": {
+      "n": 70,
+      "dates": 28,
+      "return_per_dollar": 0.1391,
+      "ci90": [
+       0.0108,
+       0.2896
+      ],
+      "win_rate": 0.8429,
+      "mean_cost": 0.7534
+     },
+     "no_on_the_3_worst": {
+      "n": 84,
+      "dates": 29,
+      "return_per_dollar": -0.024,
+      "ci90": [
+       -0.145,
+       0.1026
+      ],
+      "win_rate": 0.619,
+      "mean_cost": 0.5953
+     },
+     "both_legs": {
+      "n": 154,
+      "dates": 29,
+      "return_per_dollar": 0.0502,
+      "ci90": [
+       -0.0457,
+       0.1538
+      ],
+      "win_rate": 0.7208,
+      "mean_cost": 0.6672
+     }
+    }
+   }
+  },
+  "postpeak_1h": {
+   "picks": 1325,
+   "with_a_yes": 1299,
+   "with_a_no": 1315,
+   "all": {
+    "yes_on_every_city": {
+     "n": 1299,
+     "dates": 29,
+     "return_per_dollar": -0.0492,
+     "ci90": [
+      -0.08,
+      -0.0183
+     ],
+     "win_rate": 0.8545,
+     "mean_cost": 0.8628
+    },
+    "no_on_every_city": {
+     "n": 1315,
+     "dates": 29,
+     "return_per_dollar": -0.5618,
+     "ci90": [
+      -0.704,
+      -0.3716
+     ],
+     "win_rate": 0.1361,
+     "mean_cost": 0.1893
+    }
+   },
+   "walk": {
+    "hit": {
+     "yes_on_the_3_best": {
+      "n": 61,
+      "dates": 21,
+      "return_per_dollar": 0.0404,
+      "ci90": [
+       -0.007,
+       0.0928
+      ],
+      "win_rate": 0.9836,
+      "mean_cost": 0.9626
+     },
+     "no_on_the_3_worst": {
+      "n": 61,
+      "dates": 21,
+      "return_per_dollar": -0.7264,
+      "ci90": [
+       -0.8401,
+       -0.6048
+      ],
+      "win_rate": 0.1803,
+      "mean_cost": 0.2899
+     },
+     "both_legs": {
+      "n": 122,
+      "dates": 21,
+      "return_per_dollar": -0.343,
+      "ci90": [
+       -0.4071,
+       -0.2769
+      ],
+      "win_rate": 0.582,
+      "mean_cost": 0.6263
+     }
+    },
+    "yes_return": {
+     "yes_on_the_3_best": {
+      "n": 62,
+      "dates": 21,
+      "return_per_dollar": -0.0412,
+      "ci90": [
+       -0.1024,
+       0.0187
+      ],
+      "win_rate": 0.9032,
+      "mean_cost": 0.9191
+     },
+     "no_on_the_3_worst": {
+      "n": 62,
+      "dates": 21,
+      "return_per_dollar": -0.7039,
+      "ci90": [
+       -0.8131,
+       -0.5798
+      ],
+      "win_rate": 0.1935,
+      "mean_cost": 0.2576
+     },
+     "both_legs": {
+      "n": 124,
+      "dates": 21,
+      "return_per_dollar": -0.3726,
+      "ci90": [
+       -0.4315,
+       -0.3059
+      ],
+      "win_rate": 0.5484,
+      "mean_cost": 0.5883
+     }
+    }
+   },
+   "persist": {
+    "cities": 46,
+    "later_half_from": "2026-10-31",
+    "hit_rate_rank_correlation": -0.017,
+    "yes_return_rank_correlation": -0.133
+   },
+   "now": {
+    "cities_ranked": 47,
+    "yes_on": [
+     {
+      "city": "ankara",
+      "picks": 29,
+      "hit_rate": 1.0,
+      "mean_yes_ask": 0.9399,
+      "yes": {
+       "n": 29,
+       "dates": 29,
+       "return_per_dollar": 0.307,
+       "ci90": [
+        0.0125,
+        0.8158
+       ],
+       "win_rate": 1.0,
+       "mean_cost": 0.9411
+      },
+      "no": {
+       "n": 29,
+       "dates": 29,
+       "return_per_dollar": -1.0,
+       "ci90": [
+        -1.0,
+        -1.0
+       ],
+       "win_rate": 0.0,
+       "mean_cost": 0.0837
+      }
+     },
+     {
+      "city": "austin",
+      "picks": 28,
+      "hit_rate": 1.0,
+      "mean_yes_ask": 0.9785,
+      "yes": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": 0.0221,
+       "ci90": [
+        0.0117,
+        0.0346
+       ],
+       "win_rate": 1.0,
+       "mean_cost": 0.9795
+      },
+      "no": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": -1.0,
+       "ci90": [
+        -1.0,
+        -1.0
+       ],
+       "win_rate": 0.0,
+       "mean_cost": 0.0523
+      }
+     },
+     {
+      "city": "chicago",
+      "picks": 28,
+      "hit_rate": 1.0,
+      "mean_yes_ask": 0.9401,
+      "yes": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": 0.0963,
+       "ci90": [
+        0.0272,
+        0.1952
+       ],
+       "win_rate": 1.0,
+       "mean_cost": 0.9422
+      },
+      "no": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": -1.0,
+       "ci90": [
+        -1.0,
+        -1.0
+       ],
+       "win_rate": 0.0,
+       "mean_cost": 0.113
+      }
+     }
+    ],
+    "no_on": [
+     {
+      "city": "cape_town",
+      "picks": 29,
+      "hit_rate": 0.7241,
+      "mean_yes_ask": 0.8257,
+      "yes": {
+       "n": 29,
+       "dates": 29,
+       "return_per_dollar": -0.2059,
+       "ci90": [
+        -0.3591,
+        -0.0512
+       ],
+       "win_rate": 0.7241,
+       "mean_cost": 0.8299
+      },
+      "no": {
+       "n": 29,
+       "dates": 29,
+       "return_per_dollar": -0.253,
+       "ci90": [
+        -0.7566,
+        0.4018
+       ],
+       "win_rate": 0.2759,
+       "mean_cost": 0.3063
+      }
+     },
+     {
+      "city": "panama_city",
+      "picks": 28,
+      "hit_rate": 0.7143,
+      "mean_yes_ask": 0.6923,
+      "yes": {
+       "n": 27,
+       "dates": 27,
+       "return_per_dollar": 0.0275,
+       "ci90": [
+        -0.3453,
+        0.5306
+       ],
+       "win_rate": 0.7037,
+       "mean_cost": 0.6973
+      },
+      "no": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": -0.6559,
+       "ci90": [
+        -0.8242,
+        -0.4657
+       ],
+       "win_rate": 0.2857,
+       "mean_cost": 0.4452
+      }
+     },
+     {
+      "city": "buenos_aires",
+      "picks": 28,
+      "hit_rate": 0.5714,
+      "mean_yes_ask": 0.643,
+      "yes": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": -0.334,
+       "ci90": [
+        -0.5245,
+        -0.1457
+       ],
+       "win_rate": 0.5714,
+       "mean_cost": 0.648
+      },
+      "no": {
+       "n": 28,
+       "dates": 28,
+       "return_per_dollar": -0.422,
+       "ci90": [
+        -0.6475,
+        -0.1601
+       ],
+       "win_rate": 0.4286,
+       "mean_cost": 0.4497
+      }
+     }
+    ],
+    "hindsight_not_a_rule": {
+     "yes_on_the_3_best": {
+      "n": 85,
+      "dates": 29,
+      "return_per_dollar": 0.1438,
+      "ci90": [
+       0.0321,
+       0.3218
+      ],
+      "win_rate": 1.0,
+      "mean_cost": 0.9541
+     },
+     "no_on_the_3_worst": {
+      "n": 85,
+      "dates": 29,
+      "return_per_dollar": -0.4414,
+      "ci90": [
+       -0.6005,
+       -0.2378
+      ],
+      "win_rate": 0.3294,
+      "mean_cost": 0.3993
+     },
+     "both_legs": {
+      "n": 170,
+      "dates": 29,
+      "return_per_dollar": -0.1488,
+      "ci90": [
+       -0.2628,
+       -0.0112
+      ],
+      "win_rate": 0.6647,
+      "mean_cost": 0.6767
+     }
+    }
+   }
+  }
+ },
+ "walk_cells": {
+  "cells": 24,
+  "interval_above_0": [],
+  "interval_below_0": 7,
+  "no_leg_cells_with_a_positive_return": 0
+ }
+}

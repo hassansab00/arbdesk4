@@ -32,8 +32,8 @@ development leaves standing.
   market    buy every bucket in a price band, whatever the model says
   pick      buy YES on the model's top pick
   cities    the pick rule on the cities that have paid so far (walk-forward:
-            a city trades on a date only on its record before that date),
-            beside the ten best cities in hindsight
+            a city trades on a date only on its outcomes settled before that
+            date's first call), beside the ten best cities in hindsight
   postpeak  one hour after the peak, YES on the top pick when the model gives
             it 0.90 or more and it is still offered below 0.97
   ladder    every bucket's YES, or every bucket's NO, for less than the payout
@@ -45,6 +45,7 @@ Intervals are 90%, resampling dates (seed 11, 1,000).
 import argparse
 import collections
 import csv
+import datetime as dt
 import glob
 import gzip
 import json
@@ -107,7 +108,8 @@ def candidates():
             q = book.get(band) or {}
             ask, bid, won = q.get("ask"), q.get("bid"), int(band == f["winner_band_id"])
             quotes.append((ask, bid))
-            base = {"city": city, "date": date, "cp": cp, "top": int(band == top)}
+            base = {"city": city, "date": date, "cp": cp, "top": int(band == top),
+                    "decided_at": r["decided_at"], "settled_at": f["settled_at"]}
             if ask is not None and 0 < ask < 1:
                 trades.append(dict(base, side="YES", price=ask, cost=cost(ask), p=p, win=won))
             if bid is not None and 0 < bid < 1:
@@ -151,22 +153,33 @@ def edge_grid(dev):
                                      for cp in CHECKPOINTS for side in ("YES", "NO")}}
 
 
+def when(stamp):
+    return dt.datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+
+
 def by_city(ts):
     """The rule on every city; on the cities that paid so far (a city trades
     on a date only with 8 earlier trades whose mean return is above 0); on the
-    ten best so far; and on the ten best in hindsight, which is not a rule."""
+    ten best so far; and on the ten best in hindsight, which is not a rule.
+
+    "So far" is what had SETTLED before the date's first call (Codex on #512):
+    the evening-before call for a day is made before the day before it has
+    settled, so an earlier target date alone is not an earlier outcome."""
     ts = sorted(ts, key=lambda t: t["date"])
     hist, paid, ten = collections.defaultdict(list), [], []
     for d in sorted({t["date"] for t in ts}):
         today = [t for t in ts if t["date"] == d]
-        seen = [c for c, v in hist.items() if len(v) >= 8]
-        good = {c for c in seen if np.mean(hist[c]) > 0}
-        best = set(sorted(seen, key=lambda c: -np.mean(hist[c]))[:10])
+        first_call = min(when(t["decided_at"]) for t in today)
+        known = {c: [z for at, z in v if at <= first_call] for c, v in hist.items()}
+        seen = [c for c, v in known.items() if len(v) >= 8]
+        good = {c for c in seen if np.mean(known[c]) > 0}
+        best = set(sorted(seen, key=lambda c: -np.mean(known[c]))[:10])
         paid += [t for t in today if t["city"] in good]
         ten += [t for t in today if t["city"] in best]
         for t in today:
-            hist[t["city"]].append(t["win"] / t["cost"] - 1)
-    hindsight = set(sorted(hist, key=lambda c: -np.mean(hist[c]))[:10])
+            hist[t["city"]].append((when(t["settled_at"]), t["win"] / t["cost"] - 1))
+    every = {c: [z for _at, z in v] for c, v in hist.items()}
+    hindsight = set(sorted(every, key=lambda c: -np.mean(every[c]))[:10])
     return {"all_cities": result(ts), "cities_that_paid_so_far": result(paid), "ten_best_so_far": result(ten),
             "ten_best_in_hindsight_not_a_rule": result([t for t in ts if t["city"] in hindsight])}
 

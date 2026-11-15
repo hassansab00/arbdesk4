@@ -438,26 +438,26 @@
     "mean_cost": 0.566
    },
    "cities_that_paid_so_far": {
-    "n": 970,
+    "n": 887,
     "dates": 26,
-    "return_per_dollar": -0.0931,
+    "return_per_dollar": -0.0949,
     "ci90": [
-     -0.171,
-     -0.0067
+     -0.1803,
+     -0.0066
     ],
-    "win_rate": 0.5392,
-    "mean_cost": 0.5794
+    "win_rate": 0.5344,
+    "mean_cost": 0.5776
    },
    "ten_best_so_far": {
-    "n": 578,
+    "n": 581,
     "dates": 26,
-    "return_per_dollar": -0.048,
+    "return_per_dollar": -0.07,
     "ci90": [
-     -0.14,
-     0.0441
+     -0.1672,
+     0.0269
     ],
-    "win_rate": 0.5571,
-    "mean_cost": 0.5742
+    "win_rate": 0.5542,
+    "mean_cost": 0.5815
    },
    "ten_best_in_hindsight_not_a_rule": {
     "n": 619,
@@ -484,26 +484,26 @@
     "mean_cost": 0.4498
    },
    "cities_that_paid_so_far": {
-    "n": 766,
-    "dates": 43,
-    "return_per_dollar": -0.0882,
+    "n": 745,
+    "dates": 42,
+    "return_per_dollar": -0.0757,
     "ci90": [
-     -0.1739,
-     0.0018
+     -0.1503,
+     0.0002
     ],
-    "win_rate": 0.4256,
-    "mean_cost": 0.4525
+    "win_rate": 0.4268,
+    "mean_cost": 0.4513
    },
    "ten_best_so_far": {
-    "n": 365,
-    "dates": 43,
-    "return_per_dollar": -0.1193,
+    "n": 361,
+    "dates": 42,
+    "return_per_dollar": -0.1005,
     "ci90": [
-     -0.2495,
-     0.0162
+     -0.2155,
+     0.0184
     ],
-    "win_rate": 0.3918,
-    "mean_cost": 0.441
+    "win_rate": 0.3989,
+    "mean_cost": 0.4432
    },
    "ten_best_in_hindsight_not_a_rule": {
     "n": 413,
@@ -530,26 +530,26 @@
     "mean_cost": 0.4784
    },
    "cities_that_paid_so_far": {
-    "n": 366,
-    "dates": 33,
-    "return_per_dollar": -0.0503,
+    "n": 347,
+    "dates": 32,
+    "return_per_dollar": -0.0105,
     "ci90": [
-     -0.1528,
-     0.0459
+     -0.1224,
+     0.0935
     ],
-    "win_rate": 0.4918,
-    "mean_cost": 0.4979
+    "win_rate": 0.4986,
+    "mean_cost": 0.4967
    },
    "ten_best_so_far": {
-    "n": 289,
-    "dates": 33,
-    "return_per_dollar": 0.0007,
+    "n": 281,
+    "dates": 32,
+    "return_per_dollar": -0.0041,
     "ci90": [
-     -0.1046,
-     0.1033
+     -0.1172,
+     0.1116
     ],
-    "win_rate": 0.5156,
-    "mean_cost": 0.5091
+    "win_rate": 0.5125,
+    "mean_cost": 0.5067
    },
    "ten_best_in_hindsight_not_a_rule": {
     "n": 343,
