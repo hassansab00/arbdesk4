@@ -15,13 +15,18 @@ corrected sources with equal weights. Two candidates, fixed here before a score:
           instead of equally.
 
 PART `forward`: every forward row from 12 Oct with a settled station maximum,
-at leads 0, 1 and 2. Each run night is fitted only on target days before it.
-`prod` is the bias in force that night (derived_station_correction). Then the
-served first calls are replayed with the same integrator: the evening-before
-call with half the centre's change (the served centre is the station-model
-blend, P3.9 is half of it) and the served width; the morning call from the
-lead-0 row's centre and the stored station width (what sd_corr:v1 priced,
-with `own_w` in place of the combination).
+at leads 0, 1 and 2 (the newest run of each run date). Each run date is fitted
+only on target days at least two days before it: the day before may not have
+ended in the city when the run is made. `prod` is the bias in force that night
+(derived_station_correction). Then the served first calls are replayed with
+the same integrator, from each model's newest run made no later than the call
+(Codex on #509: a run of the same date made after the call is not an input)
+and a fit that ends two days before the call's date. Both centres are built
+from those same runs, so their difference is the bias and the weights alone:
+the evening-before call moves by half of it (the served centre is the
+station-model blend, P3.9 is half of it) at the served width; the morning call
+is priced from each centre at the stored station width (what sd_corr:v1
+priced, and `own_w` in its place).
 
 PART `record`: the same question on the long record (data/training/
 previous_runs, lead 1, 14 Jul 2025 on): P3.9's recipe as coded (`base`),
@@ -128,58 +133,101 @@ def shrunk(errors):
 # ---------------------------------------------------------------------------
 # forward: the rows the engine was served
 # ---------------------------------------------------------------------------
-def forward_rows():
-    """{(city, for_date, run date): {"lead", "v": [7 maxima]}}: the newest run of that date."""
+def forward_runs():
+    """{(city, for_date): {source index: [(run_at, lead, max)]}}, each list by run time."""
     si = {s: i for i, s in enumerate(SOURCES)}
-    out = {}
+    out = collections.defaultdict(lambda: collections.defaultdict(list))
     for r in read("weather_forecast_models"):
-        if r["source"] != sc.FORWARD_SOURCE or r["model"] not in si or not r["forecast_max_c"]:
-            continue
-        e = out.setdefault((r["city_key"], r["for_date"], r["run_at"][:10]),
-                           {"lead": int(r["lead_days"]), "run_at": r["run_at"], "v": [None] * 7})
-        if r["run_at"] >= e["run_at"]:
-            e["v"][si[r["model"]]] = float(r["forecast_max_c"])
-            e["run_at"], e["lead"] = r["run_at"], int(r["lead_days"])
+        if r["source"] == sc.FORWARD_SOURCE and r["model"] in si and r["forecast_max_c"]:
+            out[(r["city_key"], r["for_date"])][si[r["model"]]].append(
+                (r["run_at"], int(r["lead_days"]), float(r["forecast_max_c"])))
+    for by_model in out.values():
+        for runs in by_model.values():
+            runs.sort()
     return out
 
 
+def newest(by_model, before=None, on=None):
+    """(lead, [7 maxima]) from each model's newest run: made no later than
+    `before` (an ISO time), or on the run date `on`. None without a run."""
+    v, leads = [None] * 7, []
+    for m, runs in by_model.items():
+        got = [x for x in runs if (before is None or ts(x[0]) <= before) and (on is None or x[0][:10] == on)]
+        if got:
+            v[m] = got[-1][2]
+            leads.append(got[-1][1])
+    return (min(leads), v) if leads else None
+
+
+class Fits:
+    """The own-bias fit for a (date, lead): the forward rows of that lead whose
+    target day is at least GAP days before the date, in the W days before it."""
+    GAP = 2
+
+    def __init__(self, runs, truth):
+        self.truth, self.cache = truth, {}
+        self.rows = collections.defaultdict(list)       # lead -> [(city, target, [7])], one per run date
+        for (c, d), by_model in runs.items():
+            for on in sorted({x[0][:10] for rs in by_model.values() for x in rs}):
+                lead, v = newest(by_model, on=on)
+                self.rows[lead].append((c, d, v))
+
+    def at(self, date, lead):
+        if (date, lead) not in self.cache:
+            day = dt.date.fromisoformat(date)
+            lo, hi = (day - dt.timedelta(days=W)).isoformat(), (day - dt.timedelta(days=self.GAP)).isoformat()
+            errors = collections.defaultdict(list)
+            for c, d, v in self.rows[lead]:
+                if lo <= d <= hi and (c, d) in self.truth:
+                    for m, x in enumerate(v):
+                        if x is not None:
+                            errors[(c, m)].append(self.truth[(c, d)] - x)
+            self.cache[(date, lead)] = shrunk(errors) if errors else None
+        return self.cache[(date, lead)]
+
+
+def centres(city, lead, v, table, fit):
+    """(prod, own, own_w) for one set of runs, or None: the bias in force, the
+    own bias, and the own bias with skill weights."""
+    lk = max(1, min(lead, max(sc.LEADS)))
+    p = [x + table[(city, SOURCES[m], lk)] for m, x in enumerate(v)
+         if x is not None and (city, SOURCES[m], lk) in table]
+    if fit is None or len(p) < sc.MIN_SOURCES:
+        return None
+    bias, pooled, mse, pmse = fit
+    own, wts = [], []
+    for m, x in enumerate(v):
+        if x is not None and m in pooled:
+            own.append(x + bias.get((city, m), pooled[m]))
+            wts.append(1.0 / mse.get((city, m), pmse[m]))
+    if len(own) < sc.MIN_SOURCES:
+        return None
+    return float(np.mean(p)), float(np.mean(own)), float(np.dot(own, wts) / sum(wts))
+
+
+def in_force(prod, as_ofs, date):
+    before = [a for a in as_ofs if a <= date]
+    return prod[before[-1]] if before else None
+
+
 def forward(truth):
-    fw = forward_rows()
+    runs = forward_runs()
+    fits = Fits(runs, truth)
     prod = collections.defaultdict(dict)
     for r in read("derived_station_correction"):
         prod[r["as_of"]][(r["city_key"], r["source"], int(r["lead_days"]))] = float(r["bias_c"])
     as_ofs = sorted(prod)
-    fits, res = {}, []
-    for (c, d, run), e in sorted(fw.items(), key=lambda kv: kv[0][2]):
+    res = []
+    for (c, d), by_model in runs.items():
         y = truth.get((c, d))
-        before = [a for a in as_ofs if a <= run]
-        if y is None or run < FORWARD_FROM or not before:
-            continue
-        lead, table = e["lead"], prod[before[-1]]
-        lk = max(1, min(lead, max(sc.LEADS)))
-        p = [v + table[(c, SOURCES[m], lk)] for m, v in enumerate(e["v"])
-             if v is not None and (c, SOURCES[m], lk) in table]
-        if (run, lead) not in fits:
-            lo = (dt.date.fromisoformat(run) - dt.timedelta(days=W)).isoformat()
-            errors = collections.defaultdict(list)
-            for (c2, d2, _r2), e2 in fw.items():
-                if e2["lead"] == lead and lo <= d2 < run and (c2, d2) in truth:
-                    for m, v in enumerate(e2["v"]):
-                        if v is not None:
-                            errors[(c2, m)].append(truth[(c2, d2)] - v)
-            fits[(run, lead)] = shrunk(errors) if errors else None
-        if fits[(run, lead)] is None or len(p) < sc.MIN_SOURCES:
-            continue
-        bias, pooled, mse, pmse = fits[(run, lead)]
-        own, wts = [], []
-        for m, v in enumerate(e["v"]):
-            if v is not None and m in pooled:
-                own.append(v + bias.get((c, m), pooled[m]))
-                wts.append(1.0 / mse.get((c, m), pmse[m]))
-        if len(own) < sc.MIN_SOURCES:
-            continue
-        res.append({"city": c, "date": d, "run": run, "lead": lead, "y": y, "prod": float(np.mean(p)),
-                    "own": float(np.mean(own)), "own_w": float(np.dot(own, wts) / sum(wts))})
+        for on in sorted({x[0][:10] for rs in by_model.values() for x in rs}):
+            table = in_force(prod, as_ofs, on)
+            if y is None or on < FORWARD_FROM or table is None:
+                continue
+            lead, v = newest(by_model, on=on)
+            got = centres(c, lead, v, table, fits.at(on, lead))
+            if got:
+                res.append({"run": on, "lead": lead, "y": y, "prod": got[0], "own": got[1], "own_w": got[2]})
     by_lead = {}
     for lead in (0, 1, 2):
         rs = [r for r in res if r["lead"] == lead]
@@ -188,12 +236,13 @@ def forward(truth):
             **{f"mae_{k}": round(float(np.mean([abs(r["y"] - r[k]) for r in rs])), 4) for k in ("prod", "own", "own_w")},
             "mae_gain_prod_minus_own_w": interval([(r["run"], abs(r["y"] - r["prod"]) - abs(r["y"] - r["own_w"]))
                                                    for r in rs])}
-    return res, by_lead
+    return (runs, fits, prod, as_ofs), by_lead
 
 
-def replay(res):
-    """The served evening-before and morning first calls, re-priced."""
-    study = {(r["city"], r["date"], r["run"]): r for r in res}
+def replay(state):
+    """The served evening-before and morning first calls, re-priced from the
+    runs made no later than each call."""
+    runs, fits, prod, as_ofs = state
     city_rows = cities()
     bands = {}
     recent = csv.DictReader(gzip.open(os.path.join(ROOT, "data", "training", "market_definitions",
@@ -230,9 +279,12 @@ def replay(res):
         if len(bs) != len(served) or not live or c not in city_rows:
             continue
         st = max(live, key=lambda z: z["computed_at"])
-        s = study.get((c, d, st["computed_at"][:10]))
-        if s is None:
+        at, day = ts(r["decided_at"]), r["decided_at"][:10]
+        known, table = newest(runs.get((c, d), {}), before=at), in_force(prod, as_ofs, day)
+        got = centres(c, known[0], known[1], table, fits.at(day, known[0])) if known and table else None
+        if got is None:
             continue
+        s = {"prod": got[0], "own_w": got[2]}
         floor = float(r["running_max_c"]) if r["running_max_c"] else None
         q = ((float(city_rows[c]["observation_q_down"] or 0), float(city_rows[c]["observation_q_up"] or 0))
              if floor is not None else (0.0, 0.0))
@@ -249,12 +301,13 @@ def replay(res):
                 continue
             centre, sigma = float(r["centre_c"]), float(r["sigma_c"])
             row["check"] = abs(score(lad(centre, sigma), win)[0] - row["served"][0])
-            row["own_w"] = score(lad(centre + 0.5 * (s["own_w"] - float(st["combined_c"])), sigma), win)
+            row["own_w"] = score(lad(centre + 0.5 * (s["own_w"] - s["prod"]), sigma), win)
         else:
             if not st["width_c"]:
                 continue
-            row["combination"] = score(lad(float(st["combined_c"]), float(st["width_c"])), win)
+            row["combination"] = score(lad(s["prod"], float(st["width_c"])), win)
             row["own_w"] = score(lad(s["own_w"], float(st["width_c"])), win)
+            row["sd_corr_row"] = score(lad(float(st["combined_c"]), float(st["width_c"])), win)
         out[cp].append(row)
     summary = {}
     for cp, rs in out.items():
@@ -263,7 +316,7 @@ def replay(res):
                        "first_date": min(r["date"] for r in rs), "last_date": max(r["date"] for r in rs),
                        "market": {"n": len(m), "log_loss": round(float(np.mean([r["market"][0] for r in m])), 4),
                                   "top1": round(float(np.mean([r["market"][1] for r in m])), 4)}}
-        for k in ("served", "combination", "own_w"):
+        for k in ("served", "sd_corr_row", "combination", "own_w"):
             if k in rs[0]:
                 summary[cp][k] = {"log_loss": round(float(np.mean([r[k][0] for r in rs])), 4),
                                   "top1": round(float(np.mean([r[k][1] for r in rs])), 4)}
@@ -398,9 +451,9 @@ def main(argv=None):
     ap.add_argument("--out", required=True)
     args = ap.parse_args(argv)
     truth = station_truth(cities())
-    res, by_lead = forward(truth)
-    out = {"priors": {"k": K, "min_n": MIN_N, "bound_c": BOUND, "window_days": W},
-           "forward": {"from_run_night": FORWARD_FROM, "by_lead": by_lead, "served_calls_replayed": replay(res)},
+    state, by_lead = forward(truth)
+    out = {"priors": {"k": K, "min_n": MIN_N, "bound_c": BOUND, "window_days": W, "fit_gap_days": Fits.GAP},
+           "forward": {"from_run_night": FORWARD_FROM, "by_lead": by_lead, "served_calls_replayed": replay(state)},
            "record": record(truth)}
     os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, "station_weights_study.json"), "w") as fh:

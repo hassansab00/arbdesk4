@@ -169,26 +169,31 @@ station maximum):
 
 | Lead | Rows | Run nights | Bias in force | Own bias | Own bias + skill weights | Gain | 90% |
 |---|---|---|---|---|---|---|---|
-| 0 | 1,548 | 34 | 0.752 C | 0.734 | 0.700 | 0.051 | 0.043 to 0.060 |
-| 1 | 2,196 | 33 | 0.892 C | 0.867 | 0.846 | 0.046 | 0.039 to 0.053 |
-| 2 | 1,439 | 31 | 0.994 C | 0.977 | 0.960 | 0.034 | 0.023 to 0.045 |
+| 0 | 1,548 | 34 | 0.752 C | 0.739 | 0.709 | 0.043 | 0.035 to 0.052 |
+| 1 | 2,196 | 33 | 0.892 C | 0.870 | 0.850 | 0.043 | 0.035 to 0.050 |
+| 2 | 1,439 | 31 | 0.994 C | 0.980 | 0.963 | 0.032 | 0.021 to 0.042 |
 
 **Replayed on the served first calls** (`forward.served_calls_replayed`; 14 Oct
-- 13 Nov, 31 dates; the replay reproduces the served evening ladders to
-within 0.016 log loss on every call):
+- 14 Nov, 32 dates). Each call is re-priced from the runs made no later than
+it, and both centres use those same runs, so the difference is the bias and
+the weights alone. The replay reproduces the served evening ladders to within
+0.016 log loss on every call.
 
 | Call | Calls | Served | Combination as it is | Own bias + weights | Market |
 |---|---|---|---|---|---|
-| Morning log loss | 1,438 | 1.686 | 1.442 | 1.401 | 1.098 |
-| Morning top pick | | 35.4% | 41.2% | 43.7% | 52.8% |
-| Evening log loss | 1,432 | 1.514 | - | 1.483 | 1.204 |
-| Evening top pick | | 39.7% | - | 39.6% | 50.5% |
+| Morning log loss | 1,482 | 1.682 | 1.440 | 1.403 | 1.102 |
+| Morning top pick | | 35.4% | 40.9% | 43.5% | 52.6% |
+| Evening log loss | 1,476 | 1.514 | - | 1.498 | 1.210 |
+| Evening top pick | | 39.6% | - | 39.4% | 50.2% |
 
-- The morning column "combination as it is" is what this PR turns on (+0.2437,
-  90% +0.2021 to +0.2856).
-- Own bias and weights add +0.041 to that at the morning call. At the evening
-  call they gain +0.0317 log loss (+0.0217 to +0.0419) with no change in hit
-  rate, because P3.9 is half of that centre.
+- The morning column "combination as it is" is what this PR turns on
+  (+0.2417, 90% +0.2014 to +0.2802).
+- Own bias and weights add +0.037 to that at the morning call. At the
+  evening call they gain +0.0160 log loss (+0.0115 to +0.0202) with no gain
+  in hit rate, because P3.9 is half of that centre.
+- Codex on #509: the first version of this replay took the newest run of the
+  call's date, which for 739 evening calls was made after the call. That
+  doubled the evening gain (+0.0317). It is corrected here.
 
 **On the long record** (`record`; lead 1, 19,500 city-days, 1 Oct 2025 - 14 Nov
 2026, each day fitted on the 45 days before it):

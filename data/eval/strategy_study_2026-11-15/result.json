@@ -1,0 +1,610 @@
+{
+ "candidates": 158650,
+ "calls": 9504,
+ "first_date": "2026-09-25",
+ "last_date": "2026-11-14",
+ "development_to": "2026-10-31",
+ "holdout_from": "2026-11-01",
+ "edge_development": {
+  "cells_with_80_trades": 132,
+  "cells_with_interval_above_0": 0,
+  "cells_with_interval_below_0": 101,
+  "best_cell": {
+   "n": 2766,
+   "dates": 37,
+   "return_per_dollar": -0.0664,
+   "ci90": [
+    -0.0852,
+    -0.0479
+   ],
+   "win_rate": 0.5973,
+   "mean_cost": 0.6382,
+   "checkpoint": "d1_eve",
+   "side": "NO",
+   "edge": 0.03,
+   "price": "all"
+  },
+  "worst_cell": {
+   "n": 144,
+   "dates": 15,
+   "return_per_dollar": -0.789,
+   "ci90": [
+    -0.9632,
+    -0.5982
+   ],
+   "win_rate": 0.0347,
+   "mean_cost": 0.1109,
+   "checkpoint": "postpeak_1h",
+   "side": "NO",
+   "edge": 0.06,
+   "price": "under 0.2"
+  },
+  "edge_0.06_all_prices": {
+   "d1_eve:YES": {
+    "n": 1573,
+    "dates": 37,
+    "return_per_dollar": -0.457,
+    "ci90": [
+     -0.53,
+     -0.3818
+    ],
+    "win_rate": 0.0706,
+    "mean_cost": 0.1148
+   },
+   "d1_eve:NO": {
+    "n": 2257,
+    "dates": 37,
+    "return_per_dollar": -0.0689,
+    "ci90": [
+     -0.0946,
+     -0.0443
+    ],
+    "win_rate": 0.5698,
+    "mean_cost": 0.6114
+   },
+   "morning:YES": {
+    "n": 1097,
+    "dates": 27,
+    "return_per_dollar": -0.3809,
+    "ci90": [
+     -0.4911,
+     -0.2632
+    ],
+    "win_rate": 0.0957,
+    "mean_cost": 0.1367
+   },
+   "morning:NO": {
+    "n": 1468,
+    "dates": 27,
+    "return_per_dollar": -0.0845,
+    "ci90": [
+     -0.1294,
+     -0.0382
+    ],
+    "win_rate": 0.5279,
+    "mean_cost": 0.5675
+   },
+   "noon:YES": {
+    "n": 507,
+    "dates": 15,
+    "return_per_dollar": -0.358,
+    "ci90": [
+     -0.5268,
+     -0.1983
+    ],
+    "win_rate": 0.1538,
+    "mean_cost": 0.2073
+   },
+   "noon:NO": {
+    "n": 578,
+    "dates": 15,
+    "return_per_dollar": -0.1549,
+    "ci90": [
+     -0.2095,
+     -0.1078
+    ],
+    "win_rate": 0.481,
+    "mean_cost": 0.5346
+   },
+   "prepeak_2h:YES": {
+    "n": 515,
+    "dates": 15,
+    "return_per_dollar": -0.1154,
+    "ci90": [
+     -0.3629,
+     0.1174
+    ],
+    "win_rate": 0.1553,
+    "mean_cost": 0.1992
+   },
+   "prepeak_2h:NO": {
+    "n": 599,
+    "dates": 15,
+    "return_per_dollar": -0.1215,
+    "ci90": [
+     -0.1707,
+     -0.0774
+    ],
+    "win_rate": 0.5058,
+    "mean_cost": 0.5604
+   },
+   "prepeak_1h:YES": {
+    "n": 466,
+    "dates": 15,
+    "return_per_dollar": -0.3415,
+    "ci90": [
+     -0.5048,
+     -0.1689
+    ],
+    "win_rate": 0.1502,
+    "mean_cost": 0.2114
+   },
+   "prepeak_1h:NO": {
+    "n": 512,
+    "dates": 15,
+    "return_per_dollar": -0.1872,
+    "ci90": [
+     -0.2882,
+     -0.063
+    ],
+    "win_rate": 0.4219,
+    "mean_cost": 0.4965
+   },
+   "postpeak_1h:YES": {
+    "n": 227,
+    "dates": 15,
+    "return_per_dollar": -0.4638,
+    "ci90": [
+     -0.703,
+     -0.2113
+    ],
+    "win_rate": 0.1498,
+    "mean_cost": 0.2195
+   },
+   "postpeak_1h:NO": {
+    "n": 253,
+    "dates": 15,
+    "return_per_dollar": -0.5704,
+    "ci90": [
+     -0.7097,
+     -0.4271
+    ],
+    "win_rate": 0.1858,
+    "mean_cost": 0.2739
+   }
+  }
+ },
+ "market_alone_all_dates": {
+  "YES": {
+   "0.03-0.100": {
+    "n": 7934,
+    "dates": 51,
+    "return_per_dollar": -0.3578,
+    "ci90": [
+     -0.4696,
+     -0.2318
+    ],
+    "win_rate": 0.0377,
+    "mean_cost": 0.0599
+   },
+   "0.10-0.250": {
+    "n": 7097,
+    "dates": 51,
+    "return_per_dollar": -0.2481,
+    "ci90": [
+     -0.3156,
+     -0.1795
+    ],
+    "win_rate": 0.1316,
+    "mean_cost": 0.1701
+   },
+   "0.25-0.450": {
+    "n": 7516,
+    "dates": 51,
+    "return_per_dollar": -0.1576,
+    "ci90": [
+     -0.1877,
+     -0.1273
+    ],
+    "win_rate": 0.303,
+    "mean_cost": 0.3546
+   },
+   "0.45-0.650": {
+    "n": 5242,
+    "dates": 51,
+    "return_per_dollar": -0.087,
+    "ci90": [
+     -0.117,
+     -0.0552
+    ],
+    "win_rate": 0.4996,
+    "mean_cost": 0.5463
+   },
+   "0.65-0.850": {
+    "n": 1998,
+    "dates": 49,
+    "return_per_dollar": -0.0545,
+    "ci90": [
+     -0.0849,
+     -0.0231
+    ],
+    "win_rate": 0.6907,
+    "mean_cost": 0.732
+   },
+   "0.85-0.930": {
+    "n": 459,
+    "dates": 33,
+    "return_per_dollar": -0.0247,
+    "ci90": [
+     -0.0642,
+     0.0154
+    ],
+    "win_rate": 0.8715,
+    "mean_cost": 0.8929
+   },
+   "0.93-0.970": {
+    "n": 428,
+    "dates": 33,
+    "return_per_dollar": 0.0125,
+    "ci90": [
+     -0.0056,
+     0.028
+    ],
+    "win_rate": 0.9626,
+    "mean_cost": 0.9508
+   },
+   "0.97-0.995": {
+    "n": 648,
+    "dates": 34,
+    "return_per_dollar": -0.0075,
+    "ci90": [
+     -0.0173,
+     0.0022
+    ],
+    "win_rate": 0.9769,
+    "mean_cost": 0.9842
+   }
+  },
+  "NO": {
+   "0.03-0.100": {
+    "n": 667,
+    "dates": 32,
+    "return_per_dollar": -0.6417,
+    "ci90": [
+     -0.7847,
+     -0.4717
+    ],
+    "win_rate": 0.024,
+    "mean_cost": 0.0678
+   },
+   "0.10-0.250": {
+    "n": 650,
+    "dates": 36,
+    "return_per_dollar": -0.4621,
+    "ci90": [
+     -0.6031,
+     -0.3342
+    ],
+    "win_rate": 0.1015,
+    "mean_cost": 0.1759
+   },
+   "0.25-0.450": {
+    "n": 2354,
+    "dates": 51,
+    "return_per_dollar": -0.2182,
+    "ci90": [
+     -0.283,
+     -0.1532
+    ],
+    "win_rate": 0.3054,
+    "mean_cost": 0.3927
+   },
+   "0.45-0.650": {
+    "n": 5906,
+    "dates": 51,
+    "return_per_dollar": -0.0756,
+    "ci90": [
+     -0.0992,
+     -0.0539
+    ],
+    "win_rate": 0.5251,
+    "mean_cost": 0.569
+   },
+   "0.65-0.850": {
+    "n": 7801,
+    "dates": 51,
+    "return_per_dollar": -0.0427,
+    "ci90": [
+     -0.0552,
+     -0.0304
+    ],
+    "win_rate": 0.7262,
+    "mean_cost": 0.758
+   },
+   "0.85-0.930": {
+    "n": 5208,
+    "dates": 51,
+    "return_per_dollar": -0.0176,
+    "ci90": [
+     -0.0298,
+     -0.0047
+    ],
+    "win_rate": 0.8834,
+    "mean_cost": 0.899
+   },
+   "0.93-0.970": {
+    "n": 4045,
+    "dates": 51,
+    "return_per_dollar": -0.0114,
+    "ci90": [
+     -0.0198,
+     -0.0032
+    ],
+    "win_rate": 0.9451,
+    "mean_cost": 0.956
+   },
+   "0.97-0.995": {
+    "n": 9044,
+    "dates": 51,
+    "return_per_dollar": -0.0056,
+    "ci90": [
+     -0.0106,
+     -0.001
+    ],
+    "win_rate": 0.9798,
+    "mean_cost": 0.9853
+   }
+  }
+ },
+ "pick_all_dates": {
+  "d1_eve": {
+   "n": 2061,
+   "dates": 51,
+   "return_per_dollar": -0.0656,
+   "ci90": [
+    -0.1143,
+    -0.0165
+   ],
+   "win_rate": 0.4275,
+   "mean_cost": 0.4498
+  },
+  "morning": {
+   "n": 1604,
+   "dates": 41,
+   "return_per_dollar": -0.1341,
+   "ci90": [
+    -0.176,
+    -0.0886
+   ],
+   "win_rate": 0.4221,
+   "mean_cost": 0.4784
+  },
+  "noon": {
+   "n": 1036,
+   "dates": 29,
+   "return_per_dollar": -0.0996,
+   "ci90": [
+    -0.1494,
+    -0.0519
+   ],
+   "win_rate": 0.5232,
+   "mean_cost": 0.5697
+  },
+  "prepeak_2h": {
+   "n": 1094,
+   "dates": 29,
+   "return_per_dollar": -0.0837,
+   "ci90": [
+    -0.1365,
+    -0.0286
+   ],
+   "win_rate": 0.5137,
+   "mean_cost": 0.5489
+  },
+  "prepeak_1h": {
+   "n": 974,
+   "dates": 29,
+   "return_per_dollar": -0.0838,
+   "ci90": [
+    -0.1289,
+    -0.0402
+   ],
+   "win_rate": 0.5441,
+   "mean_cost": 0.5813
+  },
+  "postpeak_1h": {
+   "n": 252,
+   "dates": 29,
+   "return_per_dollar": -0.1095,
+   "ci90": [
+    -0.2079,
+    -0.0142
+   ],
+   "win_rate": 0.5913,
+   "mean_cost": 0.6358
+  }
+ },
+ "cities_all_dates": {
+  "pick_noon_to_1h_before_peak": {
+   "all_cities": {
+    "n": 3104,
+    "dates": 29,
+    "return_per_dollar": -0.089,
+    "ci90": [
+     -0.1286,
+     -0.05
+    ],
+    "win_rate": 0.5264,
+    "mean_cost": 0.566
+   },
+   "cities_that_paid_so_far": {
+    "n": 970,
+    "dates": 26,
+    "return_per_dollar": -0.0931,
+    "ci90": [
+     -0.171,
+     -0.0067
+    ],
+    "win_rate": 0.5392,
+    "mean_cost": 0.5794
+   },
+   "ten_best_so_far": {
+    "n": 578,
+    "dates": 26,
+    "return_per_dollar": -0.048,
+    "ci90": [
+     -0.14,
+     0.0441
+    ],
+    "win_rate": 0.5571,
+    "mean_cost": 0.5742
+   },
+   "ten_best_in_hindsight_not_a_rule": {
+    "n": 619,
+    "dates": 29,
+    "return_per_dollar": 0.1805,
+    "ci90": [
+     0.0894,
+     0.2702
+    ],
+    "win_rate": 0.685,
+    "mean_cost": 0.5912
+   }
+  },
+  "pick_evening_before": {
+   "all_cities": {
+    "n": 2061,
+    "dates": 51,
+    "return_per_dollar": -0.0656,
+    "ci90": [
+     -0.1143,
+     -0.0165
+    ],
+    "win_rate": 0.4275,
+    "mean_cost": 0.4498
+   },
+   "cities_that_paid_so_far": {
+    "n": 766,
+    "dates": 43,
+    "return_per_dollar": -0.0882,
+    "ci90": [
+     -0.1739,
+     0.0018
+    ],
+    "win_rate": 0.4256,
+    "mean_cost": 0.4525
+   },
+   "ten_best_so_far": {
+    "n": 365,
+    "dates": 43,
+    "return_per_dollar": -0.1193,
+    "ci90": [
+     -0.2495,
+     0.0162
+    ],
+    "win_rate": 0.3918,
+    "mean_cost": 0.441
+   },
+   "ten_best_in_hindsight_not_a_rule": {
+    "n": 413,
+    "dates": 50,
+    "return_per_dollar": 0.1688,
+    "ci90": [
+     0.0849,
+     0.2565
+    ],
+    "win_rate": 0.5206,
+    "mean_cost": 0.4443
+   }
+  },
+  "pick_morning": {
+   "all_cities": {
+    "n": 1604,
+    "dates": 41,
+    "return_per_dollar": -0.1341,
+    "ci90": [
+     -0.176,
+     -0.0886
+    ],
+    "win_rate": 0.4221,
+    "mean_cost": 0.4784
+   },
+   "cities_that_paid_so_far": {
+    "n": 366,
+    "dates": 33,
+    "return_per_dollar": -0.0503,
+    "ci90": [
+     -0.1528,
+     0.0459
+    ],
+    "win_rate": 0.4918,
+    "mean_cost": 0.4979
+   },
+   "ten_best_so_far": {
+    "n": 289,
+    "dates": 33,
+    "return_per_dollar": 0.0007,
+    "ci90": [
+     -0.1046,
+     0.1033
+    ],
+    "win_rate": 0.5156,
+    "mean_cost": 0.5091
+   },
+   "ten_best_in_hindsight_not_a_rule": {
+    "n": 343,
+    "dates": 41,
+    "return_per_dollar": 0.1787,
+    "ci90": [
+     0.088,
+     0.2751
+    ],
+    "win_rate": 0.5918,
+    "mean_cost": 0.511
+   }
+  }
+ },
+ "postpeak": {
+  "development": {
+   "n": 55,
+   "dates": 13,
+   "return_per_dollar": 0.0674,
+   "ci90": [
+    0.0149,
+    0.1187
+   ],
+   "win_rate": 0.9455,
+   "mean_cost": 0.8912
+  },
+  "holdout": {
+   "n": 25,
+   "dates": 11,
+   "return_per_dollar": -0.0116,
+   "ci90": [
+    -0.1145,
+    0.0778
+   ],
+   "win_rate": 0.92,
+   "mean_cost": 0.9077
+  },
+  "both": {
+   "n": 80,
+   "dates": 24,
+   "return_per_dollar": 0.0427,
+   "ci90": [
+    -0.0064,
+    0.0882
+   ],
+   "win_rate": 0.9375,
+   "mean_cost": 0.8963
+  }
+ },
+ "ladder": {
+  "calls_with_every_ask": 9473,
+  "lowest_cost_of_every_yes": 1.0061,
+  "calls_where_every_yes_costs_under_1": 0,
+  "calls_with_every_bid": 220,
+  "lowest_cost_of_every_no_over_its_payout": -0.0056,
+  "calls_where_every_no_costs_under_its_payout": 1
+ }
+}
