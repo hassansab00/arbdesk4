@@ -933,6 +933,515 @@
    }
   ]
  },
+ "at_the_recording_window": {
+  "window": "23:00-02:00 Beirut = 21:00Z-00:00Z on the evening before the target date",
+  "captures": [
+   "21:36Z",
+   "22:36Z",
+   "23:36Z"
+  ],
+  "trades": [
+   {
+    "city": "amsterdam",
+    "date": "2026-11-12",
+    "side": "YES",
+    "listed_price": 0.63,
+    "evening_call_price": 0.63,
+    "evening_call_at": "17:37Z",
+    "price_at": {
+     "21:36Z": 0.63,
+     "22:36Z": 0.6,
+     "23:36Z": 0.64
+    },
+    "touch_size_at": {
+     "21:36Z": 40.0,
+     "22:36Z": 5.0,
+     "23:36Z": 126.87
+    }
+   },
+   {
+    "city": "buenos_aires",
+    "date": "2026-11-12",
+    "side": "NO",
+    "listed_price": 0.61,
+    "evening_call_price": 0.61,
+    "evening_call_at": "21:37Z",
+    "price_at": {
+     "21:36Z": 0.61,
+     "22:36Z": 0.61,
+     "23:36Z": 0.66
+    },
+    "touch_size_at": {
+     "21:36Z": 199.07,
+     "22:36Z": 48.0,
+     "23:36Z": 230.0
+    }
+   },
+   {
+    "city": "houston",
+    "date": "2026-11-12",
+    "side": "NO",
+    "listed_price": 0.986,
+    "evening_call_price": 0.986,
+    "evening_call_at": "00:37Z",
+    "price_at": {
+     "21:36Z": 0.988,
+     "22:36Z": 0.987,
+     "23:36Z": 0.987
+    },
+    "touch_size_at": {
+     "21:36Z": 30.1,
+     "22:36Z": 15.05,
+     "23:36Z": 15.05
+    }
+   },
+   {
+    "city": "miami",
+    "date": "2026-11-12",
+    "side": "YES",
+    "listed_price": 0.539,
+    "evening_call_price": 0.539,
+    "evening_call_at": "23:37Z",
+    "price_at": {
+     "21:36Z": 0.513,
+     "22:36Z": 0.512,
+     "23:36Z": 0.539
+    },
+    "touch_size_at": {
+     "21:36Z": 96.6,
+     "22:36Z": 5.0,
+     "23:36Z": 5.0
+    }
+   },
+   {
+    "city": "shanghai",
+    "date": "2026-11-12",
+    "side": "YES",
+    "listed_price": 0.22,
+    "evening_call_price": 0.22,
+    "evening_call_at": "10:37Z",
+    "price_at": {
+     "21:36Z": 0.45,
+     "22:36Z": 0.41,
+     "23:36Z": 0.48
+    },
+    "touch_size_at": {
+     "21:36Z": 43.49,
+     "22:36Z": 122.79,
+     "23:36Z": 5.0
+    }
+   },
+   {
+    "city": "warsaw",
+    "date": "2026-11-12",
+    "side": "NO",
+    "listed_price": 0.56,
+    "evening_call_price": 0.53,
+    "evening_call_at": "17:37Z",
+    "price_at": {
+     "21:36Z": 0.57,
+     "22:36Z": 0.58,
+     "23:36Z": 0.58
+    },
+    "touch_size_at": {
+     "21:36Z": 126.65,
+     "22:36Z": 402.26,
+     "23:36Z": 379.98
+    }
+   },
+   {
+    "city": "austin",
+    "date": "2026-11-13",
+    "side": "NO",
+    "listed_price": 0.96,
+    "evening_call_price": 0.954,
+    "evening_call_at": "00:37Z",
+    "price_at": {
+     "21:36Z": 0.903,
+     "22:36Z": 0.923,
+     "23:36Z": 0.95
+    },
+    "touch_size_at": {
+     "21:36Z": 5.05,
+     "22:36Z": 5.05,
+     "23:36Z": 31.0
+    }
+   },
+   {
+    "city": "buenos_aires",
+    "date": "2026-11-13",
+    "side": "NO",
+    "listed_price": 0.86,
+    "evening_call_price": 0.87,
+    "evening_call_at": "21:37Z",
+    "price_at": {
+     "21:36Z": 0.87,
+     "22:36Z": 0.91,
+     "23:36Z": 0.91
+    },
+    "touch_size_at": {
+     "21:36Z": 23.34,
+     "22:36Z": 47.23,
+     "23:36Z": 73.23
+    }
+   },
+   {
+    "city": "helsinki",
+    "date": "2026-11-13",
+    "side": "YES",
+    "listed_price": 0.6,
+    "evening_call_price": 0.6,
+    "evening_call_at": "16:37Z",
+    "price_at": {
+     "21:36Z": 0.66,
+     "22:36Z": 0.7,
+     "23:36Z": 0.73
+    },
+    "touch_size_at": {
+     "21:36Z": 95.0,
+     "22:36Z": 4.21,
+     "23:36Z": 20.0
+    }
+   },
+   {
+    "city": "houston",
+    "date": "2026-11-13",
+    "side": "NO",
+    "listed_price": 0.95,
+    "evening_call_price": 0.95,
+    "evening_call_at": "00:37Z",
+    "price_at": {
+     "21:36Z": 0.92,
+     "22:36Z": 0.91,
+     "23:36Z": 0.95
+    },
+    "touch_size_at": {
+     "21:36Z": 79.99,
+     "22:36Z": 5.0,
+     "23:36Z": 43.23
+    }
+   },
+   {
+    "city": "miami",
+    "date": "2026-11-13",
+    "side": "YES",
+    "listed_price": 0.37,
+    "evening_call_price": 0.37,
+    "evening_call_at": "23:37Z",
+    "price_at": {
+     "21:36Z": 0.38,
+     "22:36Z": 0.38,
+     "23:36Z": 0.37
+    },
+    "touch_size_at": {
+     "21:36Z": 10.5,
+     "22:36Z": 123.0,
+     "23:36Z": 143.0
+    }
+   },
+   {
+    "city": "shanghai",
+    "date": "2026-11-13",
+    "side": "YES",
+    "listed_price": 0.47,
+    "evening_call_price": 0.47,
+    "evening_call_at": "10:37Z",
+    "price_at": {
+     "21:36Z": 0.49,
+     "22:36Z": 0.48,
+     "23:36Z": 0.52
+    },
+    "touch_size_at": {
+     "21:36Z": 80.0,
+     "22:36Z": 10.0,
+     "23:36Z": 20.0
+    }
+   },
+   {
+    "city": "austin",
+    "date": "2026-11-14",
+    "side": "NO",
+    "listed_price": null,
+    "evening_call_price": 0.707,
+    "evening_call_at": "00:37Z",
+    "price_at": {
+     "21:36Z": 0.72,
+     "22:36Z": 0.72,
+     "23:36Z": 0.723
+    },
+    "touch_size_at": {
+     "21:36Z": 20.0,
+     "22:36Z": 95.0,
+     "23:36Z": 10.0
+    }
+   },
+   {
+    "city": "buenos_aires",
+    "date": "2026-11-14",
+    "side": "NO",
+    "listed_price": null,
+    "evening_call_price": 0.66,
+    "evening_call_at": "21:37Z",
+    "price_at": {
+     "21:36Z": 0.66,
+     "22:36Z": 0.67,
+     "23:36Z": 0.67
+    },
+    "touch_size_at": {
+     "21:36Z": 45.0,
+     "22:36Z": 170.0,
+     "23:36Z": 174.0
+    }
+   },
+   {
+    "city": "helsinki",
+    "date": "2026-11-14",
+    "side": "YES",
+    "listed_price": 0.69,
+    "evening_call_price": 0.69,
+    "evening_call_at": "16:37Z",
+    "price_at": {
+     "21:36Z": 0.69,
+     "22:36Z": 0.72,
+     "23:36Z": 0.69
+    },
+    "touch_size_at": {
+     "21:36Z": 516.7,
+     "22:36Z": 338.0,
+     "23:36Z": 243.77
+    }
+   },
+   {
+    "city": "miami",
+    "date": "2026-11-14",
+    "side": "YES",
+    "listed_price": 0.58,
+    "evening_call_price": 0.58,
+    "evening_call_at": "23:22Z",
+    "price_at": {
+     "21:36Z": 0.57,
+     "22:36Z": 0.58,
+     "23:36Z": 0.58
+    },
+    "touch_size_at": {
+     "21:36Z": 80.0,
+     "22:36Z": 80.0,
+     "23:36Z": 80.0
+    }
+   },
+   {
+    "city": "shanghai",
+    "date": "2026-11-14",
+    "side": "YES",
+    "listed_price": 0.8,
+    "evening_call_price": 0.52,
+    "evening_call_at": "10:37Z",
+    "price_at": {
+     "21:36Z": 0.82,
+     "22:36Z": 0.83,
+     "23:36Z": 0.77
+    },
+    "touch_size_at": {
+     "21:36Z": 286.35,
+     "22:36Z": 20.0,
+     "23:36Z": 299.0
+    }
+   },
+   {
+    "city": "warsaw",
+    "date": "2026-11-14",
+    "side": "NO",
+    "listed_price": null,
+    "evening_call_price": 0.477,
+    "evening_call_at": "17:37Z",
+    "price_at": {
+     "21:36Z": 0.457,
+     "22:36Z": 0.468,
+     "23:36Z": 0.449
+    },
+    "touch_size_at": {
+     "21:36Z": 5.0,
+     "22:36Z": 5.0,
+     "23:36Z": 7.5
+    }
+   }
+  ],
+  "replays": {
+   "21:36Z": {
+    "trades_priced": 18,
+    "day_end_staking": {
+     "scenario": "21:36Z",
+     "days": [
+      {
+       "stake_a_trade": 4.0,
+       "pnl": 1.8,
+       "equity": 31.8
+      },
+      {
+       "stake_a_trade": 4.24,
+       "pnl": 14.24,
+       "equity": 46.04
+      },
+      {
+       "stake_a_trade": 6.14,
+       "pnl": 1.57,
+       "equity": 47.61
+      }
+     ],
+     "equity": 47.61,
+     "return_on_start": 0.587,
+     "pnl_per_dollar_staked": 0.2041
+    },
+    "settlement_aware": {
+     "equity": 30.7,
+     "return_on_start": 0.0235,
+     "orders": 18,
+     "orders_cut_to_the_cash_in_hand": 5,
+     "stakes": [
+      4.0,
+      4.0,
+      4.0,
+      4.0,
+      4.0,
+      4.0,
+      4.62,
+      4.62,
+      4.62,
+      0.79,
+      0.0,
+      0.0,
+      4.24,
+      4.24,
+      4.24,
+      4.24,
+      0.19,
+      0.0
+     ],
+     "smallest_stake": 0.0,
+     "largest_stake": 4.62
+    },
+    "touch_smaller_than_a_4_dollar_order": 2
+   },
+   "22:36Z": {
+    "trades_priced": 18,
+    "day_end_staking": {
+     "scenario": "22:36Z",
+     "days": [
+      {
+       "stake_a_trade": 4.0,
+       "pnl": 2.82,
+       "equity": 32.82
+      },
+      {
+       "stake_a_trade": 4.38,
+       "pnl": 14.25,
+       "equity": 47.07
+      },
+      {
+       "stake_a_trade": 6.28,
+       "pnl": 0.72,
+       "equity": 47.79
+      }
+     ],
+     "equity": 47.79,
+     "return_on_start": 0.593,
+     "pnl_per_dollar_staked": 0.2023
+    },
+    "settlement_aware": {
+     "equity": 30.76,
+     "return_on_start": 0.0254,
+     "orders": 18,
+     "orders_cut_to_the_cash_in_hand": 6,
+     "stakes": [
+      4.0,
+      4.0,
+      4.0,
+      4.0,
+      4.0,
+      4.0,
+      4.73,
+      4.73,
+      4.73,
+      1.29,
+      0.0,
+      0.0,
+      4.38,
+      4.38,
+      4.38,
+      4.21,
+      0.0,
+      0.0
+     ],
+     "smallest_stake": 0.0,
+     "largest_stake": 4.73
+    },
+    "touch_smaller_than_a_4_dollar_order": 4
+   },
+   "23:36Z": {
+    "trades_priced": 18,
+    "day_end_staking": {
+     "scenario": "23:36Z",
+     "days": [
+      {
+       "stake_a_trade": 4.0,
+       "pnl": 1.07,
+       "equity": 31.07
+      },
+      {
+       "stake_a_trade": 4.14,
+       "pnl": 12.61,
+       "equity": 43.67
+      },
+      {
+       "stake_a_trade": 5.82,
+       "pnl": 2.02,
+       "equity": 45.69
+      }
+     ],
+     "equity": 45.69,
+     "return_on_start": 0.523,
+     "pnl_per_dollar_staked": 0.1874
+    },
+    "settlement_aware": {
+     "equity": 31.31,
+     "return_on_start": 0.0436,
+     "orders": 18,
+     "orders_cut_to_the_cash_in_hand": 4,
+     "stakes": [
+      4.0,
+      4.0,
+      4.0,
+      4.0,
+      4.0,
+      4.0,
+      4.55,
+      4.55,
+      4.55,
+      0.47,
+      0.0,
+      0.0,
+      4.36,
+      4.36,
+      4.36,
+      4.36,
+      4.36,
+      1.32
+     ],
+     "smallest_stake": 0.0,
+     "largest_stake": 4.55
+    },
+    "touch_smaller_than_a_4_dollar_order": 3
+   }
+  },
+  "shanghai_12_nov": {
+   "listed": 0.22,
+   "price_at": {
+    "21:36Z": 0.45,
+    "22:36Z": 0.41,
+    "23:36Z": 0.48
+   }
+  }
+ },
  "form": {
   "window_used": 10,
   "min_picks": 3,

@@ -35,6 +35,13 @@ Aires, Miami, Houston and Austin are made after 21:30Z. This replays the same
 trades with each city's latest call made by then (its day-ahead call for those
 four), on the listed buckets and on the model's pick at that call.
 
+PART `at_the_recording_window`: Hassan, 15 Nov: "Codex is selecting the 6 cities
+and im recording them 11 to 2am beirut time" (21:00Z to 00:00Z). The listed
+prices are the evening-before call's frozen book, made at each city's own
+18:00, hours before that window for Asia and Europe. This prices the same
+trades at the live book of each hourly capture inside it (live_capture, at
+:36: 21:36Z, 22:36Z, 23:36Z), with the size at the touch.
+
 PART `form`: the rule he describes ("what historically was accurate and what
 wasn't"): on each date the cities are ranked on their `d1_eve` picks that had
 SETTLED by 21:30Z the evening before, by hit rate over the last WINDOW days
@@ -65,6 +72,7 @@ import strategy_study as S  # noqa: E402
 import city_sides_study as C  # noqa: E402
 import own_w_forward as O  # noqa: E402  (its reader of the venue's buckets)
 
+RECORDING_UTC = (21, 24)       # 23:00 to 02:00 Beirut, as hours of the UTC evening and the next morning (21:00Z to 00:00Z)
 SELECTION_UTC = (21, 30)       # 23:30 Beirut, UTC+2 in November (Hassan, 15 Nov)
 DATA = os.path.join(ROOT, "data", "eval", "codex_test_2026-11-12", "trades.json")
 YEAR = 2026
@@ -382,6 +390,86 @@ def selection_replays(rows):
     return by
 
 
+def window_of(date):
+    """[21:00Z, 00:00Z) on the evening before the target date: 23:00 to 02:00 Beirut
+    (Hassan, 15 Nov: "im recording them 11 to 2am beirut time")."""
+    d = dt.date.fromisoformat(date) - dt.timedelta(days=1)
+    start = dt.datetime(d.year, d.month, d.day, RECORDING_UTC[0], 0, tzinfo=dt.timezone.utc)
+    return start, start + dt.timedelta(hours=RECORDING_UTC[1] - RECORDING_UTC[0])
+
+
+def book_captures(trades, checked):
+    """{(city, date): {captured time of day: top of book}} for the listed bucket
+    on each hourly `books` capture (live_capture, at :36) inside the recording
+    window. A top is [bid, ask, bid size, ask size, ..] (scripts/live_capture.book_top)."""
+    import csv
+    import glob
+    import gzip
+    csv.field_size_limit(sys.maxsize)
+    want = {(t["city"], t["date"]): c["_mine"] for t, c in zip(trades, checked)}
+    windows = {k: window_of(k[1]) for k in want}
+    out = collections.defaultdict(dict)
+    lo = min(w[0] for w in windows.values()) - dt.timedelta(hours=2)
+    hi = max(w[1] for w in windows.values()) + dt.timedelta(hours=2)
+    for path in sorted(glob.glob(os.path.join(ROOT, "data", "mirror", "live_capture", "live_capture-*.csv.gz"))):
+        with gzip.open(path, "rt", newline="") as fh:
+            for r in csv.DictReader(fh):
+                if r["kind"] != "books":
+                    continue
+                at = when(r["captured_at"])
+                if not lo <= at <= hi or at.minute != 36:
+                    continue
+                hit = [k for k, (a, b) in windows.items() if a <= at < b]
+                if not hit:
+                    continue
+                tops = json.loads(r["payload"])["tops"]
+                for k in hit:
+                    top = tops.get(want[k])
+                    if top:
+                        out[k][at.strftime("%H:%MZ")] = top
+    return out
+
+
+def recording_window(trades, checked, caps):
+    """The same trades at the live book of each hourly capture inside the
+    recording window (21:36Z, 22:36Z, 23:36Z): the listed price is the evening
+    call's frozen book, made at the city's own 18:00, hours earlier for Asia and
+    Europe."""
+    times = sorted({t for v in caps.values() for t in v})
+    rows, replays = [], {}
+    last = max(when(c["_settled_at"]) for c in checked if c["_settled_at"])
+    for t, c in zip(trades, checked):
+        k = (t["city"], t["date"])
+        row = {"city": t["city"], "date": t["date"], "side": t["side"], "listed_price": t["price"],
+               "evening_call_price": c["recorded_price"], "evening_call_at": c["_decided_at"][11:16] + "Z",
+               "price_at": {}, "touch_size_at": {}}
+        for at, top in caps.get(k, {}).items():
+            bid, ask, bid_size, ask_size = top[0], top[1], top[2], top[3]
+            row["price_at"][at] = None if (ask if t["side"] == "YES" else bid) is None else round(
+                ask if t["side"] == "YES" else 1 - bid, 4)
+            row["touch_size_at"][at] = ask_size if t["side"] == "YES" else bid_size
+        rows.append(row)
+    for at in times:
+        days, entries, thin = collections.defaultdict(list), [], 0
+        for t, c, row in zip(trades, checked, rows):
+            price = row["price_at"].get(at)
+            if price is None:
+                continue
+            won = (c["_mine"] == c["_win"]) if t["side"] == "YES" else (c["_mine"] != c["_win"]) if c["_win"] else t["won"]
+            days[t["date"]].append((price, won))
+            d = dt.date.fromisoformat(t["date"]) - dt.timedelta(days=1)
+            ordered = dt.datetime(d.year, d.month, d.day, int(at[:2]), int(at[3:5]), tzinfo=dt.timezone.utc)
+            ordered += dt.timedelta(days=int(at[:2]) < RECORDING_UTC[0])
+            entries.append((ordered, when(c["_settled_at"]) if c["_settled_at"] else last + dt.timedelta(days=1), price, won))
+            thin += int(row["touch_size_at"][at] is not None and row["touch_size_at"][at] < 4.0 / price)
+        replays[at] = {"trades_priced": len(entries), "day_end_staking": scenario(at, [days[d] for d in sorted(days)]),
+                       "settlement_aware": settlement_aware(entries), "touch_smaller_than_a_4_dollar_order": thin}
+    shanghai = next(r for r in rows if r["city"] == "shanghai" and r["date"] == "2026-11-12")
+    return {"window": "23:00-02:00 Beirut = 21:00Z-00:00Z on the evening before the target date",
+            "captures": times, "trades": rows, "replays": replays,
+            "shanghai_12_nov": {"listed": shanghai["listed_price"], "price_at": shanghai["price_at"]}}
+
+
 def listed_equity(trades):
     """The list's own P&L as written, day by day, and the equity it implies from $30."""
     eq, days = START_EQUITY, []
@@ -565,6 +653,7 @@ def study():
                     "fees_not_in_the_list": round(sum(c["arithmetic"]["fee_not_in_the_list"] for c in priced), 2)},
         "replay": replay(checked, trades),
         "at_the_selection_time": selection,
+        "at_the_recording_window": recording_window(trades, checked, book_captures(trades, checked)),
         "form": form({d: rows for d, rows in by_day.items()}),
     }
 

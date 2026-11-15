@@ -237,6 +237,14 @@ Hassan, 15 Nov: his Codex test of the three-YES / three-NO strategy "is up
   books: the run's inputs came after 23:30 Beirut. On what existed at 23:30 the
   listed buckets give +135.1% (day-end) / +65.3% (settlement-aware); on the
   model's pick at that call +35.5% / +36.8%, and 14 Nov loses.
+- **Hassan's second answer (15 Nov):** "Codex is selecting the 6 cities and im
+  recording them 11 to 2am beirut time" (21:00Z-00:00Z). The listed prices are
+  the evening call's frozen book, hours before that window for Asia and
+  Europe. At the live book of the three hourly `live_capture` snapshots inside
+  it the same 18 trades give +52.3% to +59.3% on $30 under the list's staking
+  (+18.7% to +20.4% per dollar staked, against +125.0% and +35.5% at the
+  frozen call books) and +2.4% to +4.4% settlement-aware. The Shanghai trade behind
+  36% of the profit is listed at 0.22; its ask in the window was 0.41-0.48.
 - **The rule as described** (hit rate, cities picked on outcomes settled by
   21:30Z): all history -8.9% over 278 trades (-18.1% to +0.8%); no
   window of seven separable above zero; all-history does not reproduce the six

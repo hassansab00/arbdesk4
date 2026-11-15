@@ -411,6 +411,37 @@ for the live one:
   calls are recorded, so for a city whose call was hours earlier the price may
   have moved.
 
+**The live book in your recording window.** Hassan, 15 Nov: "Codex is
+selecting the 6 cities and im recording them 11 to 2am beirut time", which is
+21:00Z to 00:00Z. The listed prices are the evening-before call's frozen
+book, made at each city's own 18:00: Shanghai's at 10:37Z, ten hours before
+the window opens, Buenos Aires', Miami's, Houston's and Austin's inside it or
+just after. `live_capture` holds the live top of book every hour (at :36).
+The same 18 trades at each capture inside the window (the 3 Nov 14 NO trades,
+unpriced in the list, are priced here too):
+
+| Capture | Orders | Day-end staking, from $30 | Per dollar staked (day-end) | Settlement-aware | Touch smaller than a $4 order |
+|---|---|---|---|---|---|
+| 21:36Z (23:36 Beirut) | 18 | $47.61, +58.7% | +20.4% | $30.70, +2.4%, 5 orders cut | 2 |
+| 22:36Z (00:36 Beirut) | 18 | $47.79, +59.3% | +20.2% | $30.76, +2.5%, 6 orders cut | 4 |
+| 23:36Z (01:36 Beirut) | 18 | $45.69, +52.3% | +18.7% | $31.31, +4.4%, 4 orders cut | 3 |
+
+- **The list's prices give +125.0% on $30 and +35.5% per dollar staked**
+  (day-end staking, on the evening call's books). At the live book of the
+  window it is about +18.7% to +20.4% per dollar staked.
+- **Shanghai on 12 Nov**, the trade behind 36% of the profit, is listed at
+  0.22; its ask at the three captures was 0.45, 0.41 and 0.48. The ask rose
+  between the evening call and your window; that bucket won.
+- **The largest gaps between a listed price and the window's book:** Shanghai 11-12 YES: listed 0.22, in the window 0.41 to 0.48; Helsinki 11-13 YES: listed 0.60, in the window 0.66 to 0.73; Buenos Aires 11-13 NO: listed 0.86, in the window 0.87 to 0.91.
+- **The settlement-aware account is nearly flat.** A $30 account that stakes
+  80% of its equity each evening has almost no cash left for the next evening
+  until positions settle (the first evening's positions settle between 16:37Z
+  on their target day and 07:36Z the day after), so most later orders are cut. Per dollar
+  staked is the better measure of the picks.
+- **The touch is thin.** Several touches are as small as 5 shares, below what
+  a $4 order at that price needs, so a real order would walk the book. The
+  capture also holds the dollar depth within a few cents of the touch.
+
 **The rule: "what historically was accurate".** On each date the cities are
 ranked on their evening-before picks that had settled by 21:30Z, by hit rate
 (at least 3 picks); YES on the three best, NO on the three worst. I cannot see
