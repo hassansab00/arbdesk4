@@ -205,6 +205,28 @@ legacy signal chain, labels suspended strategies in the desk selector, and
 shows their 14-day eligibility time without offering an ineffective Start.
 No portfolio allocation, risk limits, or workflow schedules change.
 
+## The evening-before call, where Hassan trades — 15 Nov: fairly priced, one thin lead
+
+Hassan, 15 Nov: he trades the evening before, and his own test of the
+three-and-three rule read "+98% supposedly" over 12-14 Nov. Section 11 of
+`docs/STRATEGY_STUDY_2026-11-15.md`; `tools/evening_rules_study.py` rebuilds
+`data/eval/evening_rules_2026-11-15/result.json`.
+
+- **Agreement decides it.** The model's pick is the market's favourite on
+  53.6% of 2,336 calls. When they disagree the model is right 25.1% and
+  the market 46.3%.
+- **YES on the model's pick against the market:** -18.1% a dollar
+  (1,084 trades), wholly below zero in both halves.
+- **The one positive estimate:** YES when they agree and the model gives 50%
+  or more, +12.1% over 53 trades (90% -6.8% to +30.1%); best of
+  nine rules; about 285 trades (275 days) to settle. Not pre-registered:
+  Hassan has not asked for it.
+- **Costs:** the market's favourite returns +1.9% at the midpoint with no fee
+  and -3.4% at the ask with it.
+- **The +98% is not reproduced:** the same rule on 12-14 Nov gives +3.6%
+  (14 trades, cities by hit rate) or -23.9% (13 trades, by past return). His trade
+  list has not been seen.
+
 ## YES on the three best cities, NO on the three worst — 15 Nov: not supported
 
 Hassan, 15 Nov: "bet YES on the top performing 3 cities, and NO on the least
