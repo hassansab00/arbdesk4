@@ -246,3 +246,72 @@ there, on the whole record to 14 Nov:
   return.
 - **For scale at this call:** YES on every city's top pick returns
   -10.5%, NO on every city's top pick -4.9%.
+
+## 11. The evening-before call, where Hassan trades (added 15 Nov)
+
+Hassan, 15 Nov: "We're trading evening before / night before the trade date",
+and that his own test of the three-and-three rule was "up +98% supposedly"
+over 12-14 Nov. `tools/evening_rules_study.py` rebuilds
+`data/eval/evening_rules_2026-11-15/result.json` from the 2,336 first
+evening-before calls with a graded outcome and a recorded book (25 Sep - 14
+Nov).
+
+**Whether the market agrees with the model is what matters at this call.** The
+market's favourite is the bucket the book prices highest. The model's pick is
+the same bucket on 53.6% of calls.
+
+| | Calls | Model's pick right | Market's favourite right |
+|---|---|---|---|
+| They agree | 1,252 | 50.6% | 50.6% |
+| They disagree | 1,084 | 25.1% | 46.3% |
+
+**Nine rules on that agreement.** All nine were written before any was
+scored, and all were scored together; each is shown on the dates to 31 Oct and
+on 1-14 Nov:
+
+| Rule | Trades | Return per dollar | 90% | To 31 Oct | 1-14 Nov |
+|---|---|---|---|---|---|
+| They agree: YES on the shared pick | 1,252 | -3.9% | -9.0% to +1.0% | -3.8% | -4.3% |
+| They disagree: YES on the market's favourite | 1,084 | -3.0% | -8.9% to +3.1% | -3.3% | -2.2% |
+| They disagree: NO on the model's pick | 1,083 | -1.4% | -5.0% to +1.8% | -2.0% | +0.1% |
+| They disagree: YES on the model's pick | 1,084 | -18.1% | -26.4% to -8.6% | -17.3% | -20.1% |
+| They disagree: NO on the market's favourite | 1,083 | -5.6% | -10.9% to -0.3% | -4.8% | -7.5% |
+| The model gives its pick 50% or more: YES | 77 | -2.9% | -25.4% to +16.7% | -6.8% | +6.7% |
+| They agree and the model gives 50% or more: YES | 53 | +12.1% | -6.8% to +30.1% | +11.6% | +13.4% |
+| YES on every market favourite | 2,336 | -3.5% | -7.2% to +0.5% | -3.6% | -3.3% |
+| They agree: NO on the shared pick | 1,251 | -7.8% | -12.7% to -3.0% | -7.1% | -9.7% |
+
+- **Do not buy YES on the model's pick when the market disagrees.** It lost
+  -18.1% over 1,084 trades, with an interval wholly below zero in both
+  halves.
+- **One rule has a positive estimate:** YES when they agree and the model
+  gives the bucket 50% or more, +12.1% over 53 trades. Its interval includes
+  zero, it is the best of nine, and it fires 1.04 times a calendar day. At
+  the return and spread it has shown it would need 285 trades for 80% power,
+  about 275 days.
+- **Every other rule sits between about -1% and -8%.** That is the cost of
+  taking the book, below.
+
+**The market is fairly priced the evening before; a taker starts behind.** On
+the 2,334 calls where the favourite had both a bid and an ask:
+
+| The market's favourite, YES | Return per dollar | 90% |
+|---|---|---|
+| At the midpoint, no fee | +1.9% | -2.0% to +6.0% |
+| At the ask, with the fee | -3.4% | -7.1% to +0.5% |
+
+The mean spread is 0.0258 and the mean fee 0.0120 a share.
+
+**The three-and-three rule on 12-14 Nov, and how far three dates can swing.**
+The rule of section 10 at this call, cities chosen on outcomes settled before
+each call:
+
+| Cities ranked by | 12-14 Nov trades | Won | Return per dollar | Lowest of 40 three-date runs | Median | Highest | Runs at +98% or more |
+|---|---|---|---|---|---|---|---|
+| Hit rate | 14 | 9 | +3.6% | -54.5% | -9.3% | +35.6% | 0 |
+| Past YES return | 13 | 6 | -23.9% | -53.4% | -2.0% | +104.5% | 1 |
+
+- **+98% over those three dates is not reproduced here.** The trades behind
+  that figure were not available to check.
+- **One trade swings by about its whole stake** (standard deviation 1.02 of a
+  dollar), so three dates of this rule say little either way.

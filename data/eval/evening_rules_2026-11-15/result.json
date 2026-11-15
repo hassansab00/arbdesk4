@@ -1,0 +1,417 @@
+{
+ "checkpoint": "d1_eve",
+ "calls": 2336,
+ "first_date": "2026-09-25",
+ "last_date": "2026-11-14",
+ "development_to": "2026-10-31",
+ "holdout_from": "2026-11-01",
+ "agreement": {
+  "share_agree": 0.536,
+  "model_right": 0.3878,
+  "favourite_right": 0.4863,
+  "agree": {
+   "calls": 1252,
+   "pick_right": 0.5064
+  },
+  "disagree": {
+   "calls": 1084,
+   "model_right": 0.2509,
+   "favourite_right": 0.4631
+  }
+ },
+ "rules": {
+  "agree_yes": {
+   "rule": "They agree: YES on the shared pick",
+   "development": {
+    "n": 912,
+    "dates": 37,
+    "return_per_dollar": -0.0377,
+    "ci90": [
+     -0.101,
+     0.0282
+    ],
+    "win_rate": 0.5033,
+    "mean_cost": 0.5183
+   },
+   "holdout": {
+    "n": 340,
+    "dates": 14,
+    "return_per_dollar": -0.0433,
+    "ci90": [
+     -0.1388,
+     0.0418
+    ],
+    "win_rate": 0.5147,
+    "mean_cost": 0.5269
+   },
+   "both": {
+    "n": 1252,
+    "dates": 51,
+    "return_per_dollar": -0.0392,
+    "ci90": [
+     -0.0897,
+     0.01
+    ],
+    "win_rate": 0.5064,
+    "mean_cost": 0.5206
+   }
+  },
+  "disagree_yes_favourite": {
+   "rule": "They disagree: YES on the market's favourite",
+   "development": {
+    "n": 786,
+    "dates": 37,
+    "return_per_dollar": -0.0334,
+    "ci90": [
+     -0.1035,
+     0.0361
+    ],
+    "win_rate": 0.4593,
+    "mean_cost": 0.4772
+   },
+   "holdout": {
+    "n": 298,
+    "dates": 14,
+    "return_per_dollar": -0.0217,
+    "ci90": [
+     -0.1366,
+     0.0994
+    ],
+    "win_rate": 0.4732,
+    "mean_cost": 0.4845
+   },
+   "both": {
+    "n": 1084,
+    "dates": 51,
+    "return_per_dollar": -0.0301,
+    "ci90": [
+     -0.0889,
+     0.0307
+    ],
+    "win_rate": 0.4631,
+    "mean_cost": 0.4792
+   }
+  },
+  "disagree_no_model": {
+   "rule": "They disagree: NO on the model's pick",
+   "development": {
+    "n": 785,
+    "dates": 37,
+    "return_per_dollar": -0.0203,
+    "ci90": [
+     -0.0608,
+     0.0196
+    ],
+    "win_rate": 0.7465,
+    "mean_cost": 0.7591
+   },
+   "holdout": {
+    "n": 298,
+    "dates": 14,
+    "return_per_dollar": 0.0012,
+    "ci90": [
+     -0.0687,
+     0.0699
+    ],
+    "win_rate": 0.755,
+    "mean_cost": 0.7538
+   },
+   "both": {
+    "n": 1083,
+    "dates": 51,
+    "return_per_dollar": -0.0144,
+    "ci90": [
+     -0.0499,
+     0.0182
+    ],
+    "win_rate": 0.7488,
+    "mean_cost": 0.7577
+   }
+  },
+  "disagree_yes_model": {
+   "rule": "They disagree: YES on the model's pick",
+   "development": {
+    "n": 786,
+    "dates": 37,
+    "return_per_dollar": -0.1728,
+    "ci90": [
+     -0.2783,
+     -0.072
+    ],
+    "win_rate": 0.2532,
+    "mean_cost": 0.2839
+   },
+   "holdout": {
+    "n": 298,
+    "dates": 14,
+    "return_per_dollar": -0.2012,
+    "ci90": [
+     -0.3574,
+     -0.0206
+    ],
+    "win_rate": 0.245,
+    "mean_cost": 0.2917
+   },
+   "both": {
+    "n": 1084,
+    "dates": 51,
+    "return_per_dollar": -0.1806,
+    "ci90": [
+     -0.2642,
+     -0.0865
+    ],
+    "win_rate": 0.2509,
+    "mean_cost": 0.2861
+   }
+  },
+  "disagree_no_favourite": {
+   "rule": "They disagree: NO on the market's favourite",
+   "development": {
+    "n": 785,
+    "dates": 37,
+    "return_per_dollar": -0.0482,
+    "ci90": [
+     -0.1115,
+     0.0188
+    ],
+    "win_rate": 0.5401,
+    "mean_cost": 0.571
+   },
+   "holdout": {
+    "n": 298,
+    "dates": 14,
+    "return_per_dollar": -0.0754,
+    "ci90": [
+     -0.1696,
+     0.0125
+    ],
+    "win_rate": 0.5268,
+    "mean_cost": 0.5682
+   },
+   "both": {
+    "n": 1083,
+    "dates": 51,
+    "return_per_dollar": -0.0557,
+    "ci90": [
+     -0.1095,
+     -0.0031
+    ],
+    "win_rate": 0.5365,
+    "mean_cost": 0.5703
+   }
+  },
+  "model_sure_yes": {
+   "rule": "The model gives its pick 50% or more: YES",
+   "development": {
+    "n": 55,
+    "dates": 30,
+    "return_per_dollar": -0.0681,
+    "ci90": [
+     -0.334,
+     0.2153
+    ],
+    "win_rate": 0.5455,
+    "mean_cost": 0.5443
+   },
+   "holdout": {
+    "n": 22,
+    "dates": 12,
+    "return_per_dollar": 0.0674,
+    "ci90": [
+     -0.225,
+     0.3615
+    ],
+    "win_rate": 0.5909,
+    "mean_cost": 0.5255
+   },
+   "both": {
+    "n": 77,
+    "dates": 42,
+    "return_per_dollar": -0.0294,
+    "ci90": [
+     -0.2545,
+     0.1667
+    ],
+    "win_rate": 0.5584,
+    "mean_cost": 0.5389
+   }
+  },
+  "agree_and_sure_yes": {
+   "rule": "They agree and the model gives 50% or more: YES",
+   "development": {
+    "n": 39,
+    "dates": 24,
+    "return_per_dollar": 0.1163,
+    "ci90": [
+     -0.1117,
+     0.3194
+    ],
+    "win_rate": 0.7179,
+    "mean_cost": 0.6435
+   },
+   "holdout": {
+    "n": 14,
+    "dates": 10,
+    "return_per_dollar": 0.1338,
+    "ci90": [
+     -0.2522,
+     0.528
+    ],
+    "win_rate": 0.7143,
+    "mean_cost": 0.6377
+   },
+   "both": {
+    "n": 53,
+    "dates": 34,
+    "return_per_dollar": 0.1209,
+    "ci90": [
+     -0.0682,
+     0.3014
+    ],
+    "win_rate": 0.717,
+    "mean_cost": 0.642
+   }
+  },
+  "favourite_yes": {
+   "rule": "YES on every market favourite",
+   "development": {
+    "n": 1698,
+    "dates": 37,
+    "return_per_dollar": -0.0357,
+    "ci90": [
+     -0.0843,
+     0.0137
+    ],
+    "win_rate": 0.4829,
+    "mean_cost": 0.4993
+   },
+   "holdout": {
+    "n": 638,
+    "dates": 14,
+    "return_per_dollar": -0.0332,
+    "ci90": [
+     -0.0901,
+     0.0287
+    ],
+    "win_rate": 0.4953,
+    "mean_cost": 0.5071
+   },
+   "both": {
+    "n": 2336,
+    "dates": 51,
+    "return_per_dollar": -0.035,
+    "ci90": [
+     -0.0725,
+     0.0046
+    ],
+    "win_rate": 0.4863,
+    "mean_cost": 0.5014
+   }
+  },
+  "agree_no": {
+   "rule": "They agree: NO on the shared pick",
+   "development": {
+    "n": 911,
+    "dates": 37,
+    "return_per_dollar": -0.0711,
+    "ci90": [
+     -0.136,
+     -0.0116
+    ],
+    "win_rate": 0.4962,
+    "mean_cost": 0.5311
+   },
+   "holdout": {
+    "n": 340,
+    "dates": 14,
+    "return_per_dollar": -0.0974,
+    "ci90": [
+     -0.1811,
+     -0.0111
+    ],
+    "win_rate": 0.4853,
+    "mean_cost": 0.5246
+   },
+   "both": {
+    "n": 1251,
+    "dates": 51,
+    "return_per_dollar": -0.0783,
+    "ci90": [
+     -0.1271,
+     -0.0304
+    ],
+    "win_rate": 0.4932,
+    "mean_cost": 0.5294
+   }
+  }
+ },
+ "sizing": {
+  "rule": "agree_and_sure_yes",
+  "trades": 53,
+  "calendar_days": 51,
+  "trades_a_calendar_day": 1.04,
+  "standard_error_by_date": 0.1128,
+  "trades_for_80pc_power_at_this_return": 285,
+  "calendar_days_at_this_rate": 275
+ },
+ "costs": {
+  "at_the_midpoint_no_fee": {
+   "n": 2334,
+   "dates": 51,
+   "return_per_dollar": 0.0188,
+   "ci90": [
+    -0.0201,
+    0.0602
+   ],
+   "win_rate": 0.4867,
+   "mean_cost": 0.4766
+  },
+  "at_the_ask_with_the_fee": {
+   "n": 2334,
+   "dates": 51,
+   "return_per_dollar": -0.0342,
+   "ci90": [
+    -0.0715,
+    0.0049
+   ],
+   "win_rate": 0.4867,
+   "mean_cost": 0.5015
+  },
+  "mean_spread": 0.0258,
+  "mean_fee_a_share": 0.012
+ },
+ "three_and_three": {
+  "hit": {
+   "replay_12_to_14_nov": {
+    "trades": 14,
+    "won": 9,
+    "return_per_dollar": 0.0363
+   },
+   "three_date_runs": {
+    "runs": 40,
+    "lowest": -0.5455,
+    "median": -0.0934,
+    "highest": 0.3563,
+    "at_or_over_0.98": 0,
+    "above_0": 14
+   },
+   "swing_of_one_trade": 1.0202
+  },
+  "yes_return": {
+   "replay_12_to_14_nov": {
+    "trades": 13,
+    "won": 6,
+    "return_per_dollar": -0.2386
+   },
+   "three_date_runs": {
+    "runs": 40,
+    "lowest": -0.5343,
+    "median": -0.02,
+    "highest": 1.0447,
+    "at_or_over_0.98": 1,
+    "above_0": 16
+   },
+   "swing_of_one_trade": 1.198
+  }
+ }
+}

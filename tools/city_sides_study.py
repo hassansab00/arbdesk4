@@ -78,8 +78,9 @@ def record(p):
     return (p["hit"], ret(p["yes"]) if "yes" in p else None)
 
 
-def walk(ps, metric):
-    """The strategy on each date with the cities its earlier record names.
+def walk_legs(ps, metric):
+    """{"yes": [...], "no": [...]}: the trades of the strategy on each date with
+    the cities its earlier record names.
 
     The record on a date is every earlier pick that had SETTLED before the
     date's first call (Codex on #512: the evening-before call for a day is
@@ -99,6 +100,12 @@ def walk(ps, metric):
             legs["yes"] += [p["yes"] for p in today if p["city"] in best and "yes" in p]
             legs["no"] += [p["no"] for p in today if p["city"] in worst and "no" in p]
         past += today
+    return legs
+
+
+def walk(ps, metric):
+    """The strategy traded forward: each leg and both together."""
+    legs = walk_legs(ps, metric)
     return {"yes_on_the_3_best": S.result(legs["yes"]), "no_on_the_3_worst": S.result(legs["no"]),
             "both_legs": S.result(legs["yes"] + legs["no"])}
 
