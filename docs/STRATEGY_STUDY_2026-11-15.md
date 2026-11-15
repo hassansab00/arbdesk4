@@ -151,3 +151,60 @@ or more and it is still offered below 0.97.
 - **Selling before settlement**, and sizing by confidence.
 - **The NO book itself.** NO prices here come from the YES bid. Direct NO books
   have been recorded only since 12 Nov.
+
+## 10. YES on the three best cities, NO on the three worst (added 15 Nov)
+
+Hassan, 15 Nov: "bet YES on the top performing 3 cities, and NO on the least
+performing". Read as: once a day, YES on the model's top bucket in the three
+cities where that pick has been right most often, and NO on the model's top
+bucket in the three where it has been right least often.
+`tools/city_sides_study.py` rebuilds
+`data/eval/city_sides_2026-11-15/result.json` from the same trades, prices and
+fee as the rest of this study.
+
+**Traded as it could have been** (each date's cities chosen on their record
+before that date, 8 earlier picks or more, ranked by hit rate):
+
+| Call | YES trades | YES on the 3 best | NO trades | NO on the 3 worst | Both legs | 90% | Does a city's rank carry forward? |
+|---|---|---|---|---|---|---|---|
+| Evening before | 127 | -15.7% | 126 | -7.9% | -11.8% | -20.7% to -2.5% | +0.06 |
+| Morning | 97 | +11.8% | 97 | -13.8% | -1.0% | -11.5% to +10.0% | -0.07 |
+| Noon | 61 | -3.7% | 57 | -16.6% | -9.9% | -29.4% to +7.9% | +0.45 |
+| 2 h before peak | 47 | -14.5% | 60 | -2.6% | -7.8% | -24.4% to +7.4% | +0.38 |
+| 1 h before peak | 47 | +11.5% | 59 | -39.2% | -16.7% | -34.3% to +0.9% | +0.26 |
+| 1 h after peak | 61 | +5.6% | 59 | -69.9% | -31.6% | -38.1% to -25.3% | -0.04 |
+
+- **The last column** is the rank correlation of each city's hit rate between
+  the earlier and the later half of the dates. Near zero means the best
+  cities so far are no likelier to be the best cities next.
+- **The NO leg never paid.** Across 24 tests (six calls, two ways of ranking
+  the cities, two legs), the NO leg had a positive return in
+  0 of 12, and 8 of the 24 had an interval wholly below zero.
+- **One test had an interval above zero:** YES on the three best cities one
+  hour after the peak (+5.6%, 61 trades, all won). One in 24 at this level is
+  what chance alone gives, and it is the same effect `postpeak-v1` is testing.
+- **Why NO loses even where the model is worst:** the price already allows
+  for it. At the morning call the NO on the three worst cities cost 0.675
+  on average and won 61.9% of the time.
+
+**The six cities the rule names today, at the morning call** (the whole
+record to 14 Nov; each city's own numbers):
+
+| City | Side | Picks | Model's pick right | Mean cost | Trade won | Return per dollar | 90% |
+|---|---|---|---|---|---|---|---|
+| nyc | YES | 40 | 75.0% | 0.595 | 75.0% | +25.8% | +1.4% to +48.2% |
+| miami | YES | 40 | 72.5% | 0.576 | 72.5% | +30.2% | +5.8% to +52.6% |
+| helsinki | YES | 40 | 65.0% | 0.628 | 65.0% | +3.3% | -20.1% to +26.9% |
+| buenos_aires | NO | 40 | 22.5% | 0.695 | 77.5% | +14.3% | -3.5% to +31.6% |
+| sao_paulo | NO | 40 | 22.5% | 0.776 | 77.5% | -2.9% | -16.8% to +10.4% |
+| beijing | NO | 39 | 15.4% | 0.772 | 84.6% | +13.1% | -1.8% to +27.5% |
+
+- **On these six, on the record that chose them** (hindsight, not a rule):
+  both legs +14.0% (+7.2% to +20.8%).
+- **The same rule traded forward at the morning call:** YES leg
+  +11.8% (-5.3% to +28.3%), NO leg -13.8% (-24.9% to -2.2%), both legs
+  -1.0% (-11.5% to +10.0%).
+- **The gap between those two lines is the selection.** Cities picked on a
+  record look good on that record.
+- **For scale:** YES on every city's top pick at the morning call returns
+  -15.9%.
