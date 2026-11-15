@@ -33,17 +33,25 @@ def versions():
         yield from common.read_csv(path)
 
 
-def append_response(text, stations, fields, received_at=None):
+def future_at_receipt(row, received):
+    valid = (row.get("valid") or "").strip().replace(" ", "T") + "Z"
+    return stamp(valid) > stamp(received) + dt.timedelta(minutes=5)
+
+
+def append_response(text, stations, fields, received_at=None, *, quarantine_future=False):
     received = stamp(received_at) if received_at else dt.datetime.now(common.UTC)
     icao = {common.iem_id(s): s for s in stations}
     grouped = {}
+    future = set()
     for row in csv.DictReader(io.StringIO(text)):
         station = icao.get((row.get("station") or "").strip().upper())
         if station is None:
             continue
         valid = (row.get("valid") or "").strip().replace(" ", "T") + "Z"
-        if stamp(valid) > received + dt.timedelta(minutes=5):
-            raise ValueError("station report is dated after its receipt")
+        if future_at_receipt(row, received.isoformat()):
+            if not quarantine_future:
+                raise ValueError("station report is dated after its receipt")
+            future.add((station, valid))
         values = [(row.get(f) or "").strip() for f in fields]
         held = grouped.setdefault((station, valid), [])
         if values not in held:
@@ -59,7 +67,7 @@ def append_response(text, stations, fields, received_at=None):
     kept = list(common.read_csv(path)) if os.path.exists(path) else []
     new = []
     for key, rows in sorted(grouped.items()):
-        payload = json.dumps({"schema": "iem-report-versions-v1", "fields": list(fields),
+        payload = json.dumps({"schema": "iem-report-quarantine-v1" if key in future else "iem-report-versions-v1", "fields": list(fields),
                               "rows": rows, "selected": len(rows) - 1},
                              sort_keys=True, separators=(",", ":"))
         digest = hashlib.sha256(payload.encode()).hexdigest()
@@ -73,6 +81,7 @@ def append_response(text, stations, fields, received_at=None):
         rows = sorted(kept + new, key=lambda r: (r["station"], r["valid"], stamp(r["received_at"])))
         common.write_csv(path, HEADER, ([r[h] for h in HEADER] for r in rows))
     return {"versions_added": len(new), "same_minute_report_sets": sum(len(v) > 1 for v in grouped.values()),
+            "quarantined_future_sets": len(future),
             "received_at": received.isoformat()}
 
 
@@ -97,6 +106,10 @@ def asof(station, decision, report_lag_s=480):
         if hashlib.sha256(row["payload"].encode()).hexdigest() != row["response_sha256"]:
             raise ValueError("station report journal hash mismatch")
         payload = json.loads(row["payload"])
+        if payload.get("schema") == "iem-report-quarantine-v1":
+            # A later decision clock cannot turn a rejected receipt into an
+            # admissible observation. A genuine later receipt is independent.
+            continue
         if payload.get("schema") != "iem-report-versions-v1":
             raise ValueError("unknown report journal schema")
         raw = dict(zip(payload["fields"], payload["rows"][payload["selected"]]))

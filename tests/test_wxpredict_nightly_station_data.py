@@ -59,6 +59,24 @@ def run(end=NIGHT):
     return fo.cmd_update(argparse.Namespace(end=end))
 
 
+def test_future_upstream_row_does_not_abort_or_enter_nightly_training(tmp_path,monkeypatch):
+    from wxpredict import report_journal
+    base=[report('2026-10-12T10:20Z','60.00')]
+    answer=[('EGLC','2026-10-12 12:20','63.00','valid'),
+            ('EGLC','2099-10-12 12:20','120.00','future')]
+    reports,_,_=setup(tmp_path,monkeypatch,answer,base)
+    before=(reports/'EGLC.csv.gz').read_bytes()
+    result=run()
+    assert result['new_reports']==1
+    assert result['report_journal']['quarantined_future_sets']==1
+    assert (reports/'EGLC.csv.gz').read_bytes()==before
+    assert all(r['tmpf']!='120.00' for r in common.station_report_rows('EGLC'))
+    assert [r['tmax_f'] for r in common.station_daily_rows()]==['63.00']
+    held=list(report_journal.versions())
+    assert len(held)==2 and any('future' in r['payload'] for r in held)
+    assert all(r['tmpf']!='120.00' for r in report_journal.asof('EGLC','2100-01-01T00:00:00Z'))
+
+
 def test_the_night_adds_only_reports_the_record_does_not_hold(tmp_path, monkeypatch):
     base = [report("2026-10-12T10:20Z", "60.00"), report("2026-10-12T11:20Z", "61.00")]
     answer = [("EGLC", "2026-10-12 10:20", "60.00", ""),           # held, the same

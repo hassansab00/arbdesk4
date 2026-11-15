@@ -333,7 +333,7 @@ def cmd_update(args):
     # A separate receipt-time journal retains corrections and same-minute
     # variants without rewriting any frozen historical station row.
     from wxpredict import report_journal
-    journal = report_journal.append_response(text, stations, FIELDS + ["metar"])
+    journal = report_journal.append_response(text, stations, FIELDS + ["metar"], quarantine_future=True)
 
     icao = back_to_icao(stations)
     new = defaultdict(dict)
@@ -344,6 +344,8 @@ def cmd_update(args):
         if st is None:
             unknown[rec.get("station")] += 1
             continue
+        if report_journal.future_at_receipt(rec, journal["received_at"]):
+            continue  # Preserved in quarantine, never in legacy readings/days.
         valid, out = report_out(rec)
         out = as_written(out)
         old = held[st].get(valid)

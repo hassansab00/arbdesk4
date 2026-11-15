@@ -76,3 +76,26 @@ def test_report_lag_and_receipt_are_both_required_and_unknown_history_is_absent(
     assert journal.asof("LFPG", "2026-10-15T12:21:00Z") == []
     with pytest.raises(ValueError, match="after its receipt"):
         add(answer([("60", "future")]), "2026-10-15T11:30:00Z")
+
+
+def test_future_row_is_preserved_but_cannot_poison_the_rest_of_a_nightly_batch(isolated):
+    import json
+    good=answer([('60','original')])
+    future=answer([('99','future')]).splitlines()[1].replace('2026-10-15 12:00','2026-10-16 12:00')
+    text=good+future+'\n'
+    receipt='2026-10-15T12:09:00Z'
+    result=journal.append_response(text,['EGLC'],live_capture.FULL_FIELDS,receipt,quarantine_future=True)
+    assert result['versions_added']==2 and result['quarantined_future_sets']==1
+    assert [r['tmpf'] for r in journal.asof('EGLC','2026-10-17T00:00:00Z')]==['60']
+    held=list(journal.versions())
+    rejected=[r for r in held if json.loads(r['payload'])['schema']=='iem-report-quarantine-v1']
+    assert len(rejected)==1 and 'future' in rejected[0]['payload']
+    before=pathlib.Path(journal.paths()[1][0]).read_bytes()
+    assert journal.append_response(text,['EGLC'],live_capture.FULL_FIELDS,'2026-10-15T12:10:00Z',quarantine_future=True)['versions_added']==0
+    assert pathlib.Path(journal.paths()[1][0]).read_bytes()==before
+    # An independent real later receipt can admit the now-past observation;
+    # it never changes the quarantined receipt or backdates availability.
+    later=good.splitlines()[0]+'\n'+future+'\n'
+    journal.append_response(later,['EGLC'],live_capture.FULL_FIELDS,'2026-10-16T12:09:00Z')
+    assert len(list(journal.versions()))==3
+    assert [r['tmpf'] for r in journal.asof('EGLC','2026-10-16T12:10:00Z')]==['60','99']
