@@ -89,6 +89,22 @@ def capture(row,bands,unit,context,now=None,diagnostics=None,state_override=None
     now=now or dt.datetime.now(dt.timezone.utc)
     inputs=((row.get('predictive_context') or {}).get('forecast_input') or {}).get('station_combination') or {}
     sources,source_names=canonical_sources(inputs.get('sources') or {})
+    # Same-day serving may carry a complete but older corrected combination.
+    # It must not conceal a separately received raw morning snapshot. Only a
+    # chronologically valid, stale corrected window may take this fallback;
+    # malformed/future receipts still fail the original proof gates below.
+    if sources is not None and row['checkpoint']=='morning' and inputs.get('source_kind','station_corrected')=='station_corrected':
+        try:
+            first,last=(timestamp(inputs[k]) for k in ('inputs_oldest_run_at','inputs_newest_run_at'))
+            stale=first<=last<=now and (now-first).total_seconds()>8*3600
+        except (KeyError,ValueError,TypeError,OverflowError):
+            stale=False
+        if stale:
+            import morning_ensemble
+            raw_inputs=morning_ensemble.get(row['city_key'],row['target_date']) or {}
+            raw_sources,raw_names=canonical_sources(raw_inputs.get('sources') or {})
+            if raw_inputs.get('source_kind')==morning_ensemble.KIND and raw_sources is not None:
+                inputs,sources,source_names=raw_inputs,raw_sources,raw_names
     if sources is None and row['checkpoint']=='morning':
         import morning_ensemble
         inputs=morning_ensemble.get(row['city_key'],row['target_date']) or {}

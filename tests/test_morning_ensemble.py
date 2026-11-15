@@ -104,6 +104,55 @@ def test_morning_preparation_wires_the_actual_snapshot_reader():
     assert m.get('city','2026-10-02') and a.capture_context('city','2026-10-02')['checkpoint']=='morning'
 
 
+def stale_corrected_morning(now):
+    row,ctx,_=original()
+    row['checkpoint']='morning'
+    inp=row['predictive_context']['forecast_input']['station_combination']
+    inp['inputs_oldest_run_at']=(now-dt.timedelta(hours=10)).isoformat()
+    inp['inputs_newest_run_at']=(now-dt.timedelta(hours=9)).isoformat()
+    return row,ctx
+
+
+def test_stale_corrected_morning_does_not_hide_received_raw_snapshot():
+    city,snapshot,now=case()
+    row,ctx=stale_corrected_morning(now)
+    before=copy.deepcopy(row)
+    # Exact regression: seven corrected sources blocked the existing raw path.
+    assert e.capture(row,BANDS,'C',ctx,now) is None
+    m.prepare({('city','2026-10-02'):dict(checkpoint='morning',contract='awc-routine-v1')},[city],now,lambda *a,**k:[snapshot])
+    packet=e.capture(row,BANDS,'C',ctx,now)
+    assert packet['source_kind']==m.KIND and packet['model_version']==e.family('TEST','C',m.KIND)
+    assert packet['source_receipt']==m.pack(snapshot,city,'2026-10-02',now)['source_receipt']
+    assert packet['incumbent_probs']==row['probs'] and not packet['changes_serving'] and row==before
+    assert packet['input_oldest']==snapshot['written_at']
+
+
+@pytest.mark.parametrize('bad',['absent','stale','future','missing_hour','missing_model'])
+def test_stale_corrected_fallback_requires_its_own_complete_causal_raw_receipt(bad):
+    city,snapshot,now=case();row,ctx=stale_corrected_morning(now)
+    if bad=='stale':snapshot['captured_at']=(now-dt.timedelta(hours=9)).isoformat()
+    if bad=='future':snapshot['written_at']=(now+dt.timedelta(seconds=1)).isoformat()
+    if bad=='missing_hour':snapshot['payload']['hours'].pop(next(iter(snapshot['payload']['hours'])))
+    if bad=='missing_model':next(iter(snapshot['payload']['hours'].values()))[0]=None
+    m.prepare({('city','2026-10-02'):dict(checkpoint='morning',contract='awc-routine-v1')},[city],now,lambda *a,**k:[]if bad=='absent'else[snapshot])
+    assert e.capture(row,BANDS,'C',ctx,now) is None
+
+
+@pytest.mark.parametrize('case_name',['fresh','future','malformed','evening'])
+def test_raw_fallback_does_not_replace_fresh_or_invalid_corrected_identity(case_name):
+    city,snapshot,now=case();row,ctx=stale_corrected_morning(now)
+    m.prepare({('city','2026-10-02'):dict(checkpoint='morning',contract='awc-routine-v1')},[city],now,lambda *a,**k:[snapshot])
+    inp=row['predictive_context']['forecast_input']['station_combination']
+    if case_name=='fresh':
+        inp['inputs_oldest_run_at']=inp['inputs_newest_run_at']=(now-dt.timedelta(hours=1)).isoformat()
+    if case_name=='future':inp['inputs_newest_run_at']=(now+dt.timedelta(seconds=1)).isoformat()
+    if case_name=='malformed':inp['inputs_oldest_run_at']='unknown'
+    if case_name=='evening':row['checkpoint']='d1_eve'
+    packet=e.capture(row,BANDS,'C',ctx,now)
+    if case_name=='fresh':assert packet['source_kind']=='station_corrected' and packet['source_values_c']==inp['sources']
+    else:assert packet is None
+
+
 def test_wrong_city_future_target_and_failed_reads_cannot_collect():
     city,row,now=case();bad=copy.deepcopy(row);bad['key']='other|snapshot'
     with pytest.raises(ValueError,match='city identity'):m.pack(bad,city,'2026-10-02',now)
