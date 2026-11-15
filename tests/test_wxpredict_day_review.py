@@ -133,4 +133,4 @@ def test_the_nightly_job_runs_it_after_the_station_data():
     names = [s.get("name") for s in steps]
     i = next(k for k, s in enumerate(steps) if "day_review.py" in str(s.get("run", "")))
     assert names.index("Append the station reports and days (WXPredict)") < i < names.index("Commit the mirror")
-    assert steps[i]["if"] == "always()" and steps[i]["timeout-minutes"] <= 5
+    assert steps[i]["if"] == "${{ always() && github.event.inputs.archive_only != 'true' }}" and steps[i]["timeout-minutes"] <= 5

@@ -1941,3 +1941,15 @@ evaluation gates. Engineering validation and live deployment receipts belong in
 the private recovery checkpoint. No fitted weights/research exports are part of
 this source change; no city-card model, paper configuration or existing shared
 experiment is replaced. See docs/TEMPERATURE_CANDIDATE.md.
+
+### Archive recovery without model enrichment (16 Nov 2026)
+
+P1.6 remains open: a committed archive is not evidence of recovered physical
+headroom. Add manual `archive_only=true` to the existing workflow so archive,
+push, guarded live-copy retirement, headroom measurement and mirror can run
+without the independent training/settlement enrichment steps. The clock's
+default behavior, per-dataset retirement guards, retention floors and station
+chronology rejection remain unchanged. Correct the maintenance receipt's
+stale promise of a scheduled full rewrite; routine autovacuum acknowledges
+reusable space only. No new cron, private evidence publication or schema
+change. Live recovery and final database size must be verified separately.

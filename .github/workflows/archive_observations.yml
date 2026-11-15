@@ -49,7 +49,7 @@ on:
         required: false
         default: ''
       keep_days:
-        description: 'Override every table window (blank = each table keeps its own: 90 days, 2 for research)'
+        description: 'Override windows (blank = guarded per-dataset defaults and pressure floors)'
         required: false
         default: ''
       table:
@@ -57,8 +57,13 @@ on:
         type: choice
         options: ['all', 'book_evidence', 'books', 'correlation', 'decisions', 'edges', 'forecast_features', 'forecast_models', 'forecast_variables', 'forecasts', 'ladders', 'live_capture', 'model_payloads', 'model_skill', 'observations', 'probabilities', 'research', 'resolution', 'signal_inputs', 'trades']
         default: 'all'
+      archive_only:
+        description: 'Recovery run: archive and mirror only; skip model-data enrichment and scoring'
+        type: boolean
+        required: false
+        default: false
       commit:
-        description: 'Upload and prune (UNtick for a dry run)'
+        description: 'Retire verified live copies after export and push (false = export and push only)'
         type: boolean
         required: false
         default: true
@@ -288,7 +293,7 @@ jobs:
       # time is not billed, and on 9 Oct the run hit its 240 s deadline with
       # 14 of 47 cities unreached (step 02:46:07-02:50:10Z).
       - name: Append the honest training record
-        if: always()
+        if: ${{ always() && github.event.inputs.archive_only != 'true' }}
         timeout-minutes: 11
         run: PYTHONPATH=scripts python scripts/honest_record.py
         env:
@@ -304,7 +309,7 @@ jobs:
       # the Actions minute budget): the repository is public, and on 9 Oct the
       # run hit its deadline with 23 of 47 cities unreached (02:50:10-02:51:41Z).
       - name: Append the ensemble record
-        if: always()
+        if: ${{ always() && github.event.inputs.archive_only != 'true' }}
         timeout-minutes: 7
         run: PYTHONPATH=scripts python scripts/ensemble_record.py
         env:
@@ -323,7 +328,7 @@ jobs:
       # is logged as P2.13_station_record (partial when a station had no new
       # report), a crash as crash:fetch_obs.py.
       - name: Append the station reports and days (WXPredict)
-        if: always()
+        if: ${{ always() && github.event.inputs.archive_only != 'true' }}
         timeout-minutes: 5
         run: python tools/wxpredict/fetch_obs.py update
         env:
@@ -334,7 +339,7 @@ jobs:
       # Settled additions only; original history and first answers preserved.
       # Shared 180 s request deadline, 4 min step backstop; retry missing series next run.
       - name: Append settled venue labels and prices (WXPredict)
-        if: always()
+        if: ${{ always() && github.event.inputs.archive_only != 'true' }}
         timeout-minutes: 4
         run: python tools/wxpredict/market_update.py
         env:
@@ -342,7 +347,7 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
       - name: Audit the candidate against serving on settled first calls
-        if: always()
+        if: ${{ always() && github.event.inputs.archive_only != 'true' }}
         timeout-minutes: 3
         run: python tools/wxpredict/forward_audit.py
         env:
@@ -359,7 +364,7 @@ jobs:
       # tables (rows read through SQL): 188 rows in 14.5 s. Logged as
       # P7.7_day_review. Writes only its own table.
       - name: Why each day hit or missed (WXPredict)
-        if: always()
+        if: ${{ always() && github.event.inputs.archive_only != 'true' }}
         timeout-minutes: 5
         run: python tools/wxpredict/day_review.py
         env:
@@ -370,7 +375,7 @@ jobs:
       # written and verified - the manifest is saved after every table, so
       # what is on disk is exactly what it records.
       - name: Score the original frozen city calls
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && github.event.inputs.archive_only != 'true' }}
         timeout-minutes: 4
         run: PYTHONPATH=scripts python scripts/predictive_validation.py --score-only
         env:
