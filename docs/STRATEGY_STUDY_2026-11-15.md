@@ -341,10 +341,16 @@ reproduced (below), and these are the reasons it is not yet evidence.**
   these trades would be $1.38.
 - **Staking.** Each day six trades of the equity divided by 7.5, from $30: that
   gives the listed stakes 4.00, 5.56 and 8.34. So 80% of the equity is
-  staked every day and the result compounds.
+  staked every day and the result compounds. That convention adds a whole
+  day's profit before the next day's stakes, but the next evening-before
+  orders are placed before that day settles (Codex on #515: Shanghai's 13 Nov
+  order was placed at 10:37Z on 12 Nov, before its 12 Nov position settled at
+  16:37Z). A $30 account could not fund them all; see the settlement-aware
+  replay below.
 
 **What it returns, on the recorded evening-before book with the fee,
-and what moves it.** P&L by day, then the equity from $30:
+and what moves it,** under the list's own staking (each day's profit added
+before the next day's stakes). P&L by day, then the equity from $30:
 
 | Basis | P&L by day (12 / 13 / 14 Nov) | Equity | On $30 | Per dollar staked |
 |---|---|---|---|---|
@@ -355,6 +361,11 @@ and what moves it.** P&L by day, then the equity from $30:
 | Without the best trade | -2.34 / +13.15 / +4.56 | $45.37 | +51.2% | +20.5% |
 | The two trades whose bucket is not the model's pick, on the model's pick | +11.16 / +19.56 / -21.31 | $39.41 | +31.4% | +8.9% |
 
+- **Settlement-aware, the same trades.** Orders and settlements in time order,
+  each order the realised equity divided by 7.5 and no more than the cash in
+  hand: $61.72, +105.7% on $30. 3 of the 18 orders are cut to the cash
+  in hand and one (Buenos Aires on 14 Nov) cannot be placed, so its outcome
+  does not matter. The account is out of cash on 14 Nov.
 - **The list's own P&L as written** is +11.73 on 12 Nov and +20.85 on 13 Nov,
   which is $30 to $62.58 after two days. Three of the six trades on 14 Nov
   have no listed price or P&L, so I cannot reproduce its exact +98%; the

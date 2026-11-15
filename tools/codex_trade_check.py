@@ -16,10 +16,14 @@ equals; does the listed settled bucket equal the venue's winner
 and the price.
 
 PART `replay`: the same trades at the recorded evening-before book with the
-taker fee (tools/strategy_study.cost), and the staking the list implies: each
+taker fee (tools/strategy_study.cost), under the staking the list implies: each
 day six trades of one 7.5th of the equity, from $30 (a stake of 4.00, then
-5.56, then 8.34 is what 30, 41.73 and 62.58 divided by 7.5 give). Outcomes are
-the venue's; where the venue has not settled, the list's provisional ones.
+5.56, then 8.34 is what 30, 41.73 and 62.58 divided by 7.5 give). That
+convention adds a whole day's profit before the next day's stakes; the next
+evening-before orders are placed before that day settles (Codex on #515), so
+`settlement_aware` replays the orders and the settlements in time order with
+the cash in hand. Outcomes are the venue's; where the venue has not settled,
+the list's provisional ones.
 Scenarios: the list's own prices; the two trades whose bucket is not the
 model's pick taken on the model's pick; Buenos Aires on 14 Nov as a loss; the
 best trade removed; Shanghai on 14 Nov at its listed price; a flat stake.
@@ -174,6 +178,7 @@ def check_trade(t, rows, outcome, bands):
                              "pnl_difference": None if t["pnl"] is None else round(pnl(t["price"], t["stake"], t["won"], fee=False) - t["pnl"], 3),
                              "fee_not_in_the_list": round(S.cost(t["price"]) * shares - t["price"] * shares, 4)}
     out["_top"], out["_mine"], out["_book"], out["_probs"], out["_win"] = top, mine, book, probs, win
+    out["_decided_at"], out["_settled_at"] = first["decided_at"], (outcome or {}).get("settled_at") or None
     return out
 
 
@@ -198,6 +203,38 @@ def scenario(name, days):
     return {"scenario": name, "days": path, "equity": path[-1]["equity"],
             "return_on_start": round(path[-1]["equity"] / START_EQUITY - 1, 4),
             "pnl_per_dollar_staked": round(total / staked, 4)}
+
+
+def when(stamp):
+    return dt.datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+
+
+def settlement_aware(entries, start=START_EQUITY):
+    """The same trades as an account that only has what has settled (Codex on
+    #515: the list's staking adds a whole day's profit before the next day's
+    orders, which the next evening-before orders, placed before the day settles,
+    could not use).
+
+    entries: [(ordered_at, settled_at, price, won)]. Orders go in time order; a
+    position settled at or before an order's time has paid out by then. An
+    order is equity-realised / 7.5, and no more than the cash in hand: an
+    order the cash cannot cover is cut to the cash (and counted)."""
+    cash, realised, open_, orders, cut, stakes = start, start, [], sorted(entries, key=lambda e: e[0]), 0, []
+    for at, settle_at, price, won in orders:
+        for pos in [o for o in open_ if o[0] <= at]:
+            open_.remove(pos)
+            cash += pos[2]
+            realised += pos[2] - pos[1]
+        want = realised / STAKE_DIVISOR
+        stake = min(want, max(cash, 0.0))
+        cut += int(stake < want - 1e-9)
+        cash -= stake
+        stakes.append(round(stake, 2))
+        open_.append((settle_at, stake, stake / S.cost(price) if won else 0.0))
+    for settle_at, stake, payout in open_:
+        cash += payout
+    return {"equity": round(cash, 2), "return_on_start": round(cash / start - 1, 4), "orders": len(orders),
+            "orders_cut_to_the_cash_in_hand": cut, "stakes": stakes, "smallest_stake": min(stakes), "largest_stake": max(stakes)}
 
 
 def replay(checked, trades):
@@ -256,7 +293,23 @@ def replay(checked, trades):
         scenario("without the best trade", base(drop=best)),
     ]
     total_pnl = sum(pnl(p, path[list(by_day).index(t["date"])]["stake_a_trade"], w) for (k, p, w), t in zip(pnls, trades))
+    unsettled = [t for t, c in zip(trades, checked) if c["_settled_at"] is None]
+    last = max(when(c["_settled_at"]) for c in checked if c["_settled_at"])
+
+    def entries(ba_loss=False):
+        out = []
+        for t, c in zip(trades, checked):
+            won = outcome(t, c)
+            if ba_loss and t["city"] == "buenos_aires" and t["date"] == "2026-11-14":
+                won = False
+            # a position the venue has not settled pays after every order in the list
+            out.append((when(c["_decided_at"]), when(c["_settled_at"]) if c["_settled_at"] else last + dt.timedelta(days=1),
+                        price_of(t["side"], c["_book"].get(c["_mine"])), won))
+        return out
+    aware = {"as_listed": settlement_aware(entries()), "buenos_aires_on_14_nov_as_a_loss": settlement_aware(entries(True)),
+             "positions_not_settled_in_the_record": len(unsettled)}
     return {"stake_rule": f"each day every trade is equity / {STAKE_DIVISOR:g}, from ${START_EQUITY:g}",
+            "settlement_aware": aware,
             "best_trade": {"trade": list(best), "pnl": round(best_pnl, 2), "share_of_all_profit": round(best_pnl / total_pnl, 3)},
             "flat_stake_pnl_per_dollar": round(float(np.mean(flat)), 4), "trades": len(flat),
             "scenarios": scenarios}

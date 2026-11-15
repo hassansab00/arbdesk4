@@ -390,6 +390,65 @@
  },
  "replay": {
   "stake_rule": "each day every trade is equity / 7.5, from $30",
+  "settlement_aware": {
+   "as_listed": {
+    "equity": 61.72,
+    "return_on_start": 1.0574,
+    "orders": 18,
+    "orders_cut_to_the_cash_in_hand": 3,
+    "stakes": [
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     5.8,
+     5.8,
+     6.25,
+     6.55,
+     6.55,
+     5.49,
+     6.06,
+     2.96,
+     0.0,
+     6.55,
+     2.93
+    ],
+    "smallest_stake": 0.0,
+    "largest_stake": 6.55
+   },
+   "buenos_aires_on_14_nov_as_a_loss": {
+    "equity": 61.72,
+    "return_on_start": 1.0574,
+    "orders": 18,
+    "orders_cut_to_the_cash_in_hand": 3,
+    "stakes": [
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     5.8,
+     5.8,
+     6.25,
+     6.55,
+     6.55,
+     5.49,
+     6.06,
+     2.96,
+     0.0,
+     6.55,
+     2.93
+    ],
+    "smallest_stake": 0.0,
+    "largest_stake": 6.55
+   },
+   "positions_not_settled_in_the_record": 3
+  },
   "best_trade": {
    "trade": [
     "shanghai",

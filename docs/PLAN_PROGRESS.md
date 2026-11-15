@@ -216,7 +216,10 @@ Hassan, 15 Nov: his Codex test of the three-YES / three-NO strategy "is up
 - **Section 11's "not reproduced" is withdrawn for his trades.** It was my own
   build of the rule. With his list, on the recorded evening-before book with
   the fee, from $30 and staking 80% of the equity a day: +125.0% (+35.5% per
-  dollar staked); +84.8% with Buenos Aires on 14 Nov as a loss.
+  dollar staked); +84.8% with Buenos Aires on 14 Nov as a loss. That adds a
+  whole day's profit before the next day's stakes; replayed settlement-aware
+  with the cash in hand (Codex on #515) it is +105.7%, with 3 orders cut to
+  the cash and one not placed.
 - **Checks passed:** 14 of 15 listed prices are the recorded evening book
   (the other, Shanghai on 14 Nov at 80 cents, is the next morning's); all 15
   venue-settled buckets agree; shares and P&L follow from the stakes. The list

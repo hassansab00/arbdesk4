@@ -86,6 +86,39 @@ def test_the_rule_the_cities_fit_loses_over_the_record_and_the_three_days_are_it
         assert d["yes_in_default_top3"] == 2 and d["no_in_default_bottom3"] == 2
 
 
+def test_settlement_aware_replay_is_in_the_document_and_cannot_beat_the_day_end_convention():
+    R = RESULT["replay"]
+    a = R["settlement_aware"]["as_listed"]
+    assert a["orders"] == 18 and a["orders_cut_to_the_cash_in_hand"] >= 1 and a["smallest_stake"] == 0.0
+    assert a["equity"] < R["scenarios"][0]["equity"], "a day's profit cannot be spent before it settles"
+    assert 1.0 < a["return_on_start"] < R["scenarios"][0]["return_on_start"]
+    assert R["settlement_aware"]["buenos_aires_on_14_nov_as_a_loss"]["equity"] == a["equity"], "an order the cash cannot cover has no outcome"
+    assert f"${a['equity']:.2f}, {_pc(a['return_on_start'])} on $30" in DOC
+    assert f"{a['orders_cut_to_the_cash_in_hand']} of the {a['orders']} orders are cut to the cash" in DOC
+    assert "Codex on #515" in DOC
+
+
+def test_settlement_aware_account_uses_only_what_has_settled():
+    pytest.importorskip("numpy")
+    import datetime as dt
+    import codex_trade_check as X
+    t0 = dt.datetime(2026, 11, 1, tzinfo=dt.timezone.utc)
+    h = lambda n: t0 + dt.timedelta(hours=n)   # noqa: E731
+    # one winning order settles at hour 10; the next is placed at hour 5 (before) and the one after at hour 12 (after)
+    early = X.settlement_aware([(h(0), h(10), 0.5, True), (h(5), h(20), 0.5, True)])
+    late = X.settlement_aware([(h(0), h(10), 0.5, True), (h(12), h(20), 0.5, True)])
+    assert early["stakes"][1] == pytest.approx(4.0), "placed before the first settles: realised equity is still $30"
+    assert late["stakes"][1] > early["stakes"][1], "placed after it settles: the profit is in the stake"
+    assert late["equity"] > early["equity"]
+    # the cash: 30 / 7.5 = 4 an order; eight orders at once want 32 and the last ones are cut
+    broke = X.settlement_aware([(h(0), h(50), 0.5, True)] * 9)
+    assert broke["orders_cut_to_the_cash_in_hand"] == 2 and broke["stakes"][-2:] == [2.0, 0.0] and sum(broke["stakes"]) == pytest.approx(30.0)
+    # a loss is the stake, a win pays stake / cost
+    one_win = X.settlement_aware([(h(0), h(1), 0.5, True)])
+    one_loss = X.settlement_aware([(h(0), h(1), 0.5, False)])
+    assert one_win["equity"] == pytest.approx(30 - 4.0 + 4.0 / 0.5125, abs=0.01) and one_loss["equity"] == pytest.approx(26.0, abs=0.01)
+
+
 def test_the_dates_a_test_needs():
     z = RESULT["form"]["sizing"]
     n = z["dates_for_80pc_power"]
