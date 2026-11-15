@@ -315,3 +315,136 @@ each call:
   that figure were not available to check.
 - **One trade swings by about its whole stake** (standard deviation 1.02 of a
   dollar), so three dates of this rule say little either way.
+
+## 12. Hassan's Codex test, 12-14 Nov, checked trade by trade (added 15 Nov)
+
+Hassan, 15 Nov: "im testing the 3 yes 3 no strategy in codex, from nov 12-14
+its up +98% supposedly", with the 18 trades Codex listed
+(`data/eval/codex_test_2026-11-12/trades.json`, as pasted).
+`tools/codex_trade_check.py` checks them against the recorded book and the
+venue's outcomes and rebuilds `data/eval/codex_test_2026-11-12/result.json`.
+**Section 11 said the +98% was not reproduced. That was my own build of the
+rule, with its own choice of cities, not these trades. With the list it is
+reproduced (below), and these are the reasons it is not yet evidence.**
+
+**What Hassan told me about the test, 15 Nov.** "Selection is night time
+beirut time 23:30, frozen prediction forecasts for the next day." and "Theres
+no ranking its just what historically was accurate and what wasnt." The first
+is 21:30Z in November; both are used below.
+
+**The listed trades check out.**
+
+- **Prices.** 14 of the 15 listed prices are the recorded evening-before book
+  (YES at the ask, NO at one less the bid), within three and a half cents.
+  The other, Shanghai on 14 Nov at 80 cents, is the 14 Nov morning call's
+  book; the evening-before ask was 0.52.
+- **Outcomes.** The listed settled bucket is the venue's winner on
+  15 of 15 trades the venue has settled. Three on 14 Nov (Austin, Buenos
+  Aires, Miami) are not settled in our record.
+- **Arithmetic.** Every listed share count and P&L follows from its stake and
+  price (0 off by more than a cent). The list has no fee; the taker fee on
+  these trades would be $1.38.
+- **Staking.** Each day six trades of the equity divided by 7.5, from $30: that
+  gives the listed stakes 4.00, 5.56 and 8.34. So 80% of the equity is
+  staked every day and the result compounds. That convention adds a whole
+  day's profit before the next day's stakes, but the next evening-before
+  orders are placed before that day settles (Codex on #515: Shanghai's 13 Nov
+  order was placed at 10:37Z on 12 Nov, before its 12 Nov position settled at
+  16:37Z). A $30 account could not fund them all; see the settlement-aware
+  replay below.
+
+**What it returns, on the recorded evening-before book with the fee,
+and what moves it,** under the list's own staking (each day's profit added
+before the next day's stakes). P&L by day, then the equity from $30:
+
+| Basis | P&L by day (12 / 13 / 14 Nov) | Equity | On $30 | Per dollar staked |
+|---|---|---|---|---|
+| Recorded evening-before book, with the fee | +11.16 / +19.56 / +6.78 | $67.51 | +125.0% | +35.5% |
+| The list's own prices where it gives one, fee added | +10.78 / +19.42 / +1.59 | $61.78 | +105.9% | +30.3% |
+| Shanghai on 14 Nov at its listed 80 cents | +11.16 / +19.56 / +1.60 | $62.32 | +107.7% | +30.6% |
+| Buenos Aires on 14 Nov as a loss | +11.16 / +19.56 / -5.28 | $55.45 | +84.8% | +24.1% |
+| Without the best trade | -2.34 / +13.15 / +4.56 | $45.37 | +51.2% | +20.5% |
+| The two trades whose bucket is not the model's pick, on the model's pick | +11.16 / +19.56 / -21.31 | $39.41 | +31.4% | +8.9% |
+
+- **Settlement-aware, the same trades.** Orders and settlements in time order,
+  each order the realised equity divided by 7.5 and no more than the cash in
+  hand: $61.72, +105.7% on $30. 3 of the 18 orders are cut to the cash
+  in hand and one (Buenos Aires on 14 Nov) cannot be placed, so its outcome
+  does not matter. The account is out of cash on 14 Nov.
+- **The list's own P&L as written** is +11.73 on 12 Nov and +20.85 on 13 Nov,
+  which is $30 to $62.58 after two days. Three of the six trades on 14 Nov
+  have no listed price or P&L, so I cannot reproduce its exact +98%; the
+  scenarios above bracket it at +85% to +125%.
+- **One trade is 36.0% of the profit:** Shanghai YES on 12 Nov at 22 cents.
+- **Two trades carry 14 Nov.** Helsinki (2 C) and Warsaw NO (7 C) are not the
+  model's pick at the evening call: its pick was 3-4 C (0.438 against 0.426
+  on 2 C) and 6 C (0.303 against 0.298 on 7 C). In both, Codex's bucket is the
+  market's favourite and won. The other 16 of 18 are the model's pick. On the
+  model's pick those two lose, and the three days return +31.4%, not
+  +125.0%. How Codex chose those two buckets is the question to answer.
+- **Three outcomes on 14 Nov are provisional.** Buenos Aires is the least
+  certain: the list has 29 C, our last call that day had 28 C at 0.67.
+
+**What existed at 23:30 Beirut.** Each city's evening-before call is made at
+its own 18:00, so the calls of Austin, Buenos Aires, Houston, Miami are made after
+21:30Z (Buenos Aires by 7 minutes, Miami by about 2 hours, Houston and Austin by
+about 3 hours). 10 of the 18 listed trades use such a call. The 8 with a listed price
+match that later book, and for Buenos Aires and Houston on 13 Nov the listed
+bucket is the model's pick on the later call but not on the day-ahead call.
+So the run, or at least its inputs, came after 23:30 Beirut; a run at 23:30
+would have had those cities' day-ahead call (made at 09:00 their time). The
+same trades on the latest call made by 21:30Z, the day-ahead book standing in
+for the live one:
+
+| Bucket | Orders | Won | Day-end staking | Settlement-aware, all orders at 23:30 Beirut | Per dollar staked (day-end) |
+|---|---|---|---|---|---|
+| The listed buckets | 18 | 14 | $70.53, +135.1% | $49.60, +65.3%, 5 orders cut to the cash | +37.6% |
+| The model's pick at that call | 18 | 12 | $40.66, +35.5% | $41.04, +36.8%, 5 orders cut to the cash | +9.9% |
+
+- **4 of the 18 listed buckets are not the model's pick at the call available then:**
+  Buenos Aires and Houston on 13 Nov (the pick only on the later call), and
+  Helsinki and Warsaw on 14 Nov (not the pick on any call). On the model's pick
+  the three days still return a profit (+35.5% on day-end staking, +36.8%
+  settlement-aware) against +135.1% and +65.3% on the listed buckets, and 14 Nov
+  loses (-22.26 on day-end staking).
+- **Prices here are the call's book, not the live book at 23:30.** Only the
+  calls are recorded, so for a city whose call was hours earlier the price may
+  have moved.
+
+**The rule: "what historically was accurate".** On each date the cities are
+ranked on their evening-before picks that had settled by 21:30Z, by hit rate
+(at least 3 picks); YES on the three best, NO on the three worst. I cannot see
+Codex's exact definition, so this tests the rule as described, at the
+evening-before call, one dollar a trade at the touch with the fee, over all
+47 dates it can trade (2026-09-29 to 2026-11-14):
+
+| Hit rate over the last | Trades | Both legs | 90% | YES leg | NO leg |
+|---|---|---|---|---|---|
+| 5 days | 280 | +6.8% | -2.9% to +16.5% | +8.7% | +5.0% |
+| 7 days | 281 | +3.9% | -7.7% to +15.9% | +1.5% | +6.3% |
+| 10 days | 279 | -3.5% | -12.5% to +6.0% | -5.7% | -1.3% |
+| 14 days | 280 | -12.0% | -20.5% to -3.9% | -20.2% | -3.7% |
+| 21 days | 280 | -5.2% | -14.5% to +4.0% | -1.2% | -9.3% |
+| 28 days | 279 | -7.6% | -17.8% to +2.8% | -9.0% | -6.3% |
+| All history | 278 | -8.9% | -18.1% to +0.8% | -10.7% | -7.2% |
+
+- **"All history" is the rule as Hassan describes it:** -8.9% a dollar over 278 trades
+  (-18.1% to +0.8%). No window is separable from zero in the positive direction;
+  14 days is wholly below it. I tried seven windows, so one clear winner
+  would not have meant much either.
+- **It does not reproduce the six cities.** On each day the six cities sit in
+  the all-history table at the positions below (of 47), so some are mid-table
+  where an accuracy ranking would not pick them. A ten-day window comes
+  closest: all of them within the top and bottom seven, and the table's own
+  top and bottom three hold 12 of the 18 assignments. If Codex's "historical
+  accuracy" comes from another record (a longer one, or the platform's own
+  hit-and-miss page), I need its source to test it.
+  All history, 11-12: YES at 1, 2, 27 from the best, NO at 1, 9, 27 from the worst; 11-13: YES at 1, 3, 20 from the best, NO at 1, 7, 20 from the worst; 11-14: YES at 2, 3, 19 from the best, NO at 1, 18, 22 from the worst.
+- **Ten days, with every tie broken at random 200 times:** both legs
+  -1.8% on average (-5.2% to +1.9%); 20.5% of tie-breaks end above zero.
+- **12-14 Nov is the best run of three dates in the record.** Of 45 runs of
+  three consecutive dates, +40.8% (rank 1, 15 trades) is the highest; the
+  median is -1.7% and 47% of runs are positive.
+- **How long a test takes.** The spread of a date's mean return is 0.38. For 80%
+  power to put the rule above zero: 8 dates if its true return is +35% a dollar,
+  23 dates at +20%, 90 dates at +10%.

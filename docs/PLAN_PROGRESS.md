@@ -205,6 +205,48 @@ legacy signal chain, labels suspended strategies in the desk selector, and
 shows their 14-day eligibility time without offering an ineffective Start.
 No portfolio allocation, risk limits, or workflow schedules change.
 
+## Hassan's Codex test, 12-14 Nov — 15 Nov: the trades check out; three days are not evidence
+
+Hassan, 15 Nov: his Codex test of the three-YES / three-NO strategy "is up
++98% supposedly", with the 18 trades listed. Section 12 of
+`docs/STRATEGY_STUDY_2026-11-15.md`; `tools/codex_trade_check.py` rebuilds
+`data/eval/codex_test_2026-11-12/result.json` from the list
+(`trades.json`, as pasted).
+
+- **Section 11's "not reproduced" is withdrawn for his trades.** It was my own
+  build of the rule. With his list, on the recorded evening-before book with
+  the fee, from $30 and staking 80% of the equity a day: +125.0% (+35.5% per
+  dollar staked); +84.8% with Buenos Aires on 14 Nov as a loss. That adds a
+  whole day's profit before the next day's stakes; replayed settlement-aware
+  with the cash in hand (Codex on #515) it is +105.7%, with 3 orders cut to
+  the cash and one not placed.
+- **Checks passed:** 14 of 15 listed prices are the recorded evening book
+  (the other, Shanghai on 14 Nov at 80 cents, is the next morning's); all 15
+  venue-settled buckets agree; shares and P&L follow from the stakes. The list
+  has no fee ($1.38 on these trades).
+- **Why it is not evidence yet:** 18 trades on 3 dates; one trade is 36% of the
+  profit; on 14 Nov two buckets (Helsinki, Warsaw NO) are not the model's pick
+  and, on the model's pick, the three days return +31.4%; three 14 Nov
+  outcomes are not settled in our record (Buenos Aires conflicts with our last
+  call).
+- **Hassan's answers (15 Nov):** selection is 23:30 Beirut (21:30Z) on frozen
+  forecasts for the next day; "no ranking, just what historically was accurate
+  and what wasn't". At 21:30Z the evening-before calls of Buenos Aires, Miami,
+  Houston and Austin do not exist yet (they are made at their own 18:00), yet
+  10 of the 18 listed trades use them and the 8 with a price match those later
+  books: the run's inputs came after 23:30 Beirut. On what existed at 23:30 the
+  listed buckets give +135.1% (day-end) / +65.3% (settlement-aware); on the
+  model's pick at that call +35.5% / +36.8%, and 14 Nov loses.
+- **The rule as described** (hit rate, cities picked on outcomes settled by
+  21:30Z): all history -8.9% over 278 trades (-18.1% to +0.8%); no
+  window of seven separable above zero; all-history does not reproduce the six
+  cities (some are mid-table), a ten-day window does better (12 of 18);
+  12-14 Nov is the best of 45 runs of three dates.
+- **A forward test needs** 8 dates if the true return is +35%, 23 at +20%, 90 at +10%.
+- **Open:** how Codex chooses each bucket (16 of 18 are the model's pick, the
+  other two the market's favourite) and where its "historical accuracy" comes
+  from; not pre-registered until Hassan gives them.
+
 ## The evening-before call, where Hassan trades — 15 Nov: fairly priced, one thin lead
 
 Hassan, 15 Nov: he trades the evening before, and his own test of the

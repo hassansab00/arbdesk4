@@ -1,0 +1,1319 @@
+{
+ "trades": 18,
+ "dates": [
+  "2026-11-12",
+  "2026-11-13",
+  "2026-11-14"
+ ],
+ "listed": {
+  "days": [
+   {
+    "date": "2026-11-12",
+    "listed_stake": 4.0,
+    "stake_from_equity": 4.0,
+    "trades": 6,
+    "trades_with_a_listed_pnl": 6,
+    "listed_pnl": 11.73
+   },
+   {
+    "date": "2026-11-13",
+    "listed_stake": 5.57,
+    "stake_from_equity": 5.56,
+    "trades": 6,
+    "trades_with_a_listed_pnl": 6,
+    "listed_pnl": 20.85
+   },
+   {
+    "date": "2026-11-14",
+    "listed_stake": 8.35,
+    "stake_from_equity": 8.34,
+    "trades": 6,
+    "trades_with_a_listed_pnl": 3,
+    "listed_pnl": -2.5
+   }
+  ],
+  "provisional_results": 5,
+  "trades_without_a_listed_price": 3
+ },
+ "checks": [
+  {
+   "city": "amsterdam",
+   "date": "2026-11-12",
+   "side": "YES",
+   "bucket": "10\u00b0C",
+   "model_p_on_bucket": 0.426,
+   "is_model_top": true,
+   "is_market_favourite": true,
+   "recorded_price": 0.63,
+   "listed_price": 0.63,
+   "price_difference": 0.0,
+   "price_is": "the evening-before book",
+   "venue_winner_is_listed_settled_bucket": true,
+   "arithmetic": {
+    "shares_difference": 0.009,
+    "pnl_difference": -0.001,
+    "fee_not_in_the_list": 0.074
+   }
+  },
+  {
+   "city": "buenos_aires",
+   "date": "2026-11-12",
+   "side": "NO",
+   "bucket": "31\u00b0C",
+   "model_p_on_bucket": 0.258,
+   "is_model_top": true,
+   "is_market_favourite": false,
+   "recorded_price": 0.61,
+   "listed_price": 0.61,
+   "price_difference": 0.0,
+   "price_is": "the evening-before book",
+   "venue_winner_is_listed_settled_bucket": true,
+   "arithmetic": {
+    "shares_difference": 0.007,
+    "pnl_difference": 0.0,
+    "fee_not_in_the_list": 0.078
+   }
+  },
+  {
+   "city": "houston",
+   "date": "2026-11-12",
+   "side": "NO",
+   "bucket": "74\u201375\u00b0F",
+   "model_p_on_bucket": 0.405,
+   "is_model_top": true,
+   "is_market_favourite": false,
+   "recorded_price": 0.986,
+   "listed_price": 0.986,
+   "price_difference": 0.0,
+   "price_is": "the evening-before book",
+   "venue_winner_is_listed_settled_bucket": true,
+   "arithmetic": {
+    "shares_difference": 0.007,
+    "pnl_difference": -0.003,
+    "fee_not_in_the_list": 0.0028
+   }
+  },
+  {
+   "city": "miami",
+   "date": "2026-11-12",
+   "side": "YES",
+   "bucket": "84\u201385\u00b0F",
+   "model_p_on_bucket": 0.57,
+   "is_model_top": true,
+   "is_market_favourite": true,
+   "recorded_price": 0.539,
+   "listed_price": 0.539,
+   "price_difference": 0.0,
+   "price_is": "the evening-before book",
+   "venue_winner_is_listed_settled_bucket": true,
+   "arithmetic": {
+    "shares_difference": 0.001,
+    "pnl_difference": 0.0,
+    "fee_not_in_the_list": 0.0922
+   }
+  },
+  {
+   "city": "shanghai",
+   "date": "2026-11-12",
+   "side": "YES",
+   "bucket": "20\u00b0C",
+   "model_p_on_bucket": 0.386,
+   "is_model_top": true,
+   "is_market_favourite": false,
+   "recorded_price": 0.22,
+   "listed_price": 0.22,
+   "price_difference": 0.0,
+   "price_is": "the evening-before book",
+   "venue_winner_is_listed_settled_bucket": true,
+   "arithmetic": {
+    "shares_difference": 0.002,
+    "pnl_difference": 0.002,
+    "fee_not_in_the_list": 0.156
+   }
+  },
+  {
+   "city": "warsaw",
+   "date": "2026-11-12",
+   "side": "NO",
+   "bucket": "7\u00b0C",
+   "model_p_on_bucket": 0.333,
+   "is_model_top": true,
+   "is_market_favourite": true,
+   "recorded_price": 0.53,
+   "listed_price": 0.56,
+   "price_difference": 0.03,
+   "price_is": "the evening-before book",
+   "venue_winner_is_listed_settled_bucket": true,
+   "arithmetic": {
+    "shares_difference": 0.003,
+    "pnl_difference": 0.003,
+    "fee_not_in_the_list": 0.088
+   }
+  },
+  {
+   "city": "austin",
+   "date": "2026-11-13",
+   "side": "NO",
+   "bucket": "76\u201377\u00b0F",
+   "model_p_on_bucket": 0.313,
+   "is_model_top": true,
+   "is_market_favourite": false,
+   "recorded_price": 0.954,
+   "listed_price": 0.96,
+   "price_difference": 0.006,
+   "price_is": "the evening-before book",
+   "venue_winner_is_listed_settled_bucket": true,
+   "arithmetic": {
+    "shares_difference": 0.002,
+    "pnl_difference": 0.002,
+    "fee_not_in_the_list": 0.0111
+   }
+  },
+  {
+   "city": "buenos_aires",
+   "date": "2026-11-13",
+   "side": "NO",
+   "bucket": "30\u00b0C",
+   "model_p_on_bucket": 0.259,
+   "is_model_top": true,
+   "is_market_favourite": false,
+   "recorded_price": 0.87,
+   "listed_price": 0.86,
+   "price_difference": -0.01,
+   "price_is": "the evening-before book",
+   "venue_winner_is_listed_settled_bucket": true,
+   "arithmetic": {
+    "shares_difference": 0.007,
+    "pnl_difference": -0.003,
+    "fee_not_in_the_list": 0.039
+   }
+  },
+  {
+   "city": "helsinki",
+   "date": "2026-11-13",
+   "side": "YES",
+   "bucket": "5\u00b0C",
+   "model_p_on_bucket": 0.503,
+   "is_model_top": true,
+   "is_market_favourite": true,
+   "recorded_price": 0.6,
+   "listed_price": 0.6,
+   "price_difference": 0.0,
+   "price_is": "the evening-before book",
+   "venue_winner_is_listed_settled_bucket": true,
+   "arithmetic": {
+    "shares_difference": 0.007,
+    "pnl_difference": 0.007,
+    "fee_not_in_the_list": 0.1112
+   }
+  },
+  {
+   "city": "houston",
+   "date": "2026-11-13",
+   "side": "NO",
+   "bucket": "76\u201377\u00b0F",
+   "model_p_on_bucket": 0.373,
+   "is_model_top": true,
+   "is_market_favourite": false,
+   "recorded_price": 0.95,
+   "listed_price": 0.95,
+   "price_difference": 0.0,
+   "price_is": "the evening-before book",
+   "venue_winner_is_listed_settled_bucket": true,
+   "arithmetic": {
+    "shares_difference": 0.003,
+    "pnl_difference": 0.003,
+    "fee_not_in_the_list": 0.0139
+   }
+  },
+  {
+   "city": "miami",
+   "date": "2026-11-13",
+   "side": "YES",
+   "bucket": "80\u201381\u00b0F",
+   "model_p_on_bucket": 0.586,
+   "is_model_top": true,
+   "is_market_favourite": false,
+   "recorded_price": 0.37,
+   "listed_price": 0.37,
+   "price_difference": 0.0,
+   "price_is": "the evening-before book",
+   "venue_winner_is_listed_settled_bucket": true,
+   "arithmetic": {
+    "shares_difference": 0.007,
+    "pnl_difference": 0.007,
+    "fee_not_in_the_list": 0.1751
+   }
+  },
+  {
+   "city": "shanghai",
+   "date": "2026-11-13",
+   "side": "YES",
+   "bucket": "20\u00b0C",
+   "model_p_on_bucket": 0.433,
+   "is_model_top": true,
+   "is_market_favourite": true,
+   "recorded_price": 0.47,
+   "listed_price": 0.47,
+   "price_difference": 0.0,
+   "price_is": "the evening-before book",
+   "venue_winner_is_listed_settled_bucket": true,
+   "arithmetic": {
+    "shares_difference": 0.01,
+    "pnl_difference": 0.01,
+    "fee_not_in_the_list": 0.1473
+   }
+  },
+  {
+   "city": "austin",
+   "date": "2026-11-14",
+   "side": "NO",
+   "bucket": "68\u201369\u00b0F",
+   "model_p_on_bucket": 0.329,
+   "is_model_top": true,
+   "is_market_favourite": true,
+   "recorded_price": 0.707,
+   "listed_price": null,
+   "venue_winner_is_listed_settled_bucket": null,
+   "unsettled_in_the_record": true,
+   "last_call_top_bucket_p": [
+    "postpeak_1h",
+    0.977,
+    true
+   ]
+  },
+  {
+   "city": "buenos_aires",
+   "date": "2026-11-14",
+   "side": "NO",
+   "bucket": "28\u00b0C",
+   "model_p_on_bucket": 0.266,
+   "is_model_top": true,
+   "is_market_favourite": true,
+   "recorded_price": 0.66,
+   "listed_price": null,
+   "venue_winner_is_listed_settled_bucket": null,
+   "unsettled_in_the_record": true,
+   "last_call_top_bucket_p": [
+    "postpeak_1h",
+    0.67,
+    false
+   ]
+  },
+  {
+   "city": "helsinki",
+   "date": "2026-11-14",
+   "side": "YES",
+   "bucket": "2\u00b0C",
+   "model_p_on_bucket": 0.426,
+   "is_model_top": false,
+   "is_market_favourite": true,
+   "recorded_price": 0.69,
+   "listed_price": 0.69,
+   "price_difference": 0.0,
+   "price_is": "the evening-before book",
+   "venue_winner_is_listed_settled_bucket": true,
+   "arithmetic": {
+    "shares_difference": 0.001,
+    "pnl_difference": 0.001,
+    "fee_not_in_the_list": 0.1294
+   }
+  },
+  {
+   "city": "miami",
+   "date": "2026-11-14",
+   "side": "YES",
+   "bucket": "72\u201373\u00b0F",
+   "model_p_on_bucket": 0.535,
+   "is_model_top": true,
+   "is_market_favourite": true,
+   "recorded_price": 0.58,
+   "listed_price": 0.58,
+   "price_difference": 0.0,
+   "price_is": "the evening-before book",
+   "venue_winner_is_listed_settled_bucket": null,
+   "unsettled_in_the_record": true,
+   "last_call_top_bucket_p": [
+    "postpeak_1h",
+    0.607,
+    true
+   ],
+   "arithmetic": {
+    "shares_difference": 0.009,
+    "pnl_difference": -0.01,
+    "fee_not_in_the_list": 0.1751
+   }
+  },
+  {
+   "city": "shanghai",
+   "date": "2026-11-14",
+   "side": "YES",
+   "bucket": "19\u00b0C",
+   "model_p_on_bucket": 0.454,
+   "is_model_top": true,
+   "is_market_favourite": true,
+   "recorded_price": 0.52,
+   "listed_price": 0.8,
+   "price_difference": 0.28,
+   "price_is": "the morning call's book (2026-11-14T01:37Z)",
+   "venue_winner_is_listed_settled_bucket": true,
+   "arithmetic": {
+    "shares_difference": 0.005,
+    "pnl_difference": 0.005,
+    "fee_not_in_the_list": 0.0834
+   }
+  },
+  {
+   "city": "warsaw",
+   "date": "2026-11-14",
+   "side": "NO",
+   "bucket": "7\u00b0C",
+   "model_p_on_bucket": 0.298,
+   "is_model_top": false,
+   "is_market_favourite": true,
+   "recorded_price": 0.477,
+   "listed_price": null,
+   "venue_winner_is_listed_settled_bucket": true
+  }
+ ],
+ "summary": {
+  "bucket_is_the_models_pick": 16,
+  "bucket_is_the_markets_favourite": 11,
+  "price_is_the_evening_book": 14,
+  "priced_trades": 15,
+  "settled_bucket_is_the_venues": 15,
+  "settled_bucket_differs_from_the_venues": 0,
+  "unsettled_in_the_record": 3,
+  "shares_off_by_more_than_a_cent": 0,
+  "pnl_off_by_more_than_a_cent": 0,
+  "fees_not_in_the_list": 1.38
+ },
+ "replay": {
+  "stake_rule": "each day every trade is equity / 7.5, from $30",
+  "settlement_aware": {
+   "as_listed": {
+    "equity": 61.72,
+    "return_on_start": 1.0574,
+    "orders": 18,
+    "orders_cut_to_the_cash_in_hand": 3,
+    "stakes": [
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     5.8,
+     5.8,
+     6.25,
+     6.55,
+     6.55,
+     5.49,
+     6.06,
+     2.96,
+     0.0,
+     6.55,
+     2.93
+    ],
+    "smallest_stake": 0.0,
+    "largest_stake": 6.55
+   },
+   "buenos_aires_on_14_nov_as_a_loss": {
+    "equity": 61.72,
+    "return_on_start": 1.0574,
+    "orders": 18,
+    "orders_cut_to_the_cash_in_hand": 3,
+    "stakes": [
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     5.8,
+     5.8,
+     6.25,
+     6.55,
+     6.55,
+     5.49,
+     6.06,
+     2.96,
+     0.0,
+     6.55,
+     2.93
+    ],
+    "smallest_stake": 0.0,
+    "largest_stake": 6.55
+   },
+   "positions_not_settled_in_the_record": 3
+  },
+  "best_trade": {
+   "trade": [
+    "shanghai",
+    "2026-11-12"
+   ],
+   "pnl": 13.5,
+   "share_of_all_profit": 0.36
+  },
+  "flat_stake_pnl_per_dollar": 0.3996,
+  "trades": 18,
+  "scenarios": [
+   {
+    "scenario": "the recorded evening-before book, with the fee",
+    "days": [
+     {
+      "stake_a_trade": 4.0,
+      "pnl": 11.16,
+      "equity": 41.16
+     },
+     {
+      "stake_a_trade": 5.49,
+      "pnl": 19.56,
+      "equity": 60.72
+     },
+     {
+      "stake_a_trade": 8.1,
+      "pnl": 6.78,
+      "equity": 67.51
+     }
+    ],
+    "equity": 67.51,
+    "return_on_start": 1.2503,
+    "pnl_per_dollar_staked": 0.3553
+   },
+   {
+    "scenario": "the same, at the list's own prices where it gives one (no fee in the list; fee added here)",
+    "days": [
+     {
+      "stake_a_trade": 4.0,
+      "pnl": 10.78,
+      "equity": 40.78
+     },
+     {
+      "stake_a_trade": 5.44,
+      "pnl": 19.42,
+      "equity": 60.19
+     },
+     {
+      "stake_a_trade": 8.03,
+      "pnl": 1.59,
+      "equity": 61.78
+     }
+    ],
+    "equity": 61.78,
+    "return_on_start": 1.0593,
+    "pnl_per_dollar_staked": 0.3033
+   },
+   {
+    "scenario": "the two trades whose bucket is not the model's pick, taken on the model's pick",
+    "days": [
+     {
+      "stake_a_trade": 4.0,
+      "pnl": 11.16,
+      "equity": 41.16
+     },
+     {
+      "stake_a_trade": 5.49,
+      "pnl": 19.56,
+      "equity": 60.72
+     },
+     {
+      "stake_a_trade": 8.1,
+      "pnl": -21.31,
+      "equity": 39.41
+     }
+    ],
+    "equity": 39.41,
+    "return_on_start": 0.3137,
+    "pnl_per_dollar_staked": 0.0892
+   },
+   {
+    "scenario": "Buenos Aires on 14 Nov as a loss (the venue has not settled it)",
+    "days": [
+     {
+      "stake_a_trade": 4.0,
+      "pnl": 11.16,
+      "equity": 41.16
+     },
+     {
+      "stake_a_trade": 5.49,
+      "pnl": 19.56,
+      "equity": 60.72
+     },
+     {
+      "stake_a_trade": 8.1,
+      "pnl": -5.28,
+      "equity": 55.45
+     }
+    ],
+    "equity": 55.45,
+    "return_on_start": 0.8483,
+    "pnl_per_dollar_staked": 0.241
+   },
+   {
+    "scenario": "Shanghai on 14 Nov at its listed 80 cents",
+    "days": [
+     {
+      "stake_a_trade": 4.0,
+      "pnl": 11.16,
+      "equity": 41.16
+     },
+     {
+      "stake_a_trade": 5.49,
+      "pnl": 19.56,
+      "equity": 60.72
+     },
+     {
+      "stake_a_trade": 8.1,
+      "pnl": 1.6,
+      "equity": 62.32
+     }
+    ],
+    "equity": 62.32,
+    "return_on_start": 1.0773,
+    "pnl_per_dollar_staked": 0.3062
+   },
+   {
+    "scenario": "without the best trade",
+    "days": [
+     {
+      "stake_a_trade": 4.0,
+      "pnl": -2.34,
+      "equity": 27.66
+     },
+     {
+      "stake_a_trade": 3.69,
+      "pnl": 13.15,
+      "equity": 40.81
+     },
+     {
+      "stake_a_trade": 5.44,
+      "pnl": 4.56,
+      "equity": 45.37
+     }
+    ],
+    "equity": 45.37,
+    "return_on_start": 0.5123,
+    "pnl_per_dollar_staked": 0.2055
+   }
+  ]
+ },
+ "at_the_selection_time": {
+  "selection_time": "23:30 Beirut = 21:30Z on the evening before the target date",
+  "trades_whose_listed_call_is_after_it": 10,
+  "cities_with_a_later_call": [
+   "austin",
+   "buenos_aires",
+   "houston",
+   "miami"
+  ],
+  "available_calls": {
+   "d1_eve": 8,
+   "day_ahead": 10
+  },
+  "listed_bucket_is_the_models_pick_at_that_call": 14,
+  "replays": {
+   "listed": {
+    "trades_priced": 18,
+    "trades": 18,
+    "day_end_staking": {
+     "scenario": "the listed buckets",
+     "days": [
+      {
+       "stake_a_trade": 4.0,
+       "pnl": 11.21,
+       "equity": 41.21
+      },
+      {
+       "stake_a_trade": 5.49,
+       "pnl": 22.39,
+       "equity": 63.6
+      },
+      {
+       "stake_a_trade": 8.48,
+       "pnl": 6.92,
+       "equity": 70.53
+      }
+     ],
+     "equity": 70.53,
+     "return_on_start": 1.351,
+     "pnl_per_dollar_staked": 0.3758
+    },
+    "settlement_aware": {
+     "equity": 49.6,
+     "return_on_start": 0.6533,
+     "orders": 18,
+     "orders_cut_to_the_cash_in_hand": 5,
+     "stakes": [
+      4.0,
+      4.0,
+      4.0,
+      4.0,
+      4.0,
+      4.0,
+      5.8,
+      5.8,
+      5.8,
+      5.8,
+      0.3,
+      0.0,
+      5.49,
+      5.49,
+      5.49,
+      1.23,
+      0.0,
+      0.0
+     ],
+     "smallest_stake": 0.0,
+     "largest_stake": 5.8
+    },
+    "won": 14,
+    "wins_by_trade": {
+     "amsterdam:2026-11-12": true,
+     "buenos_aires:2026-11-12": false,
+     "houston:2026-11-12": true,
+     "miami:2026-11-12": false,
+     "shanghai:2026-11-12": true,
+     "warsaw:2026-11-12": true,
+     "austin:2026-11-13": true,
+     "buenos_aires:2026-11-13": true,
+     "helsinki:2026-11-13": true,
+     "houston:2026-11-13": true,
+     "miami:2026-11-13": true,
+     "shanghai:2026-11-13": true,
+     "austin:2026-11-14": false,
+     "buenos_aires:2026-11-14": true,
+     "helsinki:2026-11-14": true,
+     "miami:2026-11-14": false,
+     "shanghai:2026-11-14": true,
+     "warsaw:2026-11-14": true
+    }
+   },
+   "top": {
+    "trades_priced": 18,
+    "trades": 18,
+    "day_end_staking": {
+     "scenario": "the model's pick at that call",
+     "days": [
+      {
+       "stake_a_trade": 4.0,
+       "pnl": 11.21,
+       "equity": 41.21
+      },
+      {
+       "stake_a_trade": 5.49,
+       "pnl": 21.71,
+       "equity": 62.92
+      },
+      {
+       "stake_a_trade": 8.39,
+       "pnl": -22.26,
+       "equity": 40.66
+      }
+     ],
+     "equity": 40.66,
+     "return_on_start": 0.3553,
+     "pnl_per_dollar_staked": 0.0994
+    },
+    "settlement_aware": {
+     "equity": 41.04,
+     "return_on_start": 0.3679,
+     "orders": 18,
+     "orders_cut_to_the_cash_in_hand": 5,
+     "stakes": [
+      4.0,
+      4.0,
+      4.0,
+      4.0,
+      4.0,
+      4.0,
+      5.8,
+      5.8,
+      5.8,
+      5.8,
+      0.3,
+      0.0,
+      5.49,
+      5.49,
+      5.49,
+      1.23,
+      0.0,
+      0.0
+     ],
+     "smallest_stake": 0.0,
+     "largest_stake": 5.8
+    },
+    "won": 12,
+    "wins_by_trade": {
+     "amsterdam:2026-11-12": true,
+     "buenos_aires:2026-11-12": false,
+     "houston:2026-11-12": true,
+     "miami:2026-11-12": false,
+     "shanghai:2026-11-12": true,
+     "warsaw:2026-11-12": true,
+     "austin:2026-11-13": true,
+     "buenos_aires:2026-11-13": true,
+     "helsinki:2026-11-13": true,
+     "houston:2026-11-13": true,
+     "miami:2026-11-13": true,
+     "shanghai:2026-11-13": true,
+     "austin:2026-11-14": false,
+     "buenos_aires:2026-11-14": true,
+     "helsinki:2026-11-14": false,
+     "miami:2026-11-14": false,
+     "shanghai:2026-11-14": true,
+     "warsaw:2026-11-14": false
+    }
+   }
+  },
+  "trades": [
+   {
+    "city": "amsterdam",
+    "date": "2026-11-12",
+    "side": "YES",
+    "listed_call_is_after_the_selection": false,
+    "available_call": "d1_eve",
+    "available_call_at": "2026-11-11T17:37Z",
+    "listed_bucket_is_the_models_pick": true
+   },
+   {
+    "city": "buenos_aires",
+    "date": "2026-11-12",
+    "side": "NO",
+    "listed_call_is_after_the_selection": true,
+    "available_call": "day_ahead",
+    "available_call_at": "2026-11-11T12:37Z",
+    "listed_bucket_is_the_models_pick": true
+   },
+   {
+    "city": "houston",
+    "date": "2026-11-12",
+    "side": "NO",
+    "listed_call_is_after_the_selection": true,
+    "available_call": "day_ahead",
+    "available_call_at": "2026-11-11T15:37Z",
+    "listed_bucket_is_the_models_pick": true
+   },
+   {
+    "city": "miami",
+    "date": "2026-11-12",
+    "side": "YES",
+    "listed_call_is_after_the_selection": true,
+    "available_call": "day_ahead",
+    "available_call_at": "2026-11-11T14:37Z",
+    "listed_bucket_is_the_models_pick": true
+   },
+   {
+    "city": "shanghai",
+    "date": "2026-11-12",
+    "side": "YES",
+    "listed_call_is_after_the_selection": false,
+    "available_call": "d1_eve",
+    "available_call_at": "2026-11-11T10:37Z",
+    "listed_bucket_is_the_models_pick": true
+   },
+   {
+    "city": "warsaw",
+    "date": "2026-11-12",
+    "side": "NO",
+    "listed_call_is_after_the_selection": false,
+    "available_call": "d1_eve",
+    "available_call_at": "2026-11-11T17:37Z",
+    "listed_bucket_is_the_models_pick": true
+   },
+   {
+    "city": "austin",
+    "date": "2026-11-13",
+    "side": "NO",
+    "listed_call_is_after_the_selection": true,
+    "available_call": "day_ahead",
+    "available_call_at": "2026-11-12T15:37Z",
+    "listed_bucket_is_the_models_pick": true
+   },
+   {
+    "city": "buenos_aires",
+    "date": "2026-11-13",
+    "side": "NO",
+    "listed_call_is_after_the_selection": true,
+    "available_call": "day_ahead",
+    "available_call_at": "2026-11-12T12:37Z",
+    "listed_bucket_is_the_models_pick": false
+   },
+   {
+    "city": "helsinki",
+    "date": "2026-11-13",
+    "side": "YES",
+    "listed_call_is_after_the_selection": false,
+    "available_call": "d1_eve",
+    "available_call_at": "2026-11-12T16:37Z",
+    "listed_bucket_is_the_models_pick": true
+   },
+   {
+    "city": "houston",
+    "date": "2026-11-13",
+    "side": "NO",
+    "listed_call_is_after_the_selection": true,
+    "available_call": "day_ahead",
+    "available_call_at": "2026-11-12T15:37Z",
+    "listed_bucket_is_the_models_pick": false
+   },
+   {
+    "city": "miami",
+    "date": "2026-11-13",
+    "side": "YES",
+    "listed_call_is_after_the_selection": true,
+    "available_call": "day_ahead",
+    "available_call_at": "2026-11-12T14:37Z",
+    "listed_bucket_is_the_models_pick": true
+   },
+   {
+    "city": "shanghai",
+    "date": "2026-11-13",
+    "side": "YES",
+    "listed_call_is_after_the_selection": false,
+    "available_call": "d1_eve",
+    "available_call_at": "2026-11-12T10:37Z",
+    "listed_bucket_is_the_models_pick": true
+   },
+   {
+    "city": "austin",
+    "date": "2026-11-14",
+    "side": "NO",
+    "listed_call_is_after_the_selection": true,
+    "available_call": "day_ahead",
+    "available_call_at": "2026-11-13T15:37Z",
+    "listed_bucket_is_the_models_pick": true
+   },
+   {
+    "city": "buenos_aires",
+    "date": "2026-11-14",
+    "side": "NO",
+    "listed_call_is_after_the_selection": true,
+    "available_call": "day_ahead",
+    "available_call_at": "2026-11-13T12:37Z",
+    "listed_bucket_is_the_models_pick": true
+   },
+   {
+    "city": "helsinki",
+    "date": "2026-11-14",
+    "side": "YES",
+    "listed_call_is_after_the_selection": false,
+    "available_call": "d1_eve",
+    "available_call_at": "2026-11-13T16:37Z",
+    "listed_bucket_is_the_models_pick": false
+   },
+   {
+    "city": "miami",
+    "date": "2026-11-14",
+    "side": "YES",
+    "listed_call_is_after_the_selection": true,
+    "available_call": "day_ahead",
+    "available_call_at": "2026-11-13T14:37Z",
+    "listed_bucket_is_the_models_pick": true
+   },
+   {
+    "city": "shanghai",
+    "date": "2026-11-14",
+    "side": "YES",
+    "listed_call_is_after_the_selection": false,
+    "available_call": "d1_eve",
+    "available_call_at": "2026-11-13T10:37Z",
+    "listed_bucket_is_the_models_pick": true
+   },
+   {
+    "city": "warsaw",
+    "date": "2026-11-14",
+    "side": "NO",
+    "listed_call_is_after_the_selection": false,
+    "available_call": "d1_eve",
+    "available_call_at": "2026-11-13T17:37Z",
+    "listed_bucket_is_the_models_pick": false
+   }
+  ]
+ },
+ "form": {
+  "window_used": 10,
+  "min_picks": 3,
+  "k": 3,
+  "dates_traded": 47,
+  "first_date": "2026-09-29",
+  "last_date": "2026-11-14",
+  "windows": {
+   "5": {
+    "yes": {
+     "n": 141,
+     "dates": 47,
+     "return_per_dollar": 0.0866,
+     "ci90": [
+      -0.0889,
+      0.2674
+     ],
+     "win_rate": 0.4823,
+     "mean_cost": 0.4492
+    },
+    "no": {
+     "n": 139,
+     "dates": 47,
+     "return_per_dollar": 0.0497,
+     "ci90": [
+      -0.0392,
+      0.1521
+     ],
+     "win_rate": 0.6978,
+     "mean_cost": 0.6692
+    },
+    "both": {
+     "n": 280,
+     "dates": 47,
+     "return_per_dollar": 0.0683,
+     "ci90": [
+      -0.0294,
+      0.1653
+     ],
+     "win_rate": 0.5893,
+     "mean_cost": 0.5584
+    }
+   },
+   "7": {
+    "yes": {
+     "n": 141,
+     "dates": 47,
+     "return_per_dollar": 0.0153,
+     "ci90": [
+      -0.1928,
+      0.2436
+     ],
+     "win_rate": 0.4397,
+     "mean_cost": 0.4519
+    },
+    "no": {
+     "n": 140,
+     "dates": 47,
+     "return_per_dollar": 0.0631,
+     "ci90": [
+      -0.029,
+      0.162
+     ],
+     "win_rate": 0.7214,
+     "mean_cost": 0.6793
+    },
+    "both": {
+     "n": 281,
+     "dates": 47,
+     "return_per_dollar": 0.0391,
+     "ci90": [
+      -0.0768,
+      0.1592
+     ],
+     "win_rate": 0.5801,
+     "mean_cost": 0.5652
+    }
+   },
+   "10": {
+    "yes": {
+     "n": 140,
+     "dates": 47,
+     "return_per_dollar": -0.0566,
+     "ci90": [
+      -0.2055,
+      0.106
+     ],
+     "win_rate": 0.4429,
+     "mean_cost": 0.4557
+    },
+    "no": {
+     "n": 139,
+     "dates": 47,
+     "return_per_dollar": -0.0129,
+     "ci90": [
+      -0.1191,
+      0.086
+     ],
+     "win_rate": 0.6835,
+     "mean_cost": 0.6858
+    },
+    "both": {
+     "n": 279,
+     "dates": 47,
+     "return_per_dollar": -0.0349,
+     "ci90": [
+      -0.1249,
+      0.0599
+     ],
+     "win_rate": 0.5627,
+     "mean_cost": 0.5703
+    }
+   },
+   "14": {
+    "yes": {
+     "n": 141,
+     "dates": 47,
+     "return_per_dollar": -0.202,
+     "ci90": [
+      -0.3493,
+      -0.0528
+     ],
+     "win_rate": 0.3759,
+     "mean_cost": 0.4507
+    },
+    "no": {
+     "n": 139,
+     "dates": 47,
+     "return_per_dollar": -0.0371,
+     "ci90": [
+      -0.1346,
+      0.0568
+     ],
+     "win_rate": 0.6691,
+     "mean_cost": 0.6863
+    },
+    "both": {
+     "n": 280,
+     "dates": 47,
+     "return_per_dollar": -0.1201,
+     "ci90": [
+      -0.2051,
+      -0.0392
+     ],
+     "win_rate": 0.5214,
+     "mean_cost": 0.5677
+    }
+   },
+   "21": {
+    "yes": {
+     "n": 140,
+     "dates": 47,
+     "return_per_dollar": -0.0117,
+     "ci90": [
+      -0.1721,
+      0.1545
+     ],
+     "win_rate": 0.4357,
+     "mean_cost": 0.4342
+    },
+    "no": {
+     "n": 140,
+     "dates": 47,
+     "return_per_dollar": -0.0926,
+     "ci90": [
+      -0.2003,
+      0.0083
+     ],
+     "win_rate": 0.65,
+     "mean_cost": 0.694
+    },
+    "both": {
+     "n": 280,
+     "dates": 47,
+     "return_per_dollar": -0.0521,
+     "ci90": [
+      -0.1447,
+      0.0403
+     ],
+     "win_rate": 0.5429,
+     "mean_cost": 0.5641
+    }
+   },
+   "28": {
+    "yes": {
+     "n": 139,
+     "dates": 47,
+     "return_per_dollar": -0.0899,
+     "ci90": [
+      -0.2722,
+      0.0954
+     ],
+     "win_rate": 0.3885,
+     "mean_cost": 0.4342
+    },
+    "no": {
+     "n": 140,
+     "dates": 47,
+     "return_per_dollar": -0.0632,
+     "ci90": [
+      -0.1663,
+      0.04
+     ],
+     "win_rate": 0.6571,
+     "mean_cost": 0.6895
+    },
+    "both": {
+     "n": 279,
+     "dates": 47,
+     "return_per_dollar": -0.0765,
+     "ci90": [
+      -0.1776,
+      0.0276
+     ],
+     "win_rate": 0.5233,
+     "mean_cost": 0.5623
+    }
+   },
+   "all": {
+    "yes": {
+     "n": 139,
+     "dates": 47,
+     "return_per_dollar": -0.1071,
+     "ci90": [
+      -0.2696,
+      0.0595
+     ],
+     "win_rate": 0.4317,
+     "mean_cost": 0.4647
+    },
+    "no": {
+     "n": 139,
+     "dates": 47,
+     "return_per_dollar": -0.0716,
+     "ci90": [
+      -0.1929,
+      0.0473
+     ],
+     "win_rate": 0.6403,
+     "mean_cost": 0.6813
+    },
+    "both": {
+     "n": 278,
+     "dates": 47,
+     "return_per_dollar": -0.0894,
+     "ci90": [
+      -0.1811,
+      0.0084
+     ],
+     "win_rate": 0.536,
+     "mean_cost": 0.573
+    }
+   }
+  },
+  "random_tie_breaks": {
+   "seeds": 200,
+   "both_mean": -0.0182,
+   "both_5th_pct": -0.052,
+   "both_95th_pct": 0.0191,
+   "share_of_seeds_above_0": 0.205,
+   "yes_mean": -0.0326,
+   "no_mean": -0.0036
+  },
+  "three_date_runs": {
+   "runs": 45,
+   "median": -0.0169,
+   "share_above_0": 0.467,
+   "best": {
+    "return_per_dollar": 0.4085,
+    "from": "2026-11-12",
+    "to": "2026-11-14",
+    "trades": 15
+   },
+   "nov_12_to_14": {
+    "return_per_dollar": 0.4085,
+    "rank_among_runs": 1,
+    "trades": 15
+   }
+  },
+  "sizing": {
+   "sd_of_a_dates_mean_return": 0.3809,
+   "dates": 47,
+   "dates_for_80pc_power": {
+    "true_return_+0.10": 90,
+    "true_return_+0.20": 23,
+    "true_return_+0.35": 8
+   }
+  },
+  "fit_of_the_six_cities": {
+   "2026-11-12": {
+    "cities_ranked": 47,
+    "yes_positions_from_best": [
+     1,
+     3,
+     5
+    ],
+    "no_positions_from_worst": [
+     1,
+     3,
+     7
+    ],
+    "yes_in_default_top3": 2,
+    "no_in_default_bottom3": 2
+   },
+   "2026-11-13": {
+    "cities_ranked": 47,
+    "yes_positions_from_best": [
+     1,
+     2,
+     6
+    ],
+    "no_positions_from_worst": [
+     2,
+     3,
+     4
+    ],
+    "yes_in_default_top3": 2,
+    "no_in_default_bottom3": 2
+   },
+   "2026-11-14": {
+    "cities_ranked": 47,
+    "yes_positions_from_best": [
+     1,
+     2,
+     6
+    ],
+    "no_positions_from_worst": [
+     1,
+     3,
+     7
+    ],
+    "yes_in_default_top3": 2,
+    "no_in_default_bottom3": 2
+   }
+  },
+  "fit_of_the_six_cities_all_history": {
+   "2026-11-12": {
+    "cities_ranked": 48,
+    "yes_positions_from_best": [
+     1,
+     2,
+     27
+    ],
+    "no_positions_from_worst": [
+     1,
+     9,
+     27
+    ],
+    "yes_in_default_top3": 2,
+    "no_in_default_bottom3": 1
+   },
+   "2026-11-13": {
+    "cities_ranked": 48,
+    "yes_positions_from_best": [
+     1,
+     3,
+     20
+    ],
+    "no_positions_from_worst": [
+     1,
+     7,
+     20
+    ],
+    "yes_in_default_top3": 2,
+    "no_in_default_bottom3": 1
+   },
+   "2026-11-14": {
+    "cities_ranked": 48,
+    "yes_positions_from_best": [
+     2,
+     3,
+     19
+    ],
+    "no_positions_from_worst": [
+     1,
+     18,
+     22
+    ],
+    "yes_in_default_top3": 2,
+    "no_in_default_bottom3": 1
+   }
+  }
+ }
+}
