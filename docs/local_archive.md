@@ -1,82 +1,56 @@
 # The archive, and how to query it from your own machine
 
-Supabase's free tier is 500 MB. This database measured **513 MB** — over it —
-and nothing had ever been archived, because the archive job failed on 5
-September and never ran again.
+Cold history moves through **export → verify → push → retire the live copy**.
+The repository copy remains readable through `/api/archive`. Copying alone
+is a backup; it does not reduce the live database's storage.
 
-Nothing here deletes data. It **moves** the cold tail to a file you own, proves
-the file is complete, and only then frees the space in Postgres.
+## Archive and mirror
 
-## Two copies in the repo: the archive and the mirror (23 Sep)
+- `data/archive/` contains the verified exports used by guarded retirement.
+  `web/public/archive/index.json` identifies the committed files.
+- `data/mirror/` backs up ended days and snapshots from the other supported
+  tables. Its manifest records rows, key ranges and SHA-256. **Mirroring does
+  not retire database rows**, nor prove that every table has a cold reader.
+- Private side-aware financial/research evidence must use a verified private
+  destination. Do not add those packets to a public repository.
 
-- **`data/archive/`** holds rows that were **pruned** from Postgres. Each file was exported, verified and committed before its rows were deleted. `/api/archive` reads these files from the repo (plan v2.1 P1.8).
-- **`data/mirror/`** holds rows that **stay** in Postgres: every price, settled outcome, learned parameter and reference table (plan v2.1 P1.7, `scripts/mirror_to_repo.py`).
-  - It runs every night in the same workflow and deletes nothing.
-  - `data/mirror/manifest.json` lists each file with its rows, key range and sha256.
-  - Append tables add one file per ended UTC day. `fact_*`, `markets` and `bands` add a file once their date is 9 days old. Small tables add a snapshot whenever their content changes.
-  - Any gzipped CSV in either folder loads with `\copy <table> from program 'gzip -dc <file>' csv header`.
-  - Tables the mirror does not copy, and why, are in `NOT_MIRRORED` in the script.
+## Running a recovery
 
-## What moves, and what it buys
+Actions → **Archive Observations** → Run workflow on `main`:
 
-| Table | Size | Indexes | Older than 180 days |
-|---|---|---|---|
-| `weather_forecasts` | 124 MB | 78 MB | **269,744 rows (79%)** |
-| `weather_observations` | 121 MB | 59 MB | **292,356 rows (56%)** |
+| Input | Recovery setting | Meaning |
+|---|---|---|
+| `table` | `all` | Attempt each supported dataset independently |
+| `keep_days` | blank | Existing per-table defaults and safe pressure floors |
+| `archive_only` | `true` | Archive, commit, headroom check and mirror; skip enrichment/scoring |
+| `commit` | `false` | Export and push verified copies; retain live rows |
+| `commit` | `true` | Also retire eligible live copies after the confirmed push |
 
-Indexes shrink with the rows, which is why the saving is bigger than the row
-count suggests: roughly **166 MB**, taking the database to about **330 MB**.
+`commit=false` is **not** a workflow dry run: files still upload and commit.
+The scheduled clock omits `archive_only`, so its existing enrichment and
+scoring steps continue. Recovery adds no schedule and changes no retention
+floor. It leaves the future-dated station-report guard intact.
 
-The recent window stays live in Supabase. 180 days is the default because the
-weather model needs months to fit and the trend views need a fortnight; below
-30 days the prune functions refuse outright.
+Each dataset must export completely and pass its independent database/cache
+checks. Before retirement, the script re-counts its file and compares its
+blob with a fresh remote fetch. Failed exports or failed pushes cannot
+retire that dataset's live rows. A dataset refusal stays visible while the
+others continue. Verify the archive-index commit and `/api/archive` readback
+as well as the export step; a green upload alone is insufficient.
 
-## The four steps, in order, no exceptions
+## Capacity is a separate acceptance check
 
-1. **Refresh the derived cache.** Every city-day about to lose its raw rows
-   must already exist as a derived row.
-2. **Export** the cold rows to gzipped CSV, paged on the primary key.
-3. **Upload to a GitHub Release, then re-download it and count the rows back.**
-4. **Only then prune**, and only as far back as what was actually archived.
+`storage_acceptance.py` records measured database size and the target from
+`storage_pressure()`. Archive success does not make an over-capacity database
+healthy. The nightly mirror also covers tables that remain fully live;
+these need reader-by-reader cold-tier work before retirement is safe.
 
-Step 3 is the one that matters. An upload that returns `201` and stores a
-truncated file would otherwise be discovered months later, by a model with a
-hole in it. The prune functions independently refuse if step 1 did not cover
-the range, so the guard exists on both sides.
-
-Keyset paging in step 2 is also load-bearing. The cutoff columns are nowhere
-near unique — 37 cities × 2 sources share a timestamp — and `OFFSET` paging
-over a non-unique order silently skips rows, which the prune then deletes
-anyway. Both tables page on their primary key, which is a total order.
-
-## Running it
-
-Actions → **Archive Observations** → Run workflow. Leave `commit` unticked the
-first time: that does everything except upload and delete, and prints what it
-would remove.
-
-```
-keep_days: 180
-table:     both          (or observations / forecasts)
-commit:    ☐             ← tick only after reading the dry run
-```
-
-Or locally, with `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` set:
-
-```bash
-PYTHONPATH=scripts python scripts/archive_observations.py --keep-days 180 --dry-run
-PYTHONPATH=scripts python scripts/archive_observations.py --keep-days 180 --commit
-```
-
-**Postgres does not return the space to the operating system on `DELETE`.** The
-rows become reusable, the file stays the same size. After a prune, run this in
-the Supabase SQL editor — it cannot be run from a migration or a pooled
-connection because `VACUUM` refuses to run inside a transaction:
-
-```sql
-vacuum full public.weather_forecasts;
-vacuum full public.weather_observations;
-```
+`request_reclaim` acknowledges routine autovacuum with `completed=false`.
+Autovacuum makes pages reusable; it does not promise to shrink the allocated
+files. Do not restore blanket `VACUUM FULL` schedules: full rewrites can block
+collection and readers and exhaust disk IO. Any physical compaction needs a
+measured relation-level plan, adequate temporary space and an available
+maintenance connection. Check size again after completion.
 
 ## Where the files live
 

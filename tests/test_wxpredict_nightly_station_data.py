@@ -168,7 +168,7 @@ def test_the_nightly_workflow_runs_it_before_the_commit():
     names = [s.get("name") for s in steps]
     i = next(k for k, s in enumerate(steps) if "fetch_obs.py update" in str(s.get("run", "")))
     assert i < names.index("Commit the mirror")
-    assert steps[i]["if"] == "always()" and steps[i]["timeout-minutes"] <= 5
+    assert steps[i]["if"] == "${{ always() && github.event.inputs.archive_only != 'true' }}" and steps[i]["timeout-minutes"] <= 5
 
 
 def test_the_run_is_logged_partial_when_a_station_had_no_new_report(tmp_path, monkeypatch):

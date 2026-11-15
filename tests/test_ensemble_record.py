@@ -68,7 +68,7 @@ def test_the_step_is_in_the_nightly_job_inside_its_budget():
     wf = yaml.safe_load((ROOT / ".github" / "workflows" / "archive_observations.yml").read_text())
     steps = [s for job in wf["jobs"].values() for s in job["steps"]]
     step = next(s for s in steps if s.get("name") == "Append the ensemble record")
-    assert "scripts/ensemble_record.py" in step["run"] and step.get("if") == "always()"
+    assert "scripts/ensemble_record.py" in step["run"] and step.get("if") == "${{ always() && github.event.inputs.archive_only != 'true' }}"
     assert er.RUN_SECONDS + 30 <= int(step["timeout-minutes"]) * 60
     names = [s.get("name") for s in steps]
     assert names.index("Append the ensemble record") < names.index("Commit the mirror"), \
