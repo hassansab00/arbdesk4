@@ -148,6 +148,8 @@ def io(monkeypatch):
     monkeypatch.setattr(live, "_post", post)
     monkeypatch.setattr(pe, "_measurement_layer_for",
                         lambda city: (0.03, 0.06) if city == "london" else None)
+    # sd_corr's capture is off since its rejection; its tests run the path it keeps
+    monkeypatch.setattr(vs, "SD_CAPTURE_OFF", None)
     return w
 
 
@@ -543,6 +545,23 @@ def test_the_sd_corr_pre_registration_names_what_the_code_does():
     assert "`combined_c`" in head and "`width_c`" in head
     assert "whatever the pricing switches say" in head
     assert "`tools/sd_corrected_replay.py`" in head
+
+
+def test_a_rejected_sd_corr_is_neither_read_nor_written_and_da_floor_goes_on(io, monkeypatch):
+    """docs/SD_CORR_PREREG.md: a rejection switches the capture off (15 Nov 2026)."""
+    monkeypatch.setattr(vs, "SD_CAPTURE_OFF", "rejected")
+    io["corrected"] = {("london", "2026-10-05"): {"city_key": "london"}}
+    counts = _record(io, [_served("london", "noon")])
+    assert counts["sd_corr"]["off"] == "rejected" and counts["sd_corr"]["written"] == 0
+    assert io["sd_asked"] == [], "no corrected read"
+    assert {t for t, _rows, _c in io["written"]} == {vs.TABLE}
+    assert all(r["variant"] == vs.VARIANT for _t, rows, _c in io["written"] for r in rows)
+
+
+def test_sd_corr_stays_off_with_its_reason_named():
+    assert vs.SD_CAPTURE_OFF and "SD_CORR_PREREG" in vs.SD_CAPTURE_OFF
+    doc = SD_PREREG.read_text()
+    assert "### Second look, 15 Nov 2026" in doc and "**Verdict: rejected.**" in doc
 
 
 def test_the_table_holds_each_variant_to_its_own_inputs():

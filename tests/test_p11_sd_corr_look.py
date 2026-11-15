@@ -57,3 +57,20 @@ def test_ties_go_to_the_smallest_bucket_id():
     assert top == 1
     assert L.score({"b": 0.4, "a": 0.4, "c": 0.2}, "b")[1] == 0
     assert abs(br - (0.36 + 0.16 + 0.04)) < 1e-12
+
+
+SECOND = os.path.join(ROOT, "data", "eval", "p11", "sd_corr_second_look_2026-11-15")
+
+
+def test_the_second_look_reproduces_from_the_files_it_names_and_rejects():
+    """The last look (15 Nov): rebuilt from exactly the mirror files it names."""
+    rec = json.load(open(os.path.join(SECOND, "result.json")))
+    for path, sha in rec["sources"].items():
+        with open(os.path.join(ROOT, path), "rb") as fh:
+            assert hashlib.sha256(fh.read()).hexdigest() == sha, f"{path} changed since the look"
+    rows, left, _ = L.rows(only=set(rec["sources"]))
+    assert dict(left) == rec["left_out"]
+    again = L.look(rows)
+    assert {k: rec[k] for k in again} == again
+    assert rec["pooled"]["dates"] == 41 and rec["pooled"]["rows"] == 9292
+    assert rec["rule"]["verdict"] == "rejected"

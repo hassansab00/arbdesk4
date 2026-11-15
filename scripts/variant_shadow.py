@@ -118,6 +118,11 @@ def build_row(served, call, bands, unit, q, calibrated):
 # ---------------------------------------------------------------------------
 SD_VARIANT = "sd_corr"
 SD_VERSION = "sd_corr:v1"
+# Rejected at its second and last look (docs/SD_CORR_PREREG.md): the pooled gain,
+# served minus sd_corr, -0.0528 (90% -0.0943 to -0.0058) over 41 dates. The
+# prereg says a rejection switches the capture off; the code stays, and its
+# tests run it with this set to None.
+SD_CAPTURE_OFF = "rejected at its second look, 15 Nov 2026 (docs/SD_CORR_PREREG.md)"
 SD_MAX_AGE_H = 36.0     # settings.station_correction_pricing.max_age_hours when absent, as the engine
 CORRECTED_SELECT = "city_key,for_date,lead_days,combined_c,width_c,version,width_version,computed_at,n_sources"
 # Each variant names the other's inputs as null, as the table's check holds it
@@ -364,7 +369,10 @@ def record(out, results, market_of, bands_by_market, tz_of, unit_of, dry_run=Fal
         # attempt inside the time left; a failed read loses every row, counted.
         sd_rows = []
         left = (deadline - time.monotonic()) if deadline else 10.0
-        if left < 2.0:
+        if SD_CAPTURE_OFF:
+            sd["due"] = 0
+            sd["off"] = SD_CAPTURE_OFF
+        elif left < 2.0:
             sd_skip("out_of_time", len(todo))
         else:
             try:

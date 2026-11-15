@@ -205,6 +205,41 @@ legacy signal chain, labels suspended strategies in the desk selector, and
 shows their 14-day eligibility time without offering an ineffective Start.
 No portfolio allocation, risk limits, or workflow schedules change.
 
+## sd_corr:v1 second and last look — 15 Nov: rejected, capture switched off
+
+The pre-registered last look (`docs/SD_CORR_PREREG.md`) was run from the
+committed mirror by `tools/p11_sd_corr_look.py`, unchanged; it names the 194
+files it read, with sha256 (`data/eval/p11/sd_corr_second_look_2026-11-15/`).
+- **Rows:** 41 scored target dates (5 Oct - 14 Nov), 9,292 rows; 104 were left
+  out with no graded outcome yet.
+- **Pooled log-loss gain, served minus `sd_corr`:** -0.0528 (90% -0.0943 to
+  -0.0058).
+- **By checkpoint:** morning +0.2413 (+0.2044 to +0.2814). Noon, prepeak_2h,
+  prepeak_1h and postpeak_1h are each wholly below 0 (postpeak -0.2044).
+- **Top-1:** at those four checkpoints, `sd_corr`'s top-1 is below the served
+  Wilson lower end.
+- **Verdict: rejected.** The test stops. As the prereg fixes, the capture is
+  switched off (`scripts/variant_shadow.py` `SD_CAPTURE_OFF`): no `sd_corr` row
+  is read or written from the next tick on main. `da_floor:v1`'s capture is
+  unchanged, and the rows already captured stay.
+- **Against `da_floor` on the same rows:** `da_floor` minus `sd_corr` +0.0248
+  (+0.0076 to +0.0427).
+- **The served comparator changed during the window:** 256 engine versions;
+  4,987 rows were served on the wxpredict path (since #409) and 4,305 on the
+  forecast path.
+- **Not done here:** the registry row (`model_registry`, `sd_corr:v1` blind
+  shadow) still reads shadow. Moving it to `retired` is a database write this
+  session cannot make (no database connection).
+
+## da_floor:v1 second look — due 14 Nov, blocked
+
+The mirror counts 41 target dates with scored rows (4 Oct - 13 Nov, 9,205 rows;
+the first look's row definition), so the last look is due. The prereg runs it
+as a query on the live database with its md5 checked, and the session had no
+Supabase connector on 14 Nov. It was not scored from the mirror instead: over
+4-24 Oct the mirror gives 4,671 rows against the query's 4,666. The trigger
+retries daily (`trig_01D6fCuEL6KDsHRe1EVPmMeq`, 15 Nov 10:45Z).
+
 ## sd_corr:v1 first look — 26 Oct: insufficient evidence
 
 The pre-registered first look (`docs/SD_CORR_PREREG.md`) at 21 scored target
@@ -237,9 +272,9 @@ order:
   week, or Release assets) is his choice.
 - **Pre-registered looks already scheduled** (they wake this session and count
   dates first): the P3.10 ensemble record test's first look 17 Nov 10:30Z
-  (`trig_01KbKRaWUvyM5rVwzkZLZvim`; counted 29 Oct, below the look), da_floor:v1 second look 14 Nov 10:30Z
-  (`trig_01D6fCuEL6KDsHRe1EVPmMeq`), sd_corr:v1 second look 15 Nov 10:30Z
-  (`trig_01PFzq7b8YbCvk6WFf8UiB91`; the first look was 26 Oct, above).
+  (`trig_01KbKRaWUvyM5rVwzkZLZvim`; counted 29 Oct, below the look), da_floor:v1 second look
+  (`trig_01D6fCuEL6KDsHRe1EVPmMeq`; due since 14 Nov, waits on a database
+  connection, retries daily). sd_corr:v1's second look ran 15 Nov: rejected (above).
 
 ## P3.10 ensemble record test (R23) — 29 Oct: counted, below the first look
 
