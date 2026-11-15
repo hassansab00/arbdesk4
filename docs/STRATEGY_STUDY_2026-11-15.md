@@ -411,6 +411,37 @@ for the live one:
   calls are recorded, so for a city whose call was hours earlier the price may
   have moved.
 
+**The live book in your recording window.** Hassan, 15 Nov: "Codex is
+selecting the 6 cities and im recording them 11 to 2am beirut time", which is
+21:00Z to 00:00Z. The listed prices are the evening-before call's frozen
+book, made at each city's own 18:00: Shanghai's at 10:37Z, ten hours before
+the window opens, Buenos Aires', Miami's, Houston's and Austin's inside it or
+just after. `live_capture` holds the live top of book every hour (at :36).
+The same 18 trades at each capture inside the window (the 3 Nov 14 NO trades,
+unpriced in the list, are priced here too):
+
+| Capture | Orders | Day-end staking, from $30 | Per dollar staked (day-end) | Settlement-aware | Touch smaller than a $4 order |
+|---|---|---|---|---|---|
+| 21:36Z (23:36 Beirut) | 18 | $47.61, +58.7% | +20.4% | $30.70, +2.4%, 5 orders cut | 2 |
+| 22:36Z (00:36 Beirut) | 18 | $47.79, +59.3% | +20.2% | $30.76, +2.5%, 6 orders cut | 4 |
+| 23:36Z (01:36 Beirut) | 18 | $45.69, +52.3% | +18.7% | $31.31, +4.4%, 4 orders cut | 3 |
+
+- **The list's prices give +125.0% on $30 and +35.5% per dollar staked**
+  (day-end staking, on the evening call's books). At the live book of the
+  window it is about +18.7% to +20.4% per dollar staked.
+- **Shanghai on 12 Nov**, the trade behind 36% of the profit, is listed at
+  0.22; its ask at the three captures was 0.45, 0.41 and 0.48. The ask rose
+  between the evening call and your window; that bucket won.
+- **The largest gaps between a listed price and the window's book:** Shanghai 11-12 YES: listed 0.22, in the window 0.41 to 0.48; Helsinki 11-13 YES: listed 0.60, in the window 0.66 to 0.73; Buenos Aires 11-13 NO: listed 0.86, in the window 0.87 to 0.91.
+- **The settlement-aware account is nearly flat.** A $30 account that stakes
+  80% of its equity each evening has almost no cash left for the next evening
+  until positions settle (the first evening's positions settle between 16:37Z
+  on their target day and 07:36Z the day after), so most later orders are cut. Per dollar
+  staked is the better measure of the picks.
+- **The touch is thin.** Several touches are as small as 5 shares, below what
+  a $4 order at that price needs, so a real order would walk the book. The
+  capture also holds the dollar depth within a few cents of the touch.
+
 **The rule: "what historically was accurate".** On each date the cities are
 ranked on their evening-before picks that had settled by 21:30Z, by hit rate
 (at least 3 picks); YES on the three best, NO on the three worst. I cannot see
@@ -448,3 +479,93 @@ evening-before call, one dollar a trade at the touch with the fee, over all
 - **How long a test takes.** The spread of a date's mean return is 0.38. For 80%
   power to put the rule above zero: 8 dates if its true return is +35% a dollar,
   23 dates at +20%, 90 dates at +10%.
+
+## 13. Hassan's six frozen cities: is it profitable, and the profit to date (added 15 Nov)
+
+Hassan, 15 Nov: "You and codex are giving me different results and answers. I
+need to fucking know. Is this strategy profitable. And how much profit did we
+make to date. We will pick 6 cities from now on and freeze and trade on them
+... BUY YES on predicted bucket: Shanghai, Helsinki, Amsterdam. BUY NO on
+predicted bucket: Houston, Austin, Sao Paulo." He records the trades 23:00-02:00
+Beirut. `tools/frozen6_study.py` rebuilds `data/eval/frozen6_2026-11-15/result.json`.
+
+**The account is $30, six trades a day of equity / 7.5 (Hassan's experiment).**
+An earlier version of this section put $100 on every trade; that was my
+mistake, not his rule, and every dollar figure below is the $30 account.
+Taker fee on the price paid, held to settlement, outcomes the venue's (the
+list's for the three not settled in our record). Two ways to run the account:
+"as the list stakes" adds each day's profit before the next day's stakes (what
+the Codex list does); "only settled cash" gives each order no more than the cash
+that has settled by its time (the next evening's orders go in before the day
+settles, so a $30 account cannot fund them all).
+
+**Profit to date: the 18 trades of the Codex test, 12-14 Nov, from $30.**
+
+| Priced at | As the list stakes | Profit | Per dollar staked | Only settled cash | Profit |
+|---|---|---|---|---|---|
+| The evening call's frozen book (as listed) | $67.51, +125.0% | +$37.51 | +35.5% | $61.72, +105.7% | +$31.72 |
+| The list's own prices where given | $61.78, +105.9% | +$31.78 | +30.3% | not run | |
+| Live book 21:36Z (23:36 Beirut) | $47.61, +58.7% | +$17.61 | +20.4% | $30.70, +2.4% | +$0.70 |
+| Live book 22:36Z (00:36 Beirut) | $47.79, +59.3% | +$17.79 | +20.2% | $30.76, +2.5% | +$0.76 |
+| Live book 23:36Z (01:36 Beirut) | $45.69, +52.3% | +$15.69 | +18.7% | $31.31, +4.4% | +$1.31 |
+
+These are the same figures as section 12 (`tools/codex_trade_check.py`).
+At the prices in your recording window the three days made +$15.69 to +$17.79 as
+the list stakes, and +$0.70 to +$1.31 on cash that had settled. Three days, 18
+trades, and section 12 found 12-14 Nov to be the best run of three dates in the
+record for the Codex rule.
+
+**Is it profitable? Not shown.** The six frozen cities, the rule applied to
+every evening with a graded outcome. Per dollar staked (the measure that does
+not depend on the staking), and the $30 account run through the same trades
+as the list stakes it:
+
+| Priced at | Dates | Trades | Per dollar | 90% | $30 account | Same rule on every city, per dollar |
+|---|---|---|---|---|---|---|
+| The evening call's frozen book | 51 | 297 | +5.0% | -5.1% to +14.3% | $8.81, -70.6% | -7.7% |
+| Live book 21:36Z (23:36 Beirut) | 33 | 194 | +1.4% | -10.5% to +12.5% | $4.48, -85.1% | -8.6% |
+| Live book 22:36Z (00:36 Beirut) | 33 | 194 | -0.4% | -12.7% to +10.6% | $2.70, -91.0% | -9.6% |
+| Live book 23:36Z (01:36 Beirut) | 33 | 194 | -2.0% | -13.7% to +9.2% | $1.87, -93.8% | -9.8% |
+
+- **Per dollar, at the prices available in your window the six cities are
+  break-even over their record:** +1.4%, -0.4% and -2.0%, each with an interval
+  of about plus or minus 12 points. The frozen evening-call book (hours before
+  your window for Shanghai, Helsinki and Amsterdam) gives +5.0%, and its
+  interval also includes zero.
+- **The $30 account run through the whole record does not survive.** Staking 80%
+  of the equity a day, at the evening call's book the account ends at $8.81.
+  The average day grew the equity by +3.9%, but 8 of 51 dates took 30% or more
+  of it (the worst, all six trades lost, took 80%), and compounding a daily
+  loss of that size costs more than the average day adds. On cash that had
+  settled, every one of the four runs ends at $0.00 to the cent. This is one
+  path of 33 to 51 dates; it says the stake rule is too large for these
+  swings, not that the picks are worthless.
+- **They do beat the average city** (-9.6% a dollar at the same prices, the same
+  rule on all cities) **by about 8 to 10 points, but they were chosen on this
+  record.** A city's accuracy rank does not carry into the next dates at this
+  call (rank
+  correlation +0.06), so the average city is the fair expectation until these six
+  prove otherwise.
+- **The record is lumpy.** At the evening call the six returned -7.1% per dollar to
+  24 Oct and +22.4% after. Since 12 Nov (14 graded trades) they returned +35.6%
+  at the 22:36Z book.
+
+By city, per dollar, over each city's dates:
+
+| City | Side | Call book: trades | Call book | 22:36Z book: trades | 22:36Z book |
+|---|---|---|---|---|---|
+| Amsterdam | YES | 49 | +21.3% | 32 | +9.7% |
+| Helsinki | YES | 51 | +15.3% | 33 | -14.5% |
+| Shanghai | YES | 50 | -3.5% | 33 | -8.2% |
+| Austin | NO | 49 | -5.9% | 32 | +3.3% |
+| Houston | NO | 49 | +12.2% | 32 | +22.8% |
+| Sao Paulo | NO | 49 | -9.6% | 32 | -15.0% |
+
+- **Three of the six lost money at the live book over the record** (Helsinki,
+  Shanghai, Sao Paulo); Houston and Amsterdam carry it.
+- **Houston's and Austin's evening forecasts are made at 00:37Z, 02:37 Beirut,
+  after your window ends.** Sao Paulo's is at 21:37Z, 23:37 Beirut.
+- **The touch is thin:** 33 of the 194 trades at the 22:36Z book have a
+  touch smaller than a $4 order needs.
+- **From 16 Nov** the forward ledger is `python tools/frozen6_study.py --ledger`
+  (`docs/FROZEN6_PREREG.md`).

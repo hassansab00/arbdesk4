@@ -205,6 +205,27 @@ legacy signal chain, labels suspended strategies in the desk selector, and
 shows their 14-day eligibility time without offering an ineffective Start.
 No portfolio allocation, risk limits, or workflow schedules change.
 
+## The six frozen cities — 15 Nov: not shown profitable; one ledger from 16 Nov
+
+Hassan, 15 Nov: "Is this strategy profitable. And how much profit did we make to
+date." and the six cities to freeze: YES Shanghai, Helsinki, Amsterdam; NO
+Houston, Austin, Sao Paulo. Section 13 of `docs/STRATEGY_STUDY_2026-11-15.md`;
+`tools/frozen6_study.py` rebuilds `data/eval/frozen6_2026-11-15/result.json`;
+the rule is fixed in `docs/FROZEN6_PREREG.md` (`frozen6-v1`).
+
+- **Profit to date** (the 18 trades of 12-14 Nov, the $30 account staking
+  equity / 7.5 a trade, fee included; an earlier version of this entry used
+  $100 a trade, which was not his rule): as the list stakes it, $67.51 (+$37.51)
+  at the evening call's frozen book and $45.69 to $47.79 (+$15.69 to +$17.79) at
+  the live book of his recording window; on cash that had settled, +$0.70 to
+  +$1.31 at the live book.
+- **Profitable? Not shown.** The six cities over the live books (33 evenings,
+  194 trades): +1.4%, -0.4%, -2.0% a dollar, intervals about +-12 points;
+  the same rule on every city -9.6%. In-sample: the cities were chosen on this
+  record, and a city's rank does not carry forward (+0.06).
+- **Forward ledger:** `python tools/frozen6_study.py --ledger` from 16 Nov;
+  first look at 23 valid dates, last at 46.
+
 ## Hassan's Codex test, 12-14 Nov — 15 Nov: the trades check out; three days are not evidence
 
 Hassan, 15 Nov: his Codex test of the three-YES / three-NO strategy "is up
@@ -237,6 +258,14 @@ Hassan, 15 Nov: his Codex test of the three-YES / three-NO strategy "is up
   books: the run's inputs came after 23:30 Beirut. On what existed at 23:30 the
   listed buckets give +135.1% (day-end) / +65.3% (settlement-aware); on the
   model's pick at that call +35.5% / +36.8%, and 14 Nov loses.
+- **Hassan's second answer (15 Nov):** "Codex is selecting the 6 cities and im
+  recording them 11 to 2am beirut time" (21:00Z-00:00Z). The listed prices are
+  the evening call's frozen book, hours before that window for Asia and
+  Europe. At the live book of the three hourly `live_capture` snapshots inside
+  it the same 18 trades give +52.3% to +59.3% on $30 under the list's staking
+  (+18.7% to +20.4% per dollar staked, against +125.0% and +35.5% at the
+  frozen call books) and +2.4% to +4.4% settlement-aware. The Shanghai trade behind
+  36% of the profit is listed at 0.22; its ask in the window was 0.41-0.48.
 - **The rule as described** (hit rate, cities picked on outcomes settled by
   21:30Z): all history -8.9% over 278 trades (-18.1% to +0.8%); no
   window of seven separable above zero; all-history does not reproduce the six

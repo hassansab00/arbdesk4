@@ -156,6 +156,33 @@ def test_settlement_aware_account_uses_only_what_has_settled():
     assert one_win["equity"] == pytest.approx(30 - 4.0 + 4.0 / 0.5125, abs=0.01) and one_loss["equity"] == pytest.approx(26.0, abs=0.01)
 
 
+def test_the_recording_window_prices_the_same_trades_at_the_live_book():
+    pytest.importorskip("numpy")
+    import datetime as dt
+    import codex_trade_check as X
+    W = RESULT["at_the_recording_window"]
+    a, b = X.window_of("2026-11-13")
+    assert (a, b) == (dt.datetime(2026, 11, 12, 21, 0, tzinfo=dt.timezone.utc), dt.datetime(2026, 11, 13, 0, 0, tzinfo=dt.timezone.utc)), \
+        "23:00 to 02:00 Beirut, UTC+2"
+    assert W["captures"] == ["21:36Z", "22:36Z", "23:36Z"] and len(W["trades"]) == 18
+    base = RESULT["replay"]["scenarios"][0]
+    for at, v in W["replays"].items():
+        assert v["trades_priced"] == 18, "the three unpriced 14 Nov NO trades are priced from the live book"
+        assert v["day_end_staking"]["pnl_per_dollar_staked"] < base["pnl_per_dollar_staked"] * 0.7, at
+        assert 0.3 < v["day_end_staking"]["return_on_start"] < base["return_on_start"] * 0.6, at
+        assert v["settlement_aware"]["return_on_start"] < 0.2 and v["settlement_aware"]["orders_cut_to_the_cash_in_hand"] >= 3, at
+        assert (f"| {v['trades_priced']} | ${v['day_end_staking']['equity']:.2f}, {_pc(v['day_end_staking']['return_on_start'])} | "
+                f"{_pc(v['day_end_staking']['pnl_per_dollar_staked'])} | ${v['settlement_aware']['equity']:.2f}, "
+                f"{_pc(v['settlement_aware']['return_on_start'])}, {v['settlement_aware']['orders_cut_to_the_cash_in_hand']} orders cut | "
+                f"{v['touch_smaller_than_a_4_dollar_order']} |") in DOC, at
+    sh = W["shanghai_12_nov"]
+    assert sh["listed"] == 0.22 and all(p > 0.4 for p in sh["price_at"].values())
+    assert f"was {sh['price_at']['21:36Z']:.2f}, {sh['price_at']['22:36Z']:.2f} and {sh['price_at']['23:36Z']:.2f}" in " ".join(DOC.split())
+    listed = {(t["city"], t["date"]): t for t in W["trades"]}
+    assert listed[("amsterdam", "2026-11-12")]["price_at"]["21:36Z"] == 0.63, "some prices did not move"
+    assert listed[("warsaw", "2026-11-14")]["listed_price"] is None and all(listed[("warsaw", "2026-11-14")]["price_at"].values())
+
+
 def test_the_dates_a_test_needs():
     z = RESULT["form"]["sizing"]
     n = z["dates_for_80pc_power"]
