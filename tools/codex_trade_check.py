@@ -28,13 +28,21 @@ Scenarios: the list's own prices; the two trades whose bucket is not the
 model's pick taken on the model's pick; Buenos Aires on 14 Nov as a loss; the
 best trade removed; Shanghai on 14 Nov at its listed price; a flat stake.
 
-PART `form`: the ranking the six cities fit. On each date the cities are
-ranked on their `d1_eve` picks that had SETTLED before the date's first call,
-by hit rate over the last WINDOW days (at least MIN_PICKS picks); YES on the
-three best, NO on the three worst, one dollar a trade at the recorded touch
-with the fee (the study's trades, tools/city_sides_study.py). Window 10 is the
-one the six cities fit best. Every window is shown, with ties broken at random
-200 times, and how far three consecutive dates can swing.
+PART `at_the_selection_time`: Hassan, 15 Nov: "Selection is night time beirut
+time 23:30, frozen prediction forecasts for the next day" (21:30Z in November).
+Each city's evening-before call is made at its own 18:00, so those of Buenos
+Aires, Miami, Houston and Austin are made after 21:30Z. This replays the same
+trades with each city's latest call made by then (its day-ahead call for those
+four), on the listed buckets and on the model's pick at that call.
+
+PART `form`: the rule he describes ("what historically was accurate and what
+wasn't"): on each date the cities are ranked on their `d1_eve` picks that had
+SETTLED by 21:30Z the evening before, by hit rate over the last WINDOW days
+(0 = all history; at least MIN_PICKS picks); YES on the three best, NO on the
+three worst, one dollar a trade at the recorded touch with the fee (the
+study's trades, tools/city_sides_study.py). Every window is shown; window 10 is
+the one the six cities fit best (and all history is shown on its own), with
+ties broken at random 200 times and how far three consecutive dates can swing.
 
     python tools/codex_trade_check.py --out data/eval/codex_test_2026-11-12
 """
@@ -57,6 +65,7 @@ import strategy_study as S  # noqa: E402
 import city_sides_study as C  # noqa: E402
 import own_w_forward as O  # noqa: E402  (its reader of the venue's buckets)
 
+SELECTION_UTC = (21, 30)       # 23:30 Beirut, UTC+2 in November (Hassan, 15 Nov)
 DATA = os.path.join(ROOT, "data", "eval", "codex_test_2026-11-12", "trades.json")
 YEAR = 2026
 START_EQUITY = 30.0
@@ -315,6 +324,64 @@ def replay(checked, trades):
             "scenarios": scenarios}
 
 
+def selection_time(date):
+    """23:30 Beirut on the evening before the target date, in UTC (Hassan, 15 Nov:
+    "Selection is night time beirut time 23:30"; Lebanon is UTC+2 in November)."""
+    d = dt.date.fromisoformat(date) - dt.timedelta(days=1)
+    return dt.datetime(d.year, d.month, d.day, SELECTION_UTC[0], SELECTION_UTC[1], tzinfo=dt.timezone.utc)
+
+
+def at_selection(trades, checked, rows_of, bands):
+    """The same trades with only what existed at the selection time: each city's
+    latest call made no later than 23:30 Beirut on the evening before. The
+    evening-before call of a city is made at its own 18:00, which for Buenos
+    Aires, Miami, Houston and Austin is after that. Two replays on those calls'
+    books: the listed bucket, and the model's pick at that call."""
+    out = []
+    for t, c in zip(trades, checked):
+        sel = selection_time(t["date"])
+        rows = [r for r in rows_of[(t["city"], t["date"])] if when(r["decided_at"]) <= sel]
+        row = {"city": t["city"], "date": t["date"], "side": t["side"], "listed_call_is_after_the_selection": when(c["_decided_at"]) > sel}
+        if not rows:
+            out.append(dict(row, available_call=None))
+            continue
+        r = rows[-1]
+        probs, book = json.loads(r["probs"]), json.loads(r["market"]) if r["market"] else {}
+        top = sorted(probs.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+        listed = band_with(bands, probs, t["lo"])
+
+        def wins(b):
+            """Does this bucket win: the venue's winner, else the list's settled bucket."""
+            if c["_win"]:
+                return b == c["_win"]
+            x = bands.get(b)
+            return bool(x and x["band_lo"] is not None and abs(x["band_lo"] - t["settled_lo"]) < 1e-9)
+        row.update({"available_call": r["checkpoint"], "available_call_at": r["decided_at"][:16] + "Z",
+                    "listed_bucket_is_the_models_pick": listed == top,
+                    "_listed": (price_of(t["side"], book.get(listed)), (wins(listed) if t["side"] == "YES" else not wins(listed))),
+                    "_top": (price_of(t["side"], book.get(top)), (wins(top) if t["side"] == "YES" else not wins(top))),
+                    "_decided": sel, "_settled": when(c["_settled_at"]) if c["_settled_at"] else None})
+        out.append(row)
+    return out
+
+
+def selection_replays(rows):
+    """Day-end staking and the settlement-aware account on each bucket choice."""
+    by = {}
+    last = max(r["_settled"] for r in rows if r.get("_settled"))
+    for key, label in (("_listed", "the listed buckets"), ("_top", "the model's pick at that call")):
+        usable = [r for r in rows if r.get("available_call") and r[key][0] is not None]
+        days = collections.defaultdict(list)
+        for r in sorted(usable, key=lambda r: r["date"]):
+            days[r["date"]].append((r[key][0], r[key][1]))
+        day = scenario(label, [days[d] for d in sorted(days)])
+        entries = [(r["_decided"], r["_settled"] or last + dt.timedelta(days=1), r[key][0], r[key][1]) for r in usable]
+        by[key[1:]] = {"trades_priced": len(usable), "trades": len(rows), "day_end_staking": day,
+                       "settlement_aware": settlement_aware(entries),
+                       "won": sum(r[key][1] for r in usable), "wins_by_trade": {f"{r['city']}:{r['date']}": r[key][1] for r in usable}}
+    return by
+
+
 def listed_equity(trades):
     """The list's own P&L as written, day by day, and the equity it implies from $30."""
     eq, days = START_EQUITY, []
@@ -333,14 +400,15 @@ def listed_equity(trades):
 # the ranking the six cities fit
 # ---------------------------------------------------------------------------
 def city_tables(ps, dates, window):
-    """{date: ({city: hits[]}, first call)}: picks settled before the date's first
-    call, within `window` days of it (0 = all)."""
+    """{date: {city: hits[]}}: the picks settled by the selection time (23:30
+    Beirut on the evening before, Hassan's own; 21:30Z), within `window` days of
+    the date (0 = all history)."""
     out = {}
     for d in dates:
-        first = min(p["decided"] for p in ps if p["date"] == d)
+        cut = selection_time(d)
         hist = collections.defaultdict(list)
         for p in ps:
-            if p["date"] >= d or p["settled"] > first:
+            if p["date"] >= d or p["settled"] > cut:
                 continue
             if window and (dt.date.fromisoformat(d) - dt.date.fromisoformat(p["date"])).days > window:
                 continue
@@ -422,6 +490,7 @@ def form(trades_by_listed):
         yes, no = form_walk(ps, city_tables(ps, dates, w))
         windows["all" if w == 0 else str(w)] = {"yes": S.result(yes), "no": S.result(no), "both": S.result(yes + no)}
     tables = city_tables(ps, dates, FIT_WINDOW)
+    tables_all = city_tables(ps, dates, 0)
     sims = []
     for s in range(SEEDS):
         y, n = form_walk(ps, tables, seed=s)
@@ -448,7 +517,8 @@ def form(trades_by_listed):
                                 "nov_12_to_14": {"return_per_dollar": round(order[nov][0], 4), "rank_among_runs": nov + 1,
                                                  "trades": order[nov][3]}},
             "sizing": dates_needed(y + n),
-            "fit_of_the_six_cities": fit_of_ranking(ps, tables, codex)}
+            "fit_of_the_six_cities": fit_of_ranking(ps, tables, codex),
+            "fit_of_the_six_cities_all_history": fit_of_ranking(ps, tables_all, codex)}
 
 
 def study():
@@ -468,6 +538,14 @@ def study():
     for t in trades:
         by_day[t["date"]].append(t)
     public = [{k: v for k, v in c.items() if not k.startswith("_")} for c in checked]
+    sel_rows = at_selection(trades, checked, rows_of, bands)
+    selection = {"selection_time": "23:30 Beirut = 21:30Z on the evening before the target date",
+                 "trades_whose_listed_call_is_after_it": sum(r["listed_call_is_after_the_selection"] for r in sel_rows),
+                 "cities_with_a_later_call": sorted({r["city"] for r in sel_rows if r["listed_call_is_after_the_selection"]}),
+                 "available_calls": dict(collections.Counter(r.get("available_call") for r in sel_rows)),
+                 "listed_bucket_is_the_models_pick_at_that_call": sum(bool(r.get("listed_bucket_is_the_models_pick")) for r in sel_rows),
+                 "replays": selection_replays(sel_rows),
+                 "trades": [{k: v for k, v in r.items() if not k.startswith("_")} for r in sel_rows]}
     priced = [c for c in public if "arithmetic" in c]
     return {
         "trades": len(trades), "dates": sorted(by_day),
@@ -486,6 +564,7 @@ def study():
                                                        and abs(c["arithmetic"]["pnl_difference"]) > 0.011 for c in priced),
                     "fees_not_in_the_list": round(sum(c["arithmetic"]["fee_not_in_the_list"] for c in priced), 2)},
         "replay": replay(checked, trades),
+        "at_the_selection_time": selection,
         "form": form({d: rows for d, rows in by_day.items()}),
     }
 

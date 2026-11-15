@@ -229,12 +229,23 @@ Hassan, 15 Nov: his Codex test of the three-YES / three-NO strategy "is up
   and, on the model's pick, the three days return +31.4%; three 14 Nov
   outcomes are not settled in our record (Buenos Aires conflicts with our last
   call).
-- **The rule the cities fit** (ten-day hit rate): -6.0% over 279 trades on
-  47 dates; 1.5% of random tie-breaks end above zero; 12-14 Nov is
-  the best of 45 runs of three dates.
-- **A forward test needs** 10 dates if the true return is +35%, 29 at +20%, 114 at +10%.
-- **Open:** how Codex chooses each bucket and its exact city ranking; not
-  pre-registered until Hassan gives them.
+- **Hassan's answers (15 Nov):** selection is 23:30 Beirut (21:30Z) on frozen
+  forecasts for the next day; "no ranking, just what historically was accurate
+  and what wasn't". At 21:30Z the evening-before calls of Buenos Aires, Miami,
+  Houston and Austin do not exist yet (they are made at their own 18:00), yet
+  10 of the 18 listed trades use them and the 8 with a price match those later
+  books: the run's inputs came after 23:30 Beirut. On what existed at 23:30 the
+  listed buckets give +135.1% (day-end) / +65.3% (settlement-aware); on the
+  model's pick at that call +35.5% / +36.8%, and 14 Nov loses.
+- **The rule as described** (hit rate, cities picked on outcomes settled by
+  21:30Z): all history -8.9% over 278 trades (-18.1% to +0.8%); no
+  window of seven separable above zero; all-history does not reproduce the six
+  cities (some are mid-table), a ten-day window does better (12 of 18);
+  12-14 Nov is the best of 45 runs of three dates.
+- **A forward test needs** 8 dates if the true return is +35%, 23 at +20%, 90 at +10%.
+- **Open:** how Codex chooses each bucket (16 of 18 are the model's pick, the
+  other two the market's favourite) and where its "historical accuracy" comes
+  from; not pre-registered until Hassan gives them.
 
 ## The evening-before call, where Hassan trades — 15 Nov: fairly priced, one thin lead
 

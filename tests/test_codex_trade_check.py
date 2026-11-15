@@ -67,23 +67,60 @@ def test_the_scenarios_and_what_moves_them():
     assert f"**One trade is {100 * R['best_trade']['share_of_all_profit']:.1f}% of the profit:**" in DOC
 
 
-def test_the_rule_the_cities_fit_loses_over_the_record_and_the_three_days_are_its_best():
+def test_the_rule_as_described_is_not_shown_to_pay_and_the_three_days_are_its_best():
     F = RESULT["form"]
     both = {k: v["both"] for k, v in F["windows"].items()}
-    assert all(b["ci90"][0] < 0.12 for b in both.values()) and all(b["return_per_dollar"] < 0.02 for b in both.values())
-    assert both["14"]["ci90"][1] < 0 and both["10"]["ci90"][0] < 0 < both["10"]["ci90"][1]
+    assert set(both) == {"5", "7", "10", "14", "21", "28", "all"}
+    assert all(b["ci90"][0] < 0 for b in both.values()), "no window is separable from zero in the positive direction"
+    assert both["14"]["ci90"][1] < 0, "14 days is wholly below it"
+    assert both["all"]["return_per_dollar"] < 0 and both["all"]["ci90"][0] < 0 < both["all"]["ci90"][1] + 0.2, "all history, as Hassan describes it"
     for k, v in F["windows"].items():
         assert f"| {v['both']['n']} | {_pc(v['both']['return_per_dollar'])} | {_pc(v['both']['ci90'][0])} to {_pc(v['both']['ci90'][1])} |" in DOC, k
+    assert f"{_pc(both['all']['return_per_dollar'])} a dollar over {both['all']['n']} trades" in DOC
     rt = F["random_tie_breaks"]
-    assert rt["seeds"] == 200 and rt["share_of_seeds_above_0"] < 0.05 and rt["both_95th_pct"] < 0
+    assert rt["seeds"] == 200 and rt["both_mean"] < 0 and rt["share_of_seeds_above_0"] < 0.5
+    assert f"{100 * rt['share_of_seeds_above_0']:.1f}% of tie-breaks end above zero" in DOC
     t = F["three_date_runs"]
     assert t["nov_12_to_14"]["rank_among_runs"] == 1 and t["best"]["from"] == "2026-11-12" and t["best"]["to"] == "2026-11-14"
     assert t["median"] < 0 and t["share_above_0"] < 0.5
     assert f"{t['nov_12_to_14']['return_per_dollar'] * 100:+.1f}% (rank 1, {t['nov_12_to_14']['trades']} trades) is the highest" in DOC
-    fit = F["fit_of_the_six_cities"]
-    for d in fit.values():
-        assert max(d["yes_positions_from_best"]) <= 6 and max(d["no_positions_from_worst"]) <= 7, "inside the top and bottom of the table"
+    ten = F["fit_of_the_six_cities"]
+    for d in ten.values():
+        assert max(d["yes_positions_from_best"]) <= 6 and max(d["no_positions_from_worst"]) <= 7, "a ten-day window puts them at the top and bottom"
         assert d["yes_in_default_top3"] == 2 and d["no_in_default_bottom3"] == 2
+    assert sum(d["yes_in_default_top3"] + d["no_in_default_bottom3"] for d in ten.values()) == 12
+    allh = F["fit_of_the_six_cities_all_history"]
+    assert any(max(d["yes_positions_from_best"]) > 15 or max(d["no_positions_from_worst"]) > 15 for d in allh.values()), \
+        "all history leaves some of the six cities mid-table"
+    for dd, v in allh.items():
+        assert (f"{dd[5:]}: YES at {', '.join(map(str, v['yes_positions_from_best']))} from the best, "
+                f"NO at {', '.join(map(str, v['no_positions_from_worst']))} from the worst") in DOC
+
+
+def test_what_existed_at_the_selection_time():
+    pytest.importorskip("numpy")
+    import codex_trade_check as X
+    import datetime as dt
+    Z = RESULT["at_the_selection_time"]
+    assert X.selection_time("2026-11-13") == dt.datetime(2026, 11, 12, 21, 30, tzinfo=dt.timezone.utc), "23:30 Beirut, UTC+2"
+    assert Z["trades_whose_listed_call_is_after_it"] == 10
+    assert Z["cities_with_a_later_call"] == ["austin", "buenos_aires", "houston", "miami"]
+    assert Z["available_calls"] == {"d1_eve": 8, "day_ahead": 10}
+    late = [t for t in Z["trades"] if t["listed_call_is_after_the_selection"]]
+    assert {t["city"] for t in late} == set(Z["cities_with_a_later_call"]) and all(t["available_call"] == "day_ahead" for t in late)
+    wrong = {(t["city"], t["date"]) for t in Z["trades"] if not t["listed_bucket_is_the_models_pick"]}
+    assert wrong == {("buenos_aires", "2026-11-13"), ("houston", "2026-11-13"), ("helsinki", "2026-11-14"), ("warsaw", "2026-11-14")}
+    assert Z["listed_bucket_is_the_models_pick_at_that_call"] == 14
+    L, M = Z["replays"]["listed"], Z["replays"]["top"]
+    for r in (L, M):
+        assert r["trades_priced"] == 18
+        assert f"| {r['trades_priced']} | {r['won']} | ${r['day_end_staking']['equity']:.2f}, {_pc(r['day_end_staking']['return_on_start'])} | " \
+               f"${r['settlement_aware']['equity']:.2f}, {_pc(r['settlement_aware']['return_on_start'])}, " in DOC
+    assert M["day_end_staking"]["return_on_start"] < L["day_end_staking"]["return_on_start"] / 3, "on the model's pick it is far less"
+    assert M["day_end_staking"]["days"][2]["pnl"] < 0, "and 14 Nov loses"
+    assert 0 < M["settlement_aware"]["return_on_start"] < L["settlement_aware"]["return_on_start"]
+    flat = " ".join(DOC.split())
+    assert "Selection is night time beirut time 23:30" in flat and "21:30Z" in flat
 
 
 def test_settlement_aware_replay_is_in_the_document_and_cannot_beat_the_day_end_convention():
