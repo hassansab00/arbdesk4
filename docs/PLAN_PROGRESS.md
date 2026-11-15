@@ -245,10 +245,18 @@ database or adds a schedule (Rules 6 and 7).
   to build it into the nightly fit.
 - **Next:** `python tools/own_w_forward.py --count` until a look is due.
 
-**Still to run, by Hassan or a session with a database connection:**
-`supabase/migrations/20261115120000_same_day_station_pricing.sql`. The
-Supabase connector was off in this session, so the morning fix merged in #509
-is not live.
+**The morning fix is switched on (15 Nov 12:31Z).** Hassan: "proceed to the
+migration". `supabase/migrations/20261115120000_same_day_station_pricing.sql`
+was applied through the Supabase connector; the database lists it as
+migration `20261115123157 same_day_station_pricing`.
+- **Not verified before applying:** the settings in force and the corrected
+  rows. The connector offered no SQL read in this session, and its notebook
+  route was refused by the session's permissions. The migration only inserts
+  the `station_same_day_pricing` row, and does nothing if the row exists.
+- **To verify on real runs** (scheduled for 16 Nov 11:15Z): in the mirror,
+  morning first calls decided after 15 Nov 12:36Z should carry
+  `forecast_model = station_correction`. On target dates from 12 Nov, all 141
+  morning rows in the mirror read `open_meteo_forecast`.
 
 ## Strategy study — 15 Nov: no rule on the predictions paid at the book's prices
 
@@ -297,8 +305,9 @@ calibration, and implement what needs improving. The audit is
   from the combination's own centre and stored width while
   `settings.station_same_day_pricing` is on. `wxrd3` keeps noon and later.
   Day-ahead prices are unchanged.
-- **To run:** `supabase/migrations/20261115120000_same_day_station_pricing.sql`
-  turns it on. Until it is run the engine behaves as before.
+- **Run on 15 Nov 12:31Z:**
+  `supabase/migrations/20261115120000_same_day_station_pricing.sql` (database
+  migration `20261115123157`). Before it the engine behaved as before.
 - **Acceptance after it is on:** morning first calls carry
   `station_correction:` in `priced_from`, and the morning log loss over the
   next 14 settled dates is below the forecast path's 1.68.
