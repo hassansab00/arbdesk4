@@ -213,9 +213,12 @@ Houston, Austin, Sao Paulo. Section 13 of `docs/STRATEGY_STUDY_2026-11-15.md`;
 `tools/frozen6_study.py` rebuilds `data/eval/frozen6_2026-11-15/result.json`;
 the rule is fixed in `docs/FROZEN6_PREREG.md` (`frozen6-v1`).
 
-- **Profit to date** (the 18 trades of 12-14 Nov, $100 a trade, fee included):
-  +$719.30 on $1,800 at the evening call's frozen book; +$406.52 to +$407.61
-  at the live book of his recording window.
+- **Profit to date** (the 18 trades of 12-14 Nov, the $30 account staking
+  equity / 7.5 a trade, fee included; an earlier version of this entry used
+  $100 a trade, which was not his rule): as the list stakes it, $67.51 (+$37.51)
+  at the evening call's frozen book and $45.69 to $47.79 (+$15.69 to +$17.79) at
+  the live book of his recording window; on cash that had settled, +$0.70 to
+  +$1.31 at the live book.
 - **Profitable? Not shown.** The six cities over the live books (33 evenings,
   194 trades): +1.4%, -0.4%, -2.0% a dollar, intervals about +-12 points;
   the same rule on every city -9.6%. In-sample: the cities were chosen on this

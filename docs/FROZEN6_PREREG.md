@@ -18,8 +18,12 @@ pick (the top bucket of the city's first `d1_eve` call for the target date):
 | YES | Shanghai, Helsinki, Amsterdam |
 | NO | Houston, Austin, Sao Paulo |
 
-- **One dollar a trade** for the measurement (the ledger also shows $100), held
-  to settlement on the venue's winning bucket.
+- **The measurement is the return per dollar staked.** The profit is the $30
+  account Hassan runs: each day six trades of equity / 7.5 (80% of the equity),
+  from $30, as the Codex test stakes it (`codex_trade_check.equity_path`), and
+  beside it the account that only has settled cash
+  (`codex_trade_check.settlement_aware`). Held to settlement on the venue's
+  winning bucket.
 - **The price** is the live top of book at the hourly capture
   (`live_capture`, kind `books`, at :36) inside Hassan's recording window,
   23:00-02:00 Beirut (21:00Z-00:00Z): YES at the ask, NO at one less the bid,

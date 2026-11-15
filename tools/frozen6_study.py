@@ -9,7 +9,7 @@ He records the trades 23:00-02:00 Beirut (21:00Z-00:00Z).
 
 THE RULE, as stated: each evening, YES on the model's evening-before pick in
 Shanghai, Helsinki and Amsterdam, and NO on its evening-before pick in Houston,
-Austin and Sao Paulo. One dollar a trade, held to settlement, the taker fee on
+Austin and Sao Paulo. One dollar a trade for the per-dollar measure, and the $30 account he runs (each day six trades of equity / 7.5) for the profit, held to settlement, the taker fee on
 the price paid (strategy_study.cost); YES at the ask, NO at one less the bid.
 
 THREE WAYS TO PRICE IT, on every date with a graded outcome:
@@ -74,7 +74,8 @@ def evening_calls(read=S.read):
             continue
         probs = json.loads(r["probs"])
         out[k] = {"top": sorted(probs.items(), key=lambda kv: (-kv[1], kv[0]))[0][0], "winner": f["winner_band_id"],
-                  "book": json.loads(r["market"]) if r["market"] else {}, "settled": when(f["settled_at"])}
+                  "book": json.loads(r["market"]) if r["market"] else {}, "settled": when(f["settled_at"]),
+                  "decided": when(r["decided_at"])}
     return out
 
 
@@ -104,8 +105,9 @@ def window_books(calls):
     return out
 
 
-def trade(side, price, won, date):
-    return {"date": date, "price": price, "cost": S.cost(price), "win": int(won)}
+def trade(side, price, won, date, ordered=None, settled=None):
+    """`ordered` and `settled` (datetimes) let the account that only has what has settled replay it."""
+    return {"date": date, "price": price, "cost": S.cost(price), "win": int(won), "ordered": ordered, "settled": settled}
 
 
 def call_trades(calls, cities_by_side):
@@ -114,9 +116,9 @@ def call_trades(calls, cities_by_side):
     for (city, date), c in calls.items():
         q = c["book"].get(c["top"]) or {}
         if city in cities_by_side["yes"] and q.get("ask") is not None and 0 < q["ask"] < 1:
-            out["yes"].append(dict(trade("YES", q["ask"], c["top"] == c["winner"], date), city=city))
+            out["yes"].append(dict(trade("YES", q["ask"], c["top"] == c["winner"], date, c.get("decided"), c.get("settled")), city=city))
         if city in cities_by_side["no"] and q.get("bid") is not None and 0 < q["bid"] < 1:
-            out["no"].append(dict(trade("NO", 1 - q["bid"], c["top"] != c["winner"], date), city=city))
+            out["no"].append(dict(trade("NO", 1 - q["bid"], c["top"] != c["winner"], date, c.get("decided"), c.get("settled")), city=city))
     return out
 
 
@@ -128,20 +130,48 @@ def window_trades(calls, books, cities_by_side, label):
             continue
         c = calls[(city, date)]
         bid, ask = top[0], top[1]
+        ordered = dt.datetime.fromisoformat(date).replace(tzinfo=dt.timezone.utc) - dt.timedelta(days=1) \
+            + dt.timedelta(hours=int(label[:2]), minutes=int(label[3:5]))
         if city in cities_by_side["yes"] and ask is not None and 0 < ask < 1:
-            out["yes"].append(dict(trade("YES", ask, c["top"] == c["winner"], date), city=city, size=top[3]))
+            out["yes"].append(dict(trade("YES", ask, c["top"] == c["winner"], date, ordered, c.get("settled")), city=city, size=top[3]))
         if city in cities_by_side["no"] and bid is not None and 0 < bid < 1:
-            out["no"].append(dict(trade("NO", 1 - bid, c["top"] != c["winner"], date), city=city, size=top[2]))
+            out["no"].append(dict(trade("NO", 1 - bid, c["top"] != c["winner"], date, ordered, c.get("settled")), city=city, size=top[2]))
     return out
 
 
-def summary(trades):
-    """Return per dollar with its interval, and the profit of $100 a trade."""
+def account(trades):
+    """THE ACCOUNT HASSAN RUNS: $30 to start, six trades a day of equity / 7.5 each (80% of the
+    equity a day), the taker fee on the price paid (tools/codex_trade_check.py: equity_path,
+    settlement_aware). `day_end` adds each day's profit before the next day's stakes, as his
+    Codex test does; `settlement_aware` only has the cash that has settled. A trade with no
+    order or settlement time is left out of the second."""
+    import codex_trade_check as X
     both = trades["yes"] + trades["no"]
-    res = {"yes": S.result(trades["yes"]), "no": S.result(trades["no"]), "both": S.result(both)}
-    res["profit_of_100_a_trade"] = round(sum(100 * (t["win"] / t["cost"] - 1.0) for t in both), 2) if both else 0.0
-    res["staked_at_100_a_trade"] = 100 * len(both)
-    return res
+    if not both:
+        return {"dates": 0, "day_end": None, "settlement_aware": None}
+    by = collections.defaultdict(list)
+    for t in both:
+        by[t["date"]].append((t["price"], bool(t["win"])))
+    path = X.equity_path([by[d] for d in sorted(by)])
+    out = {"dates": len(by), "day_end": {"equity": path[-1]["equity"], "return_on_start": round(path[-1]["equity"] / X.START_EQUITY - 1, 4)}}
+    timed = [(t["ordered"], t["settled"], t["price"], bool(t["win"])) for t in both if t.get("ordered") and t.get("settled")]
+    if len(timed) == len(both):
+        sa = X.settlement_aware(timed)
+        out["settlement_aware"] = {"equity": sa["equity"], "return_on_start": sa["return_on_start"], "orders": sa["orders"],
+                                   "orders_cut_to_the_cash_in_hand": sa["orders_cut_to_the_cash_in_hand"]}
+    else:
+        out["settlement_aware"] = None
+    return out
+
+
+def summary(trades, with_account=True):
+    """Return per dollar with its interval, and the $30 account run through the same trades
+    (not for every city: that account would stake on about 90 cities a day)."""
+    both = trades["yes"] + trades["no"]
+    out = {"yes": S.result(trades["yes"]), "no": S.result(trades["no"]), "both": S.result(both)}
+    if with_account:
+        out["account_from_30"] = account(trades)
+    return out
 
 
 def by_city(trades):
@@ -162,23 +192,28 @@ OFFICIAL = "22:36Z"            # the middle of the three captures in his window 
 
 
 def ledger(calls, books, from_date=FIRST_FORWARD_DATE, label=OFFICIAL):
-    """Day by day from `from_date`: the six trades at the capture's live book, $100 a
-    trade, settled by the venue. A date is valid when all six are priced and settled."""
+    """Day by day from `from_date`: the six trades at the capture's live book, run through
+    the $30 account (equity / 7.5 a trade), settled by the venue. A date is valid when all
+    six are priced and settled."""
+    import codex_trade_check as X
     six = {"yes": set(YES_CITIES), "no": set(NO_CITIES)}
     trades = window_trades(calls, books, six, label)
     by = collections.defaultdict(list)
     for t in trades["yes"] + trades["no"]:
         if t["date"] >= from_date:
             by[t["date"]].append(t)
-    days, cum = [], 0.0
-    for d in sorted(by):
-        pnl = round(sum(100 * (t["win"] / t["cost"] - 1.0) for t in by[d]), 2)
-        cum = round(cum + pnl, 2)
-        days.append({"date": d, "trades": len(by[d]), "valid": len(by[d]) == 6, "profit_of_100_a_trade": pnl, "cumulative": cum,
+    dates = sorted(by)
+    path = X.equity_path([[(t["price"], bool(t["win"])) for t in by[d]] for d in dates])
+    days = []
+    for d, p in zip(dates, path):
+        days.append({"date": d, "trades": len(by[d]), "valid": len(by[d]) == 6, "stake_a_trade": p["stake_a_trade"],
+                     "day_pnl": p["pnl"], "equity": p["equity"],
                      "legs": {f"{t['city']}": {"price": round(t["price"], 3), "won": t["win"]} for t in by[d]}})
     valid = [d for d in days if d["valid"]]
     res = S.result([t for d in valid for t in by[d["date"]]]) if valid else {"n": 0}
-    return {"from": from_date, "capture": label, "days": days, "valid_dates": len(valid), "result": res,
+    return {"from": from_date, "capture": label, "start_equity": X.START_EQUITY, "days": days, "valid_dates": len(valid), "result": res,
+            "account_from_30": account({"yes": [t for d in dates for t in by[d] if t in trades["yes"]],
+                                        "no": [t for d in dates for t in by[d] if t in trades["no"]]}),
             "looks": {str(n): {"needs": n, "due": len(valid) >= n} for n in LOOKS}}
 
 
@@ -189,8 +224,11 @@ def verdict(res):
 
 
 def codex_test_to_date():
-    """The 18 trades of the Codex test (12-14 Nov): $100 a trade, at the listed
-    prices where given, else the evening call's book, and at each capture's live book."""
+    """The 18 trades of the Codex test (12-14 Nov) in the account he runs: $30 to start, each
+    day six trades of equity / 7.5, the taker fee on the price paid. Priced at the evening
+    call's book, at the list's own prices where given, and at each capture's live book; run
+    as the list stakes it (each day's profit added before the next day's stakes) and as an
+    account that only has what has settled (tools/codex_trade_check.py)."""
     import codex_trade_check as X
     trades, bands = X.load_trades(), X.O._bands()
     rows_of = {(t["city"], t["date"]): X.calls_of(t["city"], t["date"]) for t in trades}
@@ -201,23 +239,18 @@ def codex_test_to_date():
         rows = rows_of[(t["city"], t["date"])]
         d1 = next(r for r in rows if r["checkpoint"] == "d1_eve")
         checked.append(X.check_trade(t, rows, outcomes.get(d1["checkpoint_id"]), bands))
-    caps = X.book_captures(trades, checked)
-    out = {"trades": len(trades), "listed_results": {"won": sum(t["won"] for t in trades), "provisional": sum(t["provisional"] for t in trades)}}
-
-    def flat(prices):
-        pnl = [100 * (t["won"] / S.cost(p) - 100 * 0 - 1.0) if p else None for t, p in zip(trades, prices)]
-        got = [x for x in pnl if x is not None]
-        return {"trades_priced": len(got), "profit_of_100_a_trade": round(sum(got), 2), "staked": 100 * len(got),
-                "return_per_dollar": round(sum(got) / (100 * len(got)), 4)}
-    out["at_the_evening_calls_book"] = flat([c["recorded_price"] for c in checked])
-    out["at_the_listed_prices_where_given"] = flat([t["price"] if t["price"] is not None else c["recorded_price"]
-                                                    for t, c in zip(trades, checked)])
+    rep = X.replay(checked, trades)
+    win = X.recording_window(trades, checked, X.book_captures(trades, checked))
+    pick = lambda sc: {"equity": sc["equity"], "return_on_start": sc["return_on_start"], "pnl_per_dollar_staked": sc["pnl_per_dollar_staked"],
+                       "days": sc["days"]}
+    out = {"trades": len(trades), "start_equity": X.START_EQUITY, "stake_rule": rep["stake_rule"],
+           "listed_results": {"won": sum(t["won"] for t in trades), "provisional": sum(t["provisional"] for t in trades)}}
+    out["at_the_evening_calls_book"] = {"day_end": pick(rep["scenarios"][0]), "settlement_aware": rep["settlement_aware"]["as_listed"]}
+    out["at_the_listed_prices_where_given"] = {"day_end": pick(rep["scenarios"][1]), "settlement_aware": None}
     for label in CAPTURES:
-        prices = []
-        for t in trades:
-            top = caps.get((t["city"], t["date"]), {}).get(label)
-            prices.append(None if not top else (top[1] if t["side"] == "YES" else (None if top[0] is None else 1 - top[0])))
-        out[f"at_the_live_book_{label}"] = flat(prices)
+        r = win["replays"][label]
+        out[f"at_the_live_book_{label}"] = {"trades_priced": r["trades_priced"], "day_end": pick(r["day_end_staking"]),
+                                            "settlement_aware": r["settlement_aware"]}
     return out
 
 
@@ -229,13 +262,13 @@ def study():
     out = {"cities": {"yes": list(YES_CITIES), "no": list(NO_CITIES)}, "first_date": min(d for _c, d in calls),
            "last_date": max(d for _c, d in calls), "first_window_date": min(d for _c, d in books), "forward_from": FIRST_FORWARD_DATE}
     at_call, all_call = call_trades(calls, six), call_trades(calls, every)
-    out["call"] = {"six": summary(at_call), "every_city": summary(all_call), "by_city": by_city(at_call),
+    out["call"] = {"six": summary(at_call), "every_city": summary(all_call, False), "by_city": by_city(at_call),
                    "since_12_nov": summary(window(at_call, CODEX_FROM, CODEX_TO)),
                    "first_half": summary(window(at_call, None, "2026-10-24")), "second_half": summary(window(at_call, "2026-10-25"))}
     out["window"] = {}
     for label in CAPTURES:
         w, a = window_trades(calls, books, six, label), window_trades(calls, books, every, label)
-        out["window"][label] = {"six": summary(w), "every_city": summary(a), "by_city": by_city(w),
+        out["window"][label] = {"six": summary(w), "every_city": summary(a, False), "by_city": by_city(w),
                                 "since_12_nov": summary(window(w, CODEX_FROM, CODEX_TO)),
                                 "touch_smaller_than_a_4_dollar_order": sum(1 for t in w["yes"] + w["no"] if t.get("size") is not None
                                                                           and t["size"] < 4.0 / t["price"]),
@@ -254,7 +287,7 @@ def main(argv=None):
         calls = evening_calls()
         out = ledger(calls, window_books(calls))
         for d in out["days"]:
-            print(d["date"], "trades", d["trades"], "valid" if d["valid"] else "partial", f"{d['profit_of_100_a_trade']:+.2f}", f"cumulative {d['cumulative']:+.2f}")
+            print(d["date"], "trades", d["trades"], "valid" if d["valid"] else "partial", f"stake {d['stake_a_trade']:.2f} a trade", f"day {d['day_pnl']:+.2f}", f"equity {d['equity']:.2f}")
         print(f"{out['valid_dates']} valid dates; first look at {LOOKS[0]}, last at {LOOKS[1]}")
         if out["valid_dates"] >= LOOKS[0]:
             print("look 1:", verdict(out["result"]))

@@ -50,8 +50,19 @@
     "win_rate": 0.6128,
     "mean_cost": 0.5887
    },
-   "profit_of_100_a_trade": 1489.25,
-   "staked_at_100_a_trade": 29700
+   "account_from_30": {
+    "dates": 51,
+    "day_end": {
+     "equity": 8.81,
+     "return_on_start": -0.7063
+    },
+    "settlement_aware": {
+     "equity": 0.0,
+     "return_on_start": -1.0,
+     "orders": 297,
+     "orders_cut_to_the_cash_in_hand": 65
+    }
+   }
   },
   "every_city": {
    "yes": {
@@ -86,9 +97,7 @@
     ],
     "win_rate": 0.4998,
     "mean_cost": 0.5235
-   },
-   "profit_of_100_a_trade": -35830.87,
-   "staked_at_100_a_trade": 467000
+   }
   },
   "by_city": {
    "amsterdam:YES": {
@@ -192,8 +201,19 @@
     "win_rate": 0.9286,
     "mean_cost": 0.6816
    },
-   "profit_of_100_a_trade": 775.36,
-   "staked_at_100_a_trade": 1400
+   "account_from_30": {
+    "dates": 3,
+    "day_end": {
+     "equity": 67.23,
+     "return_on_start": 1.241
+    },
+    "settlement_aware": {
+     "equity": 62.39,
+     "return_on_start": 1.0797,
+     "orders": 14,
+     "orders_cut_to_the_cash_in_hand": 0
+    }
+   }
   },
   "first_half": {
    "yes": {
@@ -229,8 +249,19 @@
     "win_rate": 0.5143,
     "mean_cost": 0.5615
    },
-   "profit_of_100_a_trade": -1241.52,
-   "staked_at_100_a_trade": 17500
+   "account_from_30": {
+    "dates": 30,
+    "day_end": {
+     "equity": 0.58,
+     "return_on_start": -0.9807
+    },
+    "settlement_aware": {
+     "equity": 0.0,
+     "return_on_start": -1.0,
+     "orders": 175,
+     "orders_cut_to_the_cash_in_hand": 65
+    }
+   }
   },
   "second_half": {
    "yes": {
@@ -266,8 +297,19 @@
     "win_rate": 0.7541,
     "mean_cost": 0.6278
    },
-   "profit_of_100_a_trade": 2730.77,
-   "staked_at_100_a_trade": 12200
+   "account_from_30": {
+    "dates": 21,
+    "day_end": {
+     "equity": 458.07,
+     "return_on_start": 14.269
+    },
+    "settlement_aware": {
+     "equity": 379.33,
+     "return_on_start": 11.6445,
+     "orders": 122,
+     "orders_cut_to_the_cash_in_hand": 28
+    }
+   }
   }
  },
  "window": {
@@ -306,8 +348,19 @@
      "win_rate": 0.6443,
      "mean_cost": 0.6117
     },
-    "profit_of_100_a_trade": 263.81,
-    "staked_at_100_a_trade": 19400
+    "account_from_30": {
+     "dates": 33,
+     "day_end": {
+      "equity": 4.48,
+      "return_on_start": -0.8507
+     },
+     "settlement_aware": {
+      "equity": 0.0,
+      "return_on_start": -1.0,
+      "orders": 194,
+      "orders_cut_to_the_cash_in_hand": 20
+     }
+    }
    },
    "every_city": {
     "yes": {
@@ -342,9 +395,7 @@
      ],
      "win_rate": 0.4985,
      "mean_cost": 0.5247
-    },
-    "profit_of_100_a_trade": -26176.14,
-    "staked_at_100_a_trade": 305300
+    }
    },
    "by_city": {
     "amsterdam:YES": {
@@ -448,8 +499,19 @@
      "win_rate": 0.9286,
      "mean_cost": 0.7162
     },
-    "profit_of_100_a_trade": 453.36,
-    "staked_at_100_a_trade": 1400
+    "account_from_30": {
+     "dates": 3,
+     "day_end": {
+      "equity": 49.14,
+      "return_on_start": 0.638
+     },
+     "settlement_aware": {
+      "equity": 46.67,
+      "return_on_start": 0.5557,
+      "orders": 14,
+      "orders_cut_to_the_cash_in_hand": 3
+     }
+    }
    },
    "touch_smaller_than_a_4_dollar_order": 26,
    "trades": 194
@@ -489,8 +551,19 @@
      "win_rate": 0.6443,
      "mean_cost": 0.62
     },
-    "profit_of_100_a_trade": -87.2,
-    "staked_at_100_a_trade": 19400
+    "account_from_30": {
+     "dates": 33,
+     "day_end": {
+      "equity": 2.7,
+      "return_on_start": -0.91
+     },
+     "settlement_aware": {
+      "equity": 0.0,
+      "return_on_start": -1.0,
+      "orders": 194,
+      "orders_cut_to_the_cash_in_hand": 20
+     }
+    }
    },
    "every_city": {
     "yes": {
@@ -525,9 +598,7 @@
      ],
      "win_rate": 0.4982,
      "mean_cost": 0.5258
-    },
-    "profit_of_100_a_trade": -29304.58,
-    "staked_at_100_a_trade": 305100
+    }
    },
    "by_city": {
     "amsterdam:YES": {
@@ -631,8 +702,19 @@
      "win_rate": 0.9286,
      "mean_cost": 0.7201
     },
-    "profit_of_100_a_trade": 498.2,
-    "staked_at_100_a_trade": 1400
+    "account_from_30": {
+     "dates": 3,
+     "day_end": {
+      "equity": 51.11,
+      "return_on_start": 0.7037
+     },
+     "settlement_aware": {
+      "equity": 48.37,
+      "return_on_start": 0.6124,
+      "orders": 14,
+      "orders_cut_to_the_cash_in_hand": 3
+     }
+    }
    },
    "touch_smaller_than_a_4_dollar_order": 33,
    "trades": 194
@@ -672,8 +754,19 @@
      "win_rate": 0.6443,
      "mean_cost": 0.6243
     },
-    "profit_of_100_a_trade": -387.91,
-    "staked_at_100_a_trade": 19400
+    "account_from_30": {
+     "dates": 33,
+     "day_end": {
+      "equity": 1.87,
+      "return_on_start": -0.9377
+     },
+     "settlement_aware": {
+      "equity": 0.0,
+      "return_on_start": -1.0,
+      "orders": 194,
+      "orders_cut_to_the_cash_in_hand": 40
+     }
+    }
    },
    "every_city": {
     "yes": {
@@ -708,9 +801,7 @@
      ],
      "win_rate": 0.497,
      "mean_cost": 0.5241
-    },
-    "profit_of_100_a_trade": -29831.61,
-    "staked_at_100_a_trade": 304400
+    }
    },
    "by_city": {
     "amsterdam:YES": {
@@ -814,8 +905,19 @@
      "win_rate": 0.9286,
      "mean_cost": 0.7247
     },
-    "profit_of_100_a_trade": 469.43,
-    "staked_at_100_a_trade": 1400
+    "account_from_30": {
+     "dates": 3,
+     "day_end": {
+      "equity": 49.84,
+      "return_on_start": 0.6613
+     },
+     "settlement_aware": {
+      "equity": 47.23,
+      "return_on_start": 0.5743,
+      "orders": 14,
+      "orders_cut_to_the_cash_in_hand": 3
+     }
+    }
    },
    "touch_smaller_than_a_4_dollar_order": 29,
    "trades": 194
@@ -823,48 +925,262 @@
  },
  "codex_test_to_date": {
   "trades": 18,
+  "start_equity": 30.0,
+  "stake_rule": "each day every trade is equity / 7.5, from $30",
   "listed_results": {
    "won": 14,
    "provisional": 5
   },
   "at_the_evening_calls_book": {
-   "trades_priced": 18,
-   "profit_of_100_a_trade": 719.3,
-   "staked": 1800,
-   "return_per_dollar": 0.3996
+   "day_end": {
+    "equity": 67.51,
+    "return_on_start": 1.2503,
+    "pnl_per_dollar_staked": 0.3553,
+    "days": [
+     {
+      "stake_a_trade": 4.0,
+      "pnl": 11.16,
+      "equity": 41.16
+     },
+     {
+      "stake_a_trade": 5.49,
+      "pnl": 19.56,
+      "equity": 60.72
+     },
+     {
+      "stake_a_trade": 8.1,
+      "pnl": 6.78,
+      "equity": 67.51
+     }
+    ]
+   },
+   "settlement_aware": {
+    "equity": 61.72,
+    "return_on_start": 1.0574,
+    "orders": 18,
+    "orders_cut_to_the_cash_in_hand": 3,
+    "stakes": [
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     5.8,
+     5.8,
+     6.25,
+     6.55,
+     6.55,
+     5.49,
+     6.06,
+     2.96,
+     0.0,
+     6.55,
+     2.93
+    ],
+    "smallest_stake": 0.0,
+    "largest_stake": 6.55
+   }
   },
   "at_the_listed_prices_where_given": {
-   "trades_priced": 18,
-   "profit_of_100_a_trade": 646.29,
-   "staked": 1800,
-   "return_per_dollar": 0.359
+   "day_end": {
+    "equity": 61.78,
+    "return_on_start": 1.0593,
+    "pnl_per_dollar_staked": 0.3033,
+    "days": [
+     {
+      "stake_a_trade": 4.0,
+      "pnl": 10.78,
+      "equity": 40.78
+     },
+     {
+      "stake_a_trade": 5.44,
+      "pnl": 19.42,
+      "equity": 60.19
+     },
+     {
+      "stake_a_trade": 8.03,
+      "pnl": 1.59,
+      "equity": 61.78
+     }
+    ]
+   },
+   "settlement_aware": null
   },
   "at_the_live_book_21:36Z": {
    "trades_priced": 18,
-   "profit_of_100_a_trade": 406.52,
-   "staked": 1800,
-   "return_per_dollar": 0.2258
+   "day_end": {
+    "equity": 47.61,
+    "return_on_start": 0.587,
+    "pnl_per_dollar_staked": 0.2041,
+    "days": [
+     {
+      "stake_a_trade": 4.0,
+      "pnl": 1.8,
+      "equity": 31.8
+     },
+     {
+      "stake_a_trade": 4.24,
+      "pnl": 14.24,
+      "equity": 46.04
+     },
+     {
+      "stake_a_trade": 6.14,
+      "pnl": 1.57,
+      "equity": 47.61
+     }
+    ]
+   },
+   "settlement_aware": {
+    "equity": 30.7,
+    "return_on_start": 0.0235,
+    "orders": 18,
+    "orders_cut_to_the_cash_in_hand": 5,
+    "stakes": [
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.62,
+     4.62,
+     4.62,
+     0.79,
+     0.0,
+     0.0,
+     4.24,
+     4.24,
+     4.24,
+     4.24,
+     0.19,
+     0.0
+    ],
+    "smallest_stake": 0.0,
+    "largest_stake": 4.62
+   }
   },
   "at_the_live_book_22:36Z": {
    "trades_priced": 18,
-   "profit_of_100_a_trade": 407.61,
-   "staked": 1800,
-   "return_per_dollar": 0.2264
+   "day_end": {
+    "equity": 47.79,
+    "return_on_start": 0.593,
+    "pnl_per_dollar_staked": 0.2023,
+    "days": [
+     {
+      "stake_a_trade": 4.0,
+      "pnl": 2.82,
+      "equity": 32.82
+     },
+     {
+      "stake_a_trade": 4.38,
+      "pnl": 14.25,
+      "equity": 47.07
+     },
+     {
+      "stake_a_trade": 6.28,
+      "pnl": 0.72,
+      "equity": 47.79
+     }
+    ]
+   },
+   "settlement_aware": {
+    "equity": 30.76,
+    "return_on_start": 0.0254,
+    "orders": 18,
+    "orders_cut_to_the_cash_in_hand": 6,
+    "stakes": [
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.73,
+     4.73,
+     4.73,
+     1.29,
+     0.0,
+     0.0,
+     4.38,
+     4.38,
+     4.38,
+     4.21,
+     0.0,
+     0.0
+    ],
+    "smallest_stake": 0.0,
+    "largest_stake": 4.73
+   }
   },
   "at_the_live_book_23:36Z": {
    "trades_priced": 18,
-   "profit_of_100_a_trade": 365.72,
-   "staked": 1800,
-   "return_per_dollar": 0.2032
+   "day_end": {
+    "equity": 45.69,
+    "return_on_start": 0.523,
+    "pnl_per_dollar_staked": 0.1874,
+    "days": [
+     {
+      "stake_a_trade": 4.0,
+      "pnl": 1.07,
+      "equity": 31.07
+     },
+     {
+      "stake_a_trade": 4.14,
+      "pnl": 12.61,
+      "equity": 43.67
+     },
+     {
+      "stake_a_trade": 5.82,
+      "pnl": 2.02,
+      "equity": 45.69
+     }
+    ]
+   },
+   "settlement_aware": {
+    "equity": 31.31,
+    "return_on_start": 0.0436,
+    "orders": 18,
+    "orders_cut_to_the_cash_in_hand": 4,
+    "stakes": [
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.0,
+     4.55,
+     4.55,
+     4.55,
+     0.47,
+     0.0,
+     0.0,
+     4.36,
+     4.36,
+     4.36,
+     4.36,
+     4.36,
+     1.32
+    ],
+    "smallest_stake": 0.0,
+    "largest_stake": 4.55
+   }
   }
  },
  "forward": {
   "from": "2026-11-16",
   "capture": "22:36Z",
+  "start_equity": 30.0,
   "days": [],
   "valid_dates": 0,
   "result": {
    "n": 0
+  },
+  "account_from_30": {
+   "dates": 0,
+   "day_end": null,
+   "settlement_aware": null
   },
   "looks": {
    "23": {

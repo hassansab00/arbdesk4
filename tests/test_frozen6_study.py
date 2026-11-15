@@ -38,18 +38,28 @@ def test_the_rule_is_the_one_fixed():
         assert text in flat, text
 
 
-def test_profit_to_date_is_the_codex_trades_priced_four_ways():
+def test_profit_to_date_is_the_30_dollar_account_priced_five_ways():
     X = RESULT["codex_test_to_date"]
-    assert X["trades"] == 18 and X["listed_results"]["provisional"] == 5
+    assert X["trades"] == 18 and X["listed_results"]["provisional"] == 5 and X["start_equity"] == 30.0
+    assert "equity / 7.5" in X["stake_rule"], "Hassan's account: six trades a day of equity / 7.5, from $30"
     for k in ("at_the_evening_calls_book", "at_the_listed_prices_where_given", "at_the_live_book_21:36Z",
               "at_the_live_book_22:36Z", "at_the_live_book_23:36Z"):
-        v = X[k]
-        assert v["trades_priced"] == 18 and v["staked"] == 1800 and v["profit_of_100_a_trade"] > 0
-        assert f"| 18 | {_usd(v['profit_of_100_a_trade'])} on $1,800 | {_pc(v['return_per_dollar'])} |" in DOC, k
-    assert X["at_the_live_book_22:36Z"]["return_per_dollar"] < X["at_the_evening_calls_book"]["return_per_dollar"] * 0.7, \
+        d = X[k]["day_end"]
+        assert d["equity"] > 30 and abs(d["equity"] / 30 - 1 - d["return_on_start"]) < 0.001
+        row = f"| ${d['equity']:,.2f}, {_pc(d['return_on_start'])} | {_usd(d['equity'] - 30)} | {_pc(d['pnl_per_dollar_staked'])} |"
+        assert row in DOC, k
+        sa = X[k]["settlement_aware"]
+        if sa:
+            assert f"${sa['equity']:,.2f}, {_pc(sa['return_on_start'])} | {_usd(sa['equity'] - 30)} |" in DOC, k
+    assert "$100 on every trade; that was my\nmistake" in DOC
+    assert X["at_the_live_book_22:36Z"]["day_end"]["pnl_per_dollar_staked"] < X["at_the_evening_calls_book"]["day_end"]["pnl_per_dollar_staked"] * 0.7, \
         "the live book in the window pays well under the frozen call book"
-    assert abs(X["at_the_evening_calls_book"]["return_per_dollar"] - CODEX["replay"]["flat_stake_pnl_per_dollar"]) < 0.001, \
-        "the same figure as the Codex check's flat-stake return"
+    c = CODEX["replay"]["scenarios"][0]
+    assert X["at_the_evening_calls_book"]["day_end"]["equity"] == c["equity"], "section 12's own account, from $30"
+    assert X["at_the_evening_calls_book"]["day_end"]["pnl_per_dollar_staked"] == c["pnl_per_dollar_staked"]
+    for label in ("21:36Z", "22:36Z", "23:36Z"):
+        assert X[f"at_the_live_book_{label}"]["day_end"]["equity"] == CODEX["at_the_recording_window"]["replays"][label]["day_end_staking"]["equity"]
+        assert X[f"at_the_live_book_{label}"]["settlement_aware"]["equity"] == CODEX["at_the_recording_window"]["replays"][label]["settlement_aware"]["equity"]
 
 
 def test_the_six_cities_are_break_even_at_the_live_book_and_better_than_the_average_city():
@@ -60,11 +70,13 @@ def test_the_six_cities_are_break_even_at_the_live_book_and_better_than_the_aver
         assert every["ci90"][1] < 0, f"{label}: the average city loses"
         assert six["return_per_dollar"] > every["return_per_dollar"] + 0.05
         assert (f"| {six['dates']} | {six['n']} | {_pc(six['return_per_dollar'])} | {_pc(six['ci90'][0])} to {_pc(six['ci90'][1])} | "
-                f"{_usd(v['six']['profit_of_100_a_trade'])} | {_pc(every['return_per_dollar'])} |") in DOC, label
+                f"${v['six']['account_from_30']['day_end']['equity']:,.2f}, {_pc(v['six']['account_from_30']['day_end']['return_on_start'])} | "
+                f"{_pc(every['return_per_dollar'])} |") in DOC, label
+        assert v["six"]["account_from_30"]["settlement_aware"]["equity"] < 0.005, "on settled cash the account runs out"
     c = RESULT["call"]
     assert (f"| {c['six']['both']['dates']} | {c['six']['both']['n']} | {_pc(c['six']['both']['return_per_dollar'])} | "
-            f"{_pc(c['six']['both']['ci90'][0])} to {_pc(c['six']['both']['ci90'][1])} | {_usd(c['six']['profit_of_100_a_trade'])} | "
-            f"{_pc(c['every_city']['both']['return_per_dollar'])} |") in DOC
+            f"{_pc(c['six']['both']['ci90'][0])} to {_pc(c['six']['both']['ci90'][1])} | ${c['six']['account_from_30']['day_end']['equity']:,.2f}, "
+            f"{_pc(c['six']['account_from_30']['day_end']['return_on_start'])} | {_pc(c['every_city']['both']['return_per_dollar'])} |") in DOC
     assert c["every_city"]["both"]["n"] > 4000 and c["every_city"]["both"]["ci90"][1] < 0
     assert abs(SIDES["checkpoints"]["d1_eve"]["persist"]["hit_rate_rank_correlation"]) < 0.1, "a city's rank does not carry forward"
     assert "rank\n  correlation +0.06" in DOC
@@ -98,7 +110,11 @@ def test_the_trades_and_what_they_cost():
     assert w["yes"][0]["price"] == 0.6 and w["yes"][0]["size"] == 7.0 and w["no"][0]["price"] == pytest.approx(0.9) and w["no"][0]["size"] == 12.0
     assert F.window_trades(calls, books, six, "21:36Z") == {"yes": [], "no": []}, "no capture, no trade"
     s = F.summary(w)
-    assert s["staked_at_100_a_trade"] == 200 and s["profit_of_100_a_trade"] == pytest.approx(100 * (1 / S_cost(0.6) - 1) + 100 * (1 / S_cost(0.9) - 1), abs=0.01)
+    assert "account_from_30" in s and "account_from_30" not in F.summary(w, False)
+    # the $30 account: one date, two trades, each equity / 7.5 = $4: 30 + 4 x (1 / cost - 1) for each
+    expected = 30 + 4 * (1 / S_cost(0.6) - 1) + 4 * (1 / S_cost(0.9) - 1)
+    assert s["account_from_30"]["day_end"]["equity"] == pytest.approx(expected, abs=0.01) and s["account_from_30"]["dates"] == 1
+    assert s["account_from_30"]["settlement_aware"] is None, "no order or settlement time on these trades"
 
 
 def S_cost(p):
@@ -117,7 +133,9 @@ def test_the_ledger_counts_valid_dates_only_and_the_verdict_follows_the_interval
     out = F.ledger(calls, books)
     assert [d["date"] for d in out["days"]] == ["2026-11-16", "2026-11-17"] and out["valid_dates"] == 1
     assert out["days"][0]["valid"] and not out["days"][1]["valid"] and out["days"][0]["trades"] == 6
-    assert out["days"][1]["cumulative"] == pytest.approx(out["days"][0]["profit_of_100_a_trade"] + out["days"][1]["profit_of_100_a_trade"])
+    assert out["start_equity"] == 30.0 and out["days"][0]["stake_a_trade"] == pytest.approx(30 / 7.5)
+    assert out["days"][1]["stake_a_trade"] == pytest.approx(out["days"][0]["equity"] / 7.5, abs=0.01), "the second day stakes the first day's equity / 7.5"
+    assert out["days"][1]["equity"] == pytest.approx(out["days"][0]["equity"] + out["days"][1]["day_pnl"], abs=0.01)
     assert out["looks"] == {"23": {"needs": 23, "due": False}, "46": {"needs": 46, "due": False}}
     assert F.verdict({"ci90": [0.01, 0.2]}) == "positive research evidence"
     assert F.verdict({"ci90": [-0.2, -0.01]}) == "failed" and F.verdict({"ci90": [-0.1, 0.1]}) == "insufficient evidence"
