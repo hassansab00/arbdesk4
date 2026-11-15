@@ -58,6 +58,25 @@ def test_the_six_cities_and_what_hindsight_adds():
     assert f"{_pc(w['return_per_dollar'])} ({_pc(w['ci90'][0])} to {_pc(w['ci90'][1])})" in DOC
 
 
+def test_the_evening_before_call_hassan_trades():
+    """15 Nov: "We're trading evening before / night before the trade date"."""
+    e = RESULT["checkpoints"]["d1_eve"]
+
+    def rng(v):
+        return f"{_pc(v['return_per_dollar'])} ({_pc(v['ci90'][0])} to {_pc(v['ci90'][1])})"
+    for leg, side, label in (("yes_on", "yes", "YES"), ("no_on", "no", "NO")):
+        for x in e["now"][leg]:
+            r = x[side]
+            assert (f"| {x['city']} | {label} | {x['picks']} | {100 * x['hit_rate']:.1f}% | {r['mean_cost']:.3f} | "
+                    f"{100 * r['win_rate']:.1f}% | {_pc(r['return_per_dollar'])} | {_pc(r['ci90'][0])} to {_pc(r['ci90'][1])} |") in DOC
+    w, h = e["walk"]["hit"], e["now"]["hindsight_not_a_rule"]
+    assert w["both_legs"]["return_per_dollar"] < 0 < h["both_legs"]["return_per_dollar"]
+    for v in (w["yes_on_the_3_best"], w["no_on_the_3_worst"], w["both_legs"], h["both_legs"], e["walk"]["yes_return"]["both_legs"]):
+        assert rng(v) in DOC
+    assert e["walk"]["yes_return"]["both_legs"]["ci90"][0] < 0, "neither ranking is shown to pay"
+    assert abs(e["persist"]["hit_rate_rank_correlation"]) < 0.1 and abs(e["persist"]["yes_return_rank_correlation"]) < 0.1
+
+
 def _trades(days=20, settle_h=30, call_h=9, no_ask=()):
     """`good` is right on its first 10 dates and wrong after; `bad` the reverse;
     six fillers are right every other day. Each call is made at `call_h` on its

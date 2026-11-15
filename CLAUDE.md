@@ -32,6 +32,11 @@ stays readable, unless Hassan explicitly asks for it to be removed.
 **No cutting corners.** Keep the quality structures (tests, verification, the
 two-phase archive) intact, and fix things at their root cause.
 
+**Hassan trades the evening before the trade date** (15 Nov: "We're trading
+evening before / night before the trade date"). Judge a strategy, and name
+cities or trades for him, at the `d1_eve` call first. A result at another call
+(morning, post-peak) is not something he can trade unless he says otherwise.
+
 **Stay focused** on what was asked. Mention anything else you notice briefly;
 do not widen the work on your own.
 

@@ -228,6 +228,13 @@ performing ... recommend to me the 6 cities". Section 10 of
   YES on NYC, Miami and Helsinki; NO on Buenos Aires, São Paulo and Beijing.
   On the record that chose them they return +14.0%; that is hindsight.
 - **No capital and no shadow registration:** it is Hassan's own test.
+- **Hassan trades the evening before** (15 Nov: "We're trading evening before
+  / night before the trade date"). At that call the rule names YES on
+  Amsterdam, Miami and Helsinki, NO on Busan, São Paulo and Buenos Aires.
+  Traded forward there: both legs -7.6% a dollar (90% -17.2% to +2.2%, 248
+  trades); +8.8% on the record that chose them. The morning fix and
+  `postpeak-v1` are not at the time he trades; `own_w:v1` is the one open
+  test that scores the evening-before call.
 
 ## Two shadow tests fixed — 15 Nov: `postpeak-v1` and `own_w:v1`
 
