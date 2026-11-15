@@ -21,7 +21,10 @@ THE LEARNER, own_w:v1. For each night (a UTC date) and each lead 0, 1, 2:
            station_correction.fit's shrinkage): a bias per city and model
            shrunk to the model's pool, and its mean squared error shrunk the
            same way. A model's skill at a city is its precision (1 / that
-           error) over the mean precision of the seven there.
+           error) over the mean precision of the models with MIN_N city-days
+           there. Where only some have that many, those share out the pool
+           skill of the same models and the rest keep their pool's skill: a
+           city says nothing about a model it has not measured.
   Rule 11  prior: the model's pool for the bias, and the pool's skill for the
            weight. Minimum sample: MIN_N city-days before a cell's bias or
            skill leaves its pool. Bounds: |bias| <= 3.0 C; skill between REL_LO
@@ -103,11 +106,14 @@ def target(errors):
     out = {"bias": {}, "rel": {}, "n": n, "pool_bias": dict(pooled),
            "pool_rel": {m: _clip(pprec[m] / pmean, REL_LO, REL_HI) for m in pooled}}
     for c in sorted({c for c, _m in errors}):
-        prec = {m: (1.0 / max(mse[(c, m)], 1e-6) if n.get((c, m), 0) >= MIN_N else pprec[m]) for m in pooled}
-        mean = sum(prec.values()) / len(prec)
+        full = [m for m in pooled if n.get((c, m), 0) >= MIN_N]
+        prec = {m: 1.0 / max(mse[(c, m)], 1e-6) for m in full}
+        mean = sum(prec.values()) / len(full) if full else None
+        # the models measured here share out the pool skill of those same models
+        scale = 1.0 if len(full) == len(pooled) else sum(pprec[m] for m in full) / max(len(full), 1) / pmean
         for m in pooled:
             out["bias"][(c, m)] = bias.get((c, m), pooled[m])
-            out["rel"][(c, m)] = _clip(prec[m] / mean, REL_LO, REL_HI)
+            out["rel"][(c, m)] = _clip(prec[m] / mean * scale, REL_LO, REL_HI) if m in prec else out["pool_rel"][m]
     return out
 
 

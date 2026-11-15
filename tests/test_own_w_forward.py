@@ -111,6 +111,41 @@ def test_the_target_is_the_study_s_fit_with_a_minimum_sample_and_bounds():
     assert all(t["rel"][("c5", m)] == pytest.approx(t["pool_rel"][m]) for m in range(7))
 
 
+def test_a_model_with_too_few_days_keeps_its_pool_skill_in_a_city_that_has_measured_others():
+    """Codex on #510: with pool precisions equal and one model measured ten times
+    better at a city, the three unmeasured models there must stay at the pool's
+    skill, not be pushed to the lower bound by the measured one."""
+    pytest.importorskip("numpy")
+    import numpy as np
+    import own_w_forward as O
+    rng = np.random.default_rng(7)
+    errors = {}
+    for c in ("p1", "p2", "p3", "p4"):                      # the pool: four models of equal skill
+        for m in range(4):
+            errors[(c, m)] = list(rng.normal(0, 1.0, 400))
+    for m in range(4):
+        errors[("mixed", m)] = list(rng.normal(0, 1.0, 3))  # under MIN_N
+    errors[("mixed", 0)] = list(rng.normal(0, 0.1, 60))     # one model measured, and far better here
+    errors[("two", 0)] = list(rng.normal(0, 0.3, 60))
+    errors[("two", 1)] = list(rng.normal(0, 1.5, 60))
+    for m in (2, 3):
+        errors[("two", m)] = list(rng.normal(0, 1.0, 2))
+    t = O.target(errors)
+    for m in (1, 2, 3):
+        assert t["rel"][("mixed", m)] == t["pool_rel"][m], "not measured here: the pool's skill"
+        assert t["bias"][("mixed", m)] == t["pool_bias"][m]
+    # one measured model has nothing to be compared with: it keeps the pool's share too
+    assert t["rel"][("mixed", 0)] == pytest.approx(t["pool_rel"][0], rel=0.05)
+    # two measured models split their pool share by precision, inside the bounds
+    assert t["rel"][("two", 0)] > 1.5 and t["rel"][("two", 1)] == O.REL_LO
+    assert all(t["rel"][("two", m)] == t["pool_rel"][m] for m in (2, 3))
+    # and a city with every model measured is the study's recipe, unscaled
+    import station_weights_study as W
+    _b, _p, mse, _pm = W.shrunk(errors)
+    prec = [1 / mse[("p1", m)] for m in range(4)]
+    assert [t["rel"][("p1", m)] for m in range(4)] == pytest.approx([x / (sum(prec) / 4) for x in prec])
+
+
 def test_a_cell_moves_one_step_a_night():
     pytest.importorskip("numpy")
     import own_w_forward as O

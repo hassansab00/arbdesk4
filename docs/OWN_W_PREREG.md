@@ -80,7 +80,11 @@ For each night (a UTC date) and each lead 0, 1 and 2:
   `station_correction.fit`'s shrinkage, K 10): a bias per city and model
   shrunk to the model's pool, and its mean squared error shrunk the same way.
   A model's skill at a city is its precision (1 over that error) divided by
-  the mean precision of the seven models there.
+  the mean precision of the models with 5 city-days there. Where only some
+  models have that many, those share out the pool skill of the same models,
+  and each of the others keeps its pool's skill: a city says nothing about a
+  model it has not measured. (No city-night in the record to 14 Nov is like
+  that; every city has all its models above or all below 5 days.)
 - **Centre.** The sum of skill x (model maximum + bias) over the sum of
   skill, from 4 models or more.
 
