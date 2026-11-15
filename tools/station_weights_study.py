@@ -11,8 +11,8 @@ corrected sources with equal weights. Two candidates, fixed here before a score:
           (weather_forecast_models, source open-meteo-models-current), the same
           shrinkage (the source's pool, K, MIN_N, the bound) and window as P3.9.
   own_w   own, and each corrected source weighted by 1 / its shrunk mean
-          squared error at that city and lead (the pool's below MIN_N days),
-          instead of equally.
+          squared error at that city and lead (the pool's where the city has
+          no row), instead of equally.
 
 PART `forward`: every forward row from 12 Oct with a settled station maximum,
 at leads 0, 1 and 2 (the newest run of each run date). Each run date is fitted

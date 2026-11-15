@@ -1,0 +1,132 @@
+{
+ "rule": "postpeak-v1",
+ "min_p": 0.9,
+ "max_ask": 0.97,
+ "from": "2026-10-17",
+ "to": "2026-11-14",
+ "calendar_days": 29,
+ "first_calls": 1345,
+ "by_status": {
+  "below_min_p": 695,
+  "ask_at_or_over_max": 546,
+  "trade": 80,
+  "no_ask": 24
+ },
+ "ungraded_trades": 0,
+ "result": {
+  "n": 80,
+  "dates": 24,
+  "return_per_dollar": 0.0427,
+  "ci90": [
+   -0.0064,
+   0.0882
+  ],
+  "win_rate": 0.9375,
+  "mean_cost": 0.8963
+ },
+ "standard_error_by_date": 0.0284,
+ "trades_a_calendar_day": 2.76,
+ "trades_for_80pc_power_at_this_return": 218.2,
+ "last_look_trades": 220,
+ "first_look_trades": 110,
+ "calendar_days_to_the_last_look_at_this_rate": 80,
+ "losses": [
+  {
+   "city": "moscow",
+   "date": "2026-10-17",
+   "ask": 0.001,
+   "p": 0.97
+  },
+  {
+   "city": "cape_town",
+   "date": "2026-10-18",
+   "ask": 0.928,
+   "p": 0.995
+  },
+  {
+   "city": "helsinki",
+   "date": "2026-10-25",
+   "ask": 0.81,
+   "p": 0.908
+  },
+  {
+   "city": "wellington",
+   "date": "2026-11-10",
+   "ask": 0.91,
+   "p": 0.91
+  },
+  {
+   "city": "wellington",
+   "date": "2026-11-13",
+   "ask": 0.29,
+   "p": 0.931
+  }
+ ],
+ "lowest_asks": [
+  0.001,
+  0.29,
+  0.423,
+  0.43,
+  0.62
+ ],
+ "control_below_min_p": {
+  "n": 482,
+  "dates": 29,
+  "return_per_dollar": -0.1376,
+  "ci90": [
+   -0.2227,
+   -0.0545
+  ],
+  "win_rate": 0.6349,
+  "mean_cost": 0.6619
+ },
+ "best_date": "2026-10-21",
+ "without_the_best_date": {
+  "n": 73,
+  "dates": 23,
+  "return_per_dollar": 0.0243,
+  "ci90": [
+   -0.0222,
+   0.0683
+  ],
+  "win_rate": 0.9315,
+  "mean_cost": 0.8988
+ },
+ "asks_of_0.50_or_more": {
+  "n": 76,
+  "dates": 24,
+  "return_per_dollar": 0.0376,
+  "ci90": [
+   -0.0035,
+   0.0773
+  ],
+  "win_rate": 0.9605,
+  "mean_cost": 0.928
+ },
+ "by_served_by": {
+  "open_meteo_forecast": {
+   "n": 5,
+   "dates": 3,
+   "return_per_dollar": -0.1147,
+   "ci90": [
+    -0.1869,
+    0.0536
+   ],
+   "win_rate": 0.8,
+   "mean_cost": 0.7256
+  },
+  "wxrd3": {
+   "n": 75,
+   "dates": 24,
+   "return_per_dollar": 0.0532,
+   "ci90": [
+    0.0029,
+    0.1005
+   ],
+   "win_rate": 0.9467,
+   "mean_cost": 0.9077
+  }
+ },
+ "mean_model_probability": 0.9423,
+ "cities": 34
+}
