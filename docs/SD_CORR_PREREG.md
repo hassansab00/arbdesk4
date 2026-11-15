@@ -210,3 +210,53 @@ over the scored rows' served calls. From 17 Oct the served noon to post-peak
 calls are WXPredict's frozen v3 (#409): 1,354 of the 4,656 scored rows have
 `model_path` `wxpredict`, 3,302 `forecast`. The comparison is with the ladder
 actually served, as fixed above.
+
+### Second look, 15 Nov 2026 (~10:35Z): rejected
+
+Run as fixed above, from the nightly mirror in the repository:
+- the tool is `tools/p11_sd_corr_look.py`, unchanged since the first look;
+- the result is `data/eval/p11/sd_corr_second_look_2026-11-15/result.json`, which
+  names the 194 mirror files it read with their sha256;
+- the mirror ran to the night of 14 Nov (the newest `sd_corr` row is for 15 Nov).
+
+**Rows.** Scored: **9,292 rows on 41 target dates (5 Oct - 14 Nov), 47 cities**.
+Left out: 104 rows with no graded outcome yet. None was left out for any other
+reason.
+
+**The rule** (as in the first look):
+
+| | rows | gain | 90% | 95% | top-1 served | top-1 `sd_corr` |
+|---|---|---|---|---|---|---|
+| pooled | 9,292 | -0.0528 | -0.0943 to -0.0058 | -0.1010 to +0.0026 | 54.42% (53.41-55.43) | 50.67% |
+| morning | 1,866 | +0.2413 | +0.2044 to +0.2814 | +0.1982 to +0.2876 | 35.69% (33.55-37.89) | 40.09% |
+| noon | 1,866 | -0.0853 | -0.1362 to -0.0289 | -0.1454 to -0.0145 | 51.23% (48.96-53.50) | 46.41% |
+| prepeak_2h | 1,852 | -0.1119 | -0.1671 to -0.0535 | -0.1767 to -0.0389 | 47.46% (45.20-49.74) | 41.79% |
+| prepeak_1h | 1,848 | -0.1052 | -0.1560 to -0.0500 | -0.1648 to -0.0424 | 54.92% (52.65-57.18) | 48.86% |
+| postpeak_1h | 1,860 | -0.2044 | -0.2604 to -0.1449 | -0.2721 to -0.1315 | 82.85% (81.07-84.49) | 76.18% |
+
+- Rule 1 fails: the pooled 90% interval is below 0.
+- Rule 2 fails at noon, prepeak_2h, prepeak_1h and postpeak_1h: each of their
+  90% intervals lies wholly below 0.
+- Rule 3 fails at the same four checkpoints.
+- The pooled 90% interval lies wholly below 0, so the candidate is rejected.
+  The pooled 95% interval reaches +0.0026; the rule reads the 90% interval.
+
+**Verdict: rejected.** The test stops here. As fixed above, the capture is
+switched off (`variant_shadow.SD_CAPTURE_OFF`): from the next tick on its main,
+no `sd_corr` row is read or written. The rows already captured stay in
+`variant_shadow_checkpoints` and the mirror.
+
+Brier (secondary), pooled served minus `sd_corr`: -0.0340 (90% -0.0477 to -0.0189).
+
+**The served engine changed during the window.** The scored rows were served
+by 256 engine versions. 4,987 were served on the wxpredict path (wxrd-v3 at
+noon and later, since #409 on 17 Oct) and 4,305 on the forecast path.
+
+**Against `da_floor`** (the same 9,292 rows; both have a row on each): pooled
+`da_floor` minus `sd_corr` is +0.0248 (90% +0.0076 to +0.0427). `sd_corr` again
+loses less than `da_floor`. `sd_corr` is rejected, so nothing is proposed from
+it.
+
+**The market, descriptive.** It was measured on 7,825 rows with a whole book:
+- served minus market: +0.3880 (90% +0.3389 to +0.4406);
+- `sd_corr` minus market: +0.4405 (90% +0.4055 to +0.4766).
