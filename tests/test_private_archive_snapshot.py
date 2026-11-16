@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 
 import pytest
@@ -78,6 +79,7 @@ e['assets'].append({'asset':'new.csv.gz','rows':1}); e['rows_archived']=2; i.wri
         assert kwargs["headers"]["Authorization"] == f"Bearer {TOKEN}"
         return type("Response", (), {"status_code": 200, "json": lambda self: dict(meta)})()
     monkeypatch.setattr(private.requests, "get", get)
+    monkeypatch.setattr(private, "SOURCE_ROOT", source)
     original_git = private.git
     network = []
     def local_network(root, *args, env=None):
@@ -276,6 +278,26 @@ def test_private_data_cannot_be_inside_public_checkout(repos):
     source, _, _, _, _ = repos
     with pytest.raises(private.SnapshotError, match="outside"):
         private.validate_destination(source / "private", REPO, TOKEN, source)
+
+
+def test_custom_seed_does_not_supply_old_export_code(repos, tmp_path):
+    source, target, _, _, _ = repos
+    seed = tmp_path / "older-seed"
+    shutil.copytree(source, seed)
+    (seed / "scripts/archive_observations.py").write_text("raise RuntimeError('old exporter must not run')\n")
+    report = private.snapshot(target, REPO, TOKEN, seed)
+    assert report["export_returncode"] == 0
+    assert (target / "data/archive/observations/new.csv.gz").exists()
+    assert not (seed / "data/archive/observations/new.csv.gz").exists()
+    receipt = json.loads((target / private.RECEIPT).read_text())
+    assert receipt["exporter_sha256"] == hashlib.sha256(
+        (source / "scripts/archive_observations.py").read_bytes()).hexdigest()
+
+
+def test_private_root_cannot_hide_in_paired_source_with_another_seed(repos, tmp_path):
+    source, _, _, _, _ = repos
+    with pytest.raises(private.SnapshotError, match="outside"):
+        private.validate_destination(source / "private", REPO, TOKEN, tmp_path / "another-seed")
 
 
 def test_git_auth_is_ephemeral_and_disables_sensitive_tracing(monkeypatch):

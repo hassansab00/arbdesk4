@@ -72,7 +72,8 @@ def validate_destination(root, repo, token, source=SOURCE_ROOT, require_clean=Tr
         raise SnapshotError("AD4_PRIVATE_ARCHIVE_TOKEN is required; no public-token fallback")
     root, source = Path(root).resolve(), Path(source).resolve()
     env = git_environment(repo, token)
-    if root.is_relative_to(source) or source.is_relative_to(root):
+    sources = {source, SOURCE_ROOT.resolve()}
+    if any(root.is_relative_to(s) or s.is_relative_to(root) for s in sources):
         raise SnapshotError("Keep private data outside the public source checkout")
     if Path(git(root, "rev-parse", "--show-toplevel", env=env)).resolve() != root:
         raise SnapshotError("Private root must be the destination checkout's root")
@@ -250,7 +251,8 @@ def seed_committed_history(source, root, recovery_root=None):
         raise SnapshotError("Private history already exists; do not overwrite or re-export it")
     if git(source, "diff", "--name-only", "HEAD", "--", *PATHS):
         raise SnapshotError("Source archive/mirror has uncommitted changes")
-    if recovery_root and Path(recovery_root).resolve().is_relative_to(source):
+    if recovery_root and any(Path(recovery_root).resolve().is_relative_to(s)
+                             for s in {source, SOURCE_ROOT.resolve()}):
         raise SnapshotError("Keep recovered packets outside the public source checkout")
     # Only committed files: untracked packets in the source are never swept up.
     entries = git(source, "ls-tree", "-r", "-z", "HEAD", "--", *PATHS[:3])
@@ -275,9 +277,12 @@ def snapshot(root, repo, token, source=SOURCE_ROOT, table="all", recovery_root=N
     env = git_environment(repo, token)
     env.update(AD4_PRIVATE_ARCHIVE_ROOT=str(root), AD4_PRIVATE_ARCHIVE_TOKEN=token,
                GITHUB_REPOSITORY=repo, GITHUB_REF_NAME=destination["branch"], GITHUB_TOKEN=token)
-    command = [sys.executable, str(source / "scripts/archive_observations.py"),
+    # An older history seed must not supply an exporter that ignores the
+    # private-root protocol. Always use this command's paired export code.
+    exporter = SOURCE_ROOT / "scripts/archive_observations.py"
+    command = [sys.executable, str(exporter),
                "--export-only", "--repo", repo, "--table", table]
-    result = subprocess.run(command, cwd=source, env=env, timeout=1800)
+    result = subprocess.run(command, cwd=SOURCE_ROOT, env=env, timeout=1800)
     receipts = verify_catalogs(root)
     # Capture all copied/exported bytes, including pending candidate receipts.
     for directory in ("data/archive", "data/mirror"):
@@ -287,6 +292,7 @@ def snapshot(root, repo, token, source=SOURCE_ROOT, table="all", recovery_root=N
                 receipts[relative] = file_receipt(checked_path(root, relative))
     receipt = dict(schema=1, created_at=dt.datetime.now(dt.timezone.utc).isoformat(),
                    destination=destination, source_repo=SOURCE_REPO, source_commit=source_head,
+                   exporter_sha256=hashlib.sha256(exporter.read_bytes()).hexdigest(),
                    export_returncode=result.returncode, files=receipts,
                    private_readers_verified=False, live_retirement_allowed=False)
     (root / RECEIPT).write_text(json.dumps(receipt, sort_keys=True, indent=2) + "\n")
@@ -310,7 +316,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", default=DEFAULT_REPO)
     parser.add_argument("--private-root", required=True)
-    parser.add_argument("--source-root", default=str(SOURCE_ROOT))
+    parser.add_argument("--source-root", default=str(SOURCE_ROOT), help="committed history seed; not export code")
     parser.add_argument("--recovery-root", help="verified historical recovery packet outside public source")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check-only", action="store_true")

@@ -21,6 +21,10 @@ Run from a trusted local or private runner, with the usual Supabase server-side
 credentials available when exporting. Do not place private files in the public
 source worktree, even on a branch.
 
+`--source-root` selects committed history only. Export code always comes from
+the current command's paired checkout, and its digest is recorded. Both public
+source locations must remain separate from the private data root.
+
 ```bash
 PYTHONPATH=scripts python scripts/private_archive_snapshot.py \
   --private-root /path/outside/source/arbdesk4-private-archive --check-only
