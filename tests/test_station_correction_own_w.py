@@ -86,6 +86,19 @@ def test_weights_are_bounded_and_step_from_one_on_the_first_night():
     assert prev[("m3", 1, "cold")] == sc.REL_LO and prev[("m1", 1, "cold")] > 1.2
 
 
+def test_a_city_with_no_data_steps_toward_its_pool_weight_not_onto_it():
+    """Codex on #521: the pool's weight served unstepped would jump a city with
+    no data tonight straight to 0.5 or 2.0."""
+    t = sc.fit(_pairs(leads=(1,)))
+    t["weights"] = {}
+    t["pool_weights"] = {("m3", 1): sc.REL_LO, ("m1", 1): sc.REL_HI}
+    assert sc.weight(t, "m3", 1, "nowhere") == pytest.approx(sc.REL_PRIOR - sc.REL_MAX_STEP)
+    assert sc.weight(t, "m1", 1, "nowhere") == pytest.approx(sc.REL_PRIOR + sc.REL_MAX_STEP)
+    t["prev_weights"] = {("m3", 1, "nowhere"): 0.7}
+    assert sc.weight(t, "m3", 1, "nowhere") == pytest.approx(0.6), "from the weight in force, one step"
+    assert sc.weight(t, "m2", 1, "nowhere") == sc.REL_PRIOR, "no pool weight: equal weight"
+
+
 def test_the_weight_target_is_the_shadow_learners_target():
     """fit_weights with each previous weight already at its target returns the
     target itself; that target equals tools/own_w_forward.target's."""
@@ -196,6 +209,10 @@ def test_a_night_with_own_w_writes_weighted_leads_0_to_2_and_keeps_lead_3(monkey
     d, w = _main(monkeypatch, [], "2026-10-05")
     rows = w["derived_station_correction"]
     assert d["learner"] == sc.OWN_W and d["own_w"]["weights"] > 0
+    # the active learner is scored too (Codex on #521), on served forecasts
+    wf = d["own_w"]["walk_forward"]["by_lead"]
+    assert wf["1"]["n"] > 0 and wf["1"]["mae_own_bias_weighted"] <= wf["1"]["mae_raw_mean"]
+    assert "previous-runs" in d["walk_forward_is"]
     by = {(r["source"], r["lead_days"], r["city_key"]): r for r in rows}
     for lead in (0, 1, 2):
         r = by[("m3", lead, "hot")]

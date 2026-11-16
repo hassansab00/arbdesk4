@@ -185,13 +185,21 @@ def correction(table, source, lead, city):
 
 
 def weight(table, source, lead, city):
-    """The source's skill weight at the city (own_w): its cell, else its pool's
-    weight, else REL_PRIOR, so a previous-runs table combines with equal weights."""
+    """The source's skill weight at the city (own_w): its cell; else its pool's
+    weight, at most REL_MAX_STEP from the weight in force (prev_weights, or
+    REL_PRIOR); else REL_PRIOR, so a previous-runs table combines with equal
+    weights."""
     weights = table.get("weights") or {}
     lead = _cell_lead(table, source, lead, city)
     if (source, lead, city) in weights:
         return weights[(source, lead, city)]
-    return (table.get("pool_weights") or {}).get((source, lead), REL_PRIOR)
+    pool = (table.get("pool_weights") or {}).get((source, lead))
+    if pool is None:
+        return REL_PRIOR
+    # A city with no data at this lead tonight still moves at most one step
+    # from the weight in force (Codex on #521): its pool's weight, stepped.
+    anchor = (table.get("prev_weights") or {}).get((source, lead, city), REL_PRIOR)
+    return _clip(pool, anchor - REL_MAX_STEP, anchor + REL_MAX_STEP)
 
 
 def combine(forecasts, table, city, lead):
@@ -219,7 +227,7 @@ def combine(forecasts, table, city, lead):
     return mean, spread, used
 
 
-def fit_weights(pairs, previous=None):
+def fit_weights(pairs, previous=None, stepped=True):
     """{(source, lead, city): weight} and {(source, lead): pool weight} for the
     own_w learner from pairs (city, day, source, lead, forecast, observed),
     stepped from `previous` {(source, lead, city): weight in force} (missing:
@@ -227,7 +235,8 @@ def fit_weights(pairs, previous=None):
     and mean squared error shrunk to its pool (K, MIN_N, BOUND_C as fit), a
     source's skill its precision over the mean precision of the sources with
     MIN_N city-days at the city; where only some have that many, they share out
-    the pool skill of those same sources and the rest keep their pool's."""
+    the pool skill of those same sources and the rest keep their pool's.
+    stepped=False returns the targets themselves (the walk-forward score)."""
     by_lead = {}
     for city, _day, source, lead, fc, y in pairs:
         by_lead.setdefault(lead, {}).setdefault((city, source), []).append(y - fc)
@@ -258,7 +267,7 @@ def fit_weights(pairs, previous=None):
                     continue
                 tgt = _clip(prec[m] / mean * scale, REL_LO, REL_HI) if m in prec else pool_rel[m]
                 prev = (previous or {}).get((m, lead, c), REL_PRIOR)
-                out[(m, lead, c)] = _clip(tgt, prev - REL_MAX_STEP, prev + REL_MAX_STEP)
+                out[(m, lead, c)] = _clip(tgt, prev - REL_MAX_STEP, prev + REL_MAX_STEP) if stepped else tgt
     return out, pools
 
 
@@ -269,6 +278,7 @@ def version_of(table, as_of):
         body["learner"] = OWN_W
         body["rel"] = [REL_LO, REL_HI, REL_MAX_STEP, REL_PRIOR]
         body["weights"] = sorted(list(k) + [round(w, 6)] for k, w in table["weights"].items())
+        body["pool_weights"] = sorted(list(k) + [round(w, 6)] for k, w in (table.get("pool_weights") or {}).items())
     return f"station-correction:{as_of}:{hashlib.sha256(json.dumps(body, default=str).encode()).hexdigest()[:10]}"
 
 
@@ -305,6 +315,44 @@ def walk_forward(pairs, days):
     return {"n": n, "days": len(days),
             "mae_raw_mean": round(sum(raw_err) / n, 4), "mae_corrected": round(sum(cor_err) / n, 4),
             "same_integer_raw_mean": round(raw_hit / n, 4), "same_integer_corrected": round(cor_hit / n, 4)}
+
+
+def walk_forward_own(pairs, days):
+    """The own_w learner scored the way walk_forward scores P3.9 (Codex on
+    #521): for each scored day, the bias and the weight targets fitted on the
+    served-forecast pairs of the WINDOW_DAYS before it, then that day's runs of
+    each lead combined. The raw mean, the own bias at equal weight and the own
+    bias at its weights, on the same city-days. The nightly cells are stepped
+    toward these targets, so a weighted gain here is where they are heading."""
+    by_day = {}
+    for p in pairs:
+        by_day.setdefault(p[1], []).append(p)
+    err = {lead: {"raw": [], "equal": [], "weighted": []} for lead in OWN_LEADS}
+    for day in days:
+        start = (dt.date.fromisoformat(day) - dt.timedelta(days=WINDOW_DAYS)).isoformat()
+        train = [p for p in pairs if start <= p[1] < day]
+        if not train:
+            continue
+        table = fit(train)
+        weights, pools = fit_weights(train, stepped=False)
+        wtable = dict(table, weights=weights, pool_weights=pools)
+        cells = {}
+        for city, _d, source, lead, fc, y in by_day.get(day, []):
+            cells.setdefault((city, lead), ({}, y))[0][source] = fc
+        for (city, lead), (fcs, y) in cells.items():
+            eq, wt = combine(fcs, table, city, lead), combine(fcs, wtable, city, lead)
+            if eq is None or wt is None:
+                continue
+            err[lead]["raw"].append(abs(sum(fcs.values()) / len(fcs) - y))
+            err[lead]["equal"].append(abs(eq[0] - y))
+            err[lead]["weighted"].append(abs(wt[0] - y))
+    out = {}
+    for lead, e in err.items():
+        n = len(e["raw"])
+        out[str(lead)] = {"n": n} if not n else {
+            "n": n, "mae_raw_mean": round(sum(e["raw"]) / n, 4), "mae_own_bias_equal": round(sum(e["equal"]) / n, 4),
+            "mae_own_bias_weighted": round(sum(e["weighted"]) / n, 4)}
+    return {"days": len(days), "by_lead": out}
 
 
 def walk_forward_against(pairs, truth, days, day_fcs):
@@ -652,9 +700,12 @@ def main(argv=None, today=None):
         weights, pool_weights = fit_weights(own_in, {k: v[0] for k, v in prev_weights.items()})
         table = {"cells": {**{k: v for k, v in table["cells"].items() if k[1] not in OWN_LEADS}, **own_table["cells"]},
                  "pooled": {**{k: v for k, v in table["pooled"].items() if k[1] not in OWN_LEADS}, **own_table["pooled"]},
-                 "weights": weights, "pool_weights": pool_weights}
+                 "weights": weights, "pool_weights": pool_weights,
+                 "prev_weights": {k: v[0] for k, v in prev_weights.items()}}
         ws = list(weights.values())
-        own_detail = {"pairs": len(own_in), "cells": len(own_table["cells"]), "weights": len(ws),
+        own_days = sorted({p[1] for p in own})
+        own_detail = {"walk_forward": walk_forward_own(own, own_days[-EVAL_DAYS:]),
+                      "pairs": len(own_in), "cells": len(own_table["cells"]), "weights": len(ws),
                       "weight_range": [round(min(ws), 4), round(max(ws), 4)] if ws else None,
                       "weights_at_a_bound": sum(1 for w in ws if w in (REL_LO, REL_HI)),
                       "weights_held_by_step": sum(1 for k, w in weights.items()
@@ -746,7 +797,8 @@ def main(argv=None, today=None):
               "pairs": len(pairs), "cells": len(cell_rows),
               "cities": len({r["city_key"] for r in cell_rows}), "forward_days": len(fwd_rows),
               "load_days": WINDOW_DAYS + max(EVAL_DAYS, WIDTH_DAYS),
-              "walk_forward": score, "width": width_detail,
+              "walk_forward": score, "walk_forward_is": "the previous-runs fit (P3.9); own_w's is under own_w",
+              "width": width_detail,
               "labels": {"source": label_source, "venue_days": len(labels["venue"]),
                          "station_days": len(labels["station"]), "scored_on_venue_truth": against},
               "priors": {"k": K, "min_n": MIN_N, "bound_c": BOUND_C, "max_step_c": MAX_STEP_C,
