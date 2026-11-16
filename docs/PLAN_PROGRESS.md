@@ -435,6 +435,15 @@ calibration, and implement what needs improving. The audit is
 - **Acceptance after it is on:** morning first calls carry
   `station_correction:` in `priced_from`, and the morning log loss over the
   next 14 settled dates is below the forecast path's 1.68.
+- **Verified on real runs (16 Nov 11:16Z):** in the mirror
+  (`data/mirror/prediction_checkpoints`, updated 16 Nov 02:49Z), morning calls
+  decided after 15 Nov 12:36Z: 17 rows, all 17 `forecast_model =
+  station_correction` and `priced_from = station_correction:station-correction:20`
+  (16 for 15 Nov, 1 for 16 Nov). The same field read `open_meteo_forecast` on
+  141 of 141 morning calls of 12-14 Nov. Only 17 because most cities' morning
+  checkpoint on 15 Nov was before the switch. Not yet measured: the morning log
+  loss (needs 14 settled dates, due about 30 Nov, against the forecast path's
+  1.68).
 - **Measured, not built:** learning the station bias from the served
   forecasts' own history, with skill weights. Mean absolute error on the rows
   served, 12 Oct - 14 Nov: lead 0 0.752 to 0.709 C, lead 1 0.892 to 0.850,
