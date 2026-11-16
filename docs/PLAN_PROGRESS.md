@@ -1953,3 +1953,27 @@ chronology rejection remain unchanged. Correct the maintenance receipt's
 stale promise of a scheduled full rewrite; routine autovacuum acknowledges
 reusable space only. No new cron, private evidence publication or schema
 change. Live recovery and final database size must be verified separately.
+
+### Private snapshot preparation (16 Nov 2026)
+
+P1.6 remains open. `scripts/private_archive_snapshot.py` adds a separate private
+destination check and one-time export-only recovery snapshot. It rejects public
+or inaccessible destinations and mismatched fetch/push origins, verifies the
+committed seed catalogs and new exports, then checks exact remote blobs after
+push. Private data never enters the public source worktree. The existing
+archiver's opt-in private root refuses every retirement mode until private
+read-through is implemented and verified. No new schedule, public workflow,
+SQL migration or app configuration change. Destination provisioning/access,
+private app/job readers, guarded retirement and physical headroom acceptance
+remain unverified/open; a successful source test is not a live offload.
+
+The mirror writer also preserves changed same-day snapshots under timestamped,
+content-addressed filenames while retaining the first daily filename. Atomic
+publication refuses different bytes at any existing immutable mirror path;
+catalog updates are atomic. The city-snapshot research reader sorts filenames
+to select the latest same-day version deterministically. Private snapshot
+preparation can consume an offline recovery packet only when historical bytes
+match the committed catalog's original SHA-256 and row count. It retains the
+current files and original catalog and writes recovery references privately.
+The cold-archive writer shares the immutable publication guard: a conflicting
+payload cannot replace an existing archive file or proceed to retirement.

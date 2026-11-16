@@ -67,7 +67,7 @@ _snapshots = {}
 
 def snapshots(mirror=MIRROR):
     if not _snapshots:
-        for p in glob.glob(os.path.join(mirror, "cities-*.csv.gz")):
+        for p in sorted(glob.glob(os.path.join(mirror, "cities-*.csv.gz"))):
             d = os.path.basename(p)[len("cities-"):len("cities-") + 10]
             with gzip.open(p, "rt") as f:
                 _snapshots[d] = {r["city_key"]: (r.get("observation_q_down"), r.get("observation_q_up"))

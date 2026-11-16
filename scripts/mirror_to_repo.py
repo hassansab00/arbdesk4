@@ -58,8 +58,11 @@ import io
 import json
 import os
 import sys
+import tempfile
 
 import requests
+
+from archive_files import publish_immutable
 
 from common import rest, log_run, _cfg, _headers
 from archive_observations import _cell, count_rows
@@ -380,10 +383,8 @@ def to_csv(rows):
 
 def write_file(table, name, text):
     path = os.path.join(MIRROR, table, name)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
     blob = gzip.compress(text.encode(), 9, mtime=0)   # same rows, same bytes
-    with open(path, "wb") as fh:
-        fh.write(blob)
+    publish_immutable(path, blob)
     return path, blob
 
 
@@ -404,9 +405,17 @@ def load_manifest():
 def save_manifest(m):
     m["updated_at"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
     os.makedirs(MIRROR, exist_ok=True)
-    with open(MANIFEST, "w") as fh:
-        json.dump(m, fh, indent=1, sort_keys=True)
-        fh.write("\n")
+    fd, staged = tempfile.mkstemp(prefix=".mirror-", dir=MIRROR)
+    try:
+        with os.fdopen(fd, "w") as fh:
+            json.dump(m, fh, indent=1, sort_keys=True)
+            fh.write("\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(staged, MANIFEST)
+    finally:
+        if os.path.exists(staged):
+            os.unlink(staged)
 
 
 # --- one table ---------------------------------------------------------------
@@ -438,7 +447,7 @@ def window(spec, state, today):
 
 def mirror_one(table, spec, manifest, today, dry_run):
     state = manifest["tables"].setdefault(table, {"kind": spec["kind"], "files": []})
-    now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="microseconds")
 
     if spec["kind"] == "snapshot":
         filters = [spec["where"]] if spec.get("where") else []
@@ -455,6 +464,11 @@ def mirror_one(table, spec, manifest, today, dry_run):
         if dry_run:
             return len(rows), "would snapshot"
         name = f"{table}-{today.isoformat()}.csv.gz"
+        if os.path.exists(os.path.join(MIRROR, table, name)):
+            # Keep the first daily filename for existing readers. Every later
+            # changed snapshot gets a sortable time and its own content hash.
+            stamp = dt.datetime.fromisoformat(now).strftime("%H%M%S%f")
+            name = f"{table}-{today.isoformat()}T{stamp}Z-{digest}.csv.gz"
         path, blob = write_file(table, name, text)
         read_back(path, len(rows))
         state["files"].append({"file": name, "rows": len(rows), "exported_at": now,

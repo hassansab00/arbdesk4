@@ -51,3 +51,14 @@ def test_the_document_quotes_the_report():
     assert f"**{m['variants']['da_floor']['log_loss']['mean']:.3f}**" in doc
     d = m["differences_log_loss"]["served_minus_da_floor (switching centre and width, floor held)"]
     assert f"{d['mean']:+.3f} [{d['ci90'][0]:+.3f}, {d['ci90'][1]:+.3f}]" in doc
+
+
+def test_latest_same_day_city_snapshot_is_deterministic(tmp_path, monkeypatch):
+    import gzip
+    names = ["cities-2026-10-01T140000000000Z-new.csv.gz", "cities-2026-10-01.csv.gz"]
+    for name, q in zip(names, [0.2, 0.1]):
+        (tmp_path / name).write_bytes(gzip.compress(
+            f"city_key,observation_q_down,observation_q_up\nnyc,{q},{q}\n".encode()))
+    monkeypatch.setattr(abl, "_snapshots", {})
+    monkeypatch.setattr(abl.glob, "glob", lambda *args: [str(tmp_path / x) for x in names])
+    assert abl.snapshots(str(tmp_path))["2026-10-01"]["nyc"] == ("0.2", "0.2")

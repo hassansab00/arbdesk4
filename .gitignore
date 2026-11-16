@@ -26,3 +26,5 @@ web/tests/render/out/
 
 # Private original-call quote/ledger archives never become public source assets.
 .private/
+data/mirror/**/.mirror-*
+data/archive/**/.mirror-*
