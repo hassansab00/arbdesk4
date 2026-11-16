@@ -102,6 +102,40 @@ WIDTH_HI_C = 3.0
 WIDTH_MAX_STEP = 0.10
 MAE_TO_SIGMA = 1.2533   # sigma = MAE x sqrt(pi/2) for a normal distribution
 
+# OWN_W (Hassan, 16 Nov 2026: "yes for improved station bias learner"). The
+# learner that tools/own_w_forward.py ran in shadow (docs/OWN_W_PREREG.md,
+# own_w:v1), built in while settings.station_correction_learner names it:
+#
+#   for leads 0, 1 and 2 the bias is learned from the forecasts the engine is
+#   served (FORWARD_SOURCE, each model's newest run of each run date), not the
+#   previous-runs record, and each model is weighted by its skill at the city:
+#   its precision (1 / its shrunk mean squared error) over the mean precision
+#   of the models with MIN_N city-days there, bounded REL_LO to REL_HI. Lead 3
+#   (no forward history) keeps the previous-runs fit, at equal weight.
+#
+#   MEASURED before building (data/eval/model_audit_2026-11-15/station_weights_
+#   study.json, forward.by_lead, rows served 12 Oct - 14 Nov, mean absolute
+#   error at the station): lead 0 0.752 -> 0.709 C, lead 1 0.892 -> 0.850,
+#   lead 2 0.994 -> 0.963. On the long record (lead 1, 1 Oct 2025 - 15 Nov 2026,
+#   19,592 city-days) with the fit ending two days before the day, as at the
+#   evening call: 0.910 -> 0.883 C (16 Nov, scratch measurement in the PR).
+#
+# RULE 11. Prior: the source's pool for a bias; for a weight, REL_PRIOR (the
+# equal weight in force before it). Minimum sample: MIN_N city-days before a
+# cell leaves its pool. Bounds: |bias| <= BOUND_C; weight REL_LO to REL_HI, so
+# no model counts more than four times another. Step a night: MAX_STEP_C for a
+# bias, REL_MAX_STEP for a weight, from the value in force before tonight (a
+# weight with none steps from REL_PRIOR; a lead-0 bias with none steps from the
+# lead-1 cell the engine used for lead 0). Version: the learner, its priors and
+# every bias and weight are in the version on every cell and combination.
+# Truth: the same labels as the previous-runs fit (settings.truth_labels).
+OWN_W = "own_w:v1"
+P39 = "p39"
+OWN_LEADS = (0, 1, 2)
+REL_LO, REL_HI = 0.5, 2.0
+REL_MAX_STEP = 0.10
+REL_PRIOR = 1.0
+
 
 def _clip(x, lo, hi):
     return min(hi, max(lo, x))
@@ -129,10 +163,20 @@ def fit(pairs, previous=None):
     return {"cells": cells, "pooled": pooled}
 
 
+def _cell_lead(table, source, lead, city):
+    """The lead whose cell serves `lead`: its own when the table has one (the
+    own_w learner fits lead 0), else lead 0 uses lead 1 and the rest clamp to
+    LEADS, as before."""
+    if (source, lead, city) in table["cells"] or (source, lead) in table["pooled"]:
+        return lead
+    return max(1, min(lead, max(LEADS)))
+
+
 def correction(table, source, lead, city):
     """The bias to add to `source` at `lead` for `city`: its cell, else its
-    pool, else nothing. Lead 0 has no previous-run history; it uses lead 1."""
-    lead = max(1, min(lead, max(LEADS)))
+    pool, else nothing. Lead 0 has no previous-run history; without a lead-0
+    cell it uses lead 1."""
+    lead = _cell_lead(table, source, lead, city)
     cell = table["cells"].get((source, lead, city))
     if cell is not None:
         return cell[0]
@@ -140,10 +184,21 @@ def correction(table, source, lead, city):
     return pool[0] if pool is not None else None
 
 
+def weight(table, source, lead, city):
+    """The source's skill weight at the city (own_w): its cell, else its pool's
+    weight, else REL_PRIOR, so a previous-runs table combines with equal weights."""
+    weights = table.get("weights") or {}
+    lead = _cell_lead(table, source, lead, city)
+    if (source, lead, city) in weights:
+        return weights[(source, lead, city)]
+    return (table.get("pool_weights") or {}).get((source, lead), REL_PRIOR)
+
+
 def combine(forecasts, table, city, lead):
     """(combined, spread, used) from {source: forecast max}, or None with
-    fewer than MIN_SOURCES corrected sources."""
-    used = {}
+    fewer than MIN_SOURCES corrected sources. The combination is the
+    skill-weighted mean when the table carries weights, else the equal mean."""
+    used, ws = {}, {}
     for source, fc in forecasts.items():
         if fc is None:
             continue
@@ -151,19 +206,70 @@ def combine(forecasts, table, city, lead):
         if b is None:
             continue
         used[source] = round(fc + b, 3)
+        ws[source] = weight(table, source, lead, city)
     if len(used) < MIN_SOURCES:
         return None
     vals = list(used.values())
-    mean = sum(vals) / len(vals)
-    spread = math.sqrt(sum((v - mean) ** 2 for v in vals) / (len(vals) - 1)) if len(vals) > 1 else None
+    if table.get("weights"):
+        mean = sum(used[k] * ws[k] for k in used) / sum(ws.values())
+    else:
+        mean = sum(vals) / len(vals)
+    plain = sum(vals) / len(vals)
+    spread = math.sqrt(sum((v - plain) ** 2 for v in vals) / (len(vals) - 1)) if len(vals) > 1 else None
     return mean, spread, used
 
 
+def fit_weights(pairs, previous=None):
+    """{(source, lead, city): weight} and {(source, lead): pool weight} for the
+    own_w learner from pairs (city, day, source, lead, forecast, observed),
+    stepped from `previous` {(source, lead, city): weight in force} (missing:
+    REL_PRIOR). The target is tools/own_w_forward.target: each source's bias
+    and mean squared error shrunk to its pool (K, MIN_N, BOUND_C as fit), a
+    source's skill its precision over the mean precision of the sources with
+    MIN_N city-days at the city; where only some have that many, they share out
+    the pool skill of those same sources and the rest keep their pool's."""
+    by_lead = {}
+    for city, _day, source, lead, fc, y in pairs:
+        by_lead.setdefault(lead, {}).setdefault((city, source), []).append(y - fc)
+    out, pools = {}, {}
+    for lead, errors in sorted(by_lead.items()):
+        pooled, pmse, mse, n = {}, {}, {}, {}
+        for m in sorted({m for _c, m in errors}):
+            allv = [x for (_c, mm), v in errors.items() if mm == m for x in v]
+            pooled[m] = _clip(sum(allv) / len(allv), -BOUND_C, BOUND_C)
+            pmse[m] = sum((x - pooled[m]) ** 2 for x in allv) / len(allv)
+        for (c, m), v in errors.items():
+            n[(c, m)] = len(v)
+            b = pooled[m] if len(v) < MIN_N else pooled[m] + sum(x - pooled[m] for x in v) / (len(v) + K)
+            b = _clip(b, -BOUND_C, BOUND_C)
+            mse[(c, m)] = (sum((x - b) ** 2 for x in v) + K * pmse[m]) / (len(v) + K)
+        pprec = {m: 1.0 / max(pmse[m], 1e-6) for m in pooled}
+        pmean = sum(pprec.values()) / len(pprec)
+        pool_rel = {m: _clip(pprec[m] / pmean, REL_LO, REL_HI) for m in pooled}
+        for m in pooled:
+            pools[(m, lead)] = pool_rel[m]
+        for c in sorted({c for c, _m in errors}):
+            full = [m for m in pooled if n.get((c, m), 0) >= MIN_N]
+            prec = {m: 1.0 / max(mse[(c, m)], 1e-6) for m in full}
+            mean = sum(prec.values()) / len(full) if full else None
+            scale = 1.0 if len(full) == len(pooled) else sum(pprec[m] for m in full) / max(len(full), 1) / pmean
+            for m in pooled:
+                if (c, m) not in n:
+                    continue
+                tgt = _clip(prec[m] / mean * scale, REL_LO, REL_HI) if m in prec else pool_rel[m]
+                prev = (previous or {}).get((m, lead, c), REL_PRIOR)
+                out[(m, lead, c)] = _clip(tgt, prev - REL_MAX_STEP, prev + REL_MAX_STEP)
+    return out, pools
+
+
 def version_of(table, as_of):
-    body = json.dumps({"as_of": str(as_of), "k": K, "min_n": MIN_N, "bound": BOUND_C, "step": MAX_STEP_C,
-                       "cells": sorted((list(k) + [round(v[0], 6), v[1]]) for k, v in table["cells"].items())},
-                      default=str)
-    return f"station-correction:{as_of}:{hashlib.sha256(body.encode()).hexdigest()[:10]}"
+    body = {"as_of": str(as_of), "k": K, "min_n": MIN_N, "bound": BOUND_C, "step": MAX_STEP_C,
+            "cells": sorted((list(k) + [round(v[0], 6), v[1]]) for k, v in table["cells"].items())}
+    if table.get("weights"):
+        body["learner"] = OWN_W
+        body["rel"] = [REL_LO, REL_HI, REL_MAX_STEP, REL_PRIOR]
+        body["weights"] = sorted(list(k) + [round(w, 6)] for k, w in table["weights"].items())
+    return f"station-correction:{as_of}:{hashlib.sha256(json.dumps(body, default=str).encode()).hexdigest()[:10]}"
 
 
 def walk_forward(pairs, days):
@@ -385,6 +491,56 @@ def load_forward(rest_all, as_of):
     return out
 
 
+def load_own_forecasts(rest_all, as_of):
+    """The served forecasts (FORWARD_SOURCE) of OWN_LEADS for every day in the
+    window, with their run times, through weather_history as the fit's
+    previous-runs read is."""
+    import weather_history
+    return weather_history.read(
+        "weather_forecast_models",
+        [("select", "city_key,model,for_date,lead_days,forecast_max_c,run_at"),
+         ("source", f"eq.{FORWARD_SOURCE}"), ("lead_days", f"lte.{max(OWN_LEADS)}"),
+         ("for_date", f"gte.{load_start(as_of)}"), ("for_date", f"lt.{as_of}"),
+         ("forecast_max_c", "not.is.null")],
+        rest_all_fn=rest_all, order="city_key.asc,for_date.asc,model.asc,run_at.asc", page_size=500)
+
+
+def own_pairs(rows, y):
+    """(city, day, source, lead, forecast, label) from the served forecasts:
+    for each city, target day and run date, each source's newest run that run
+    date, at the run date's lead (the smallest lead of those runs), as
+    tools/station_weights_study.Fits reads them."""
+    groups = {}
+    for r in rows:
+        key = (r["city_key"], str(r["for_date"]))
+        if key not in y or int(r["lead_days"]) not in OWN_LEADS:
+            continue
+        run = str(r["run_at"]).replace(" ", "T")
+        g = groups.setdefault((key, run[:10]), {})
+        if r["model"] not in g or run >= g[r["model"]][0]:
+            g[r["model"]] = (run, int(r["lead_days"]), float(r["forecast_max_c"]))
+    pairs = []
+    for ((city, day), _on), by_model in sorted(groups.items()):
+        lead = min(v[1] for v in by_model.values())
+        for model, (_run, _lead, fc) in sorted(by_model.items()):
+            pairs.append((city, day, model, lead, fc, y[(city, day)]))
+    return pairs
+
+
+def learner_of(rest_all):
+    """OWN_W while settings.station_correction_learner names it and is enabled,
+    else P39 (the previous-runs fit at equal weights)."""
+    try:
+        rows = rest_all("settings", [("select", "key,value"), ("key", "eq.station_correction_learner")],
+                        order="key.asc")
+    except Exception:
+        return P39
+    v = (rows[0].get("value") if rows else None) or {}
+    if isinstance(v, str):
+        v = json.loads(v)
+    return OWN_W if v.get("enabled") is True and v.get("learner") == OWN_W else P39
+
+
 def input_runs(runs, used):
     """(oldest, newest) run_at, as ISO UTC, of the sources the combination used."""
     at = sorted(dt.datetime.fromisoformat(str(runs[s]).replace("Z", "+00:00")).astimezone(dt.timezone.utc)
@@ -408,16 +564,24 @@ def anchor_before(row, as_of, value="bias_c", prev="prev_bias_c"):
     return None
 
 
-def load_previous(rest_all, as_of):
-    """{cell: (bias, as_of)} in force before the night `as_of`."""
-    rows = rest_all("derived_station_correction",
-                    [("select", "city_key,source,lead_days,bias_c,as_of,prev_bias_c,prev_as_of")],
+def load_previous(rest_all, as_of, weights=None):
+    """{cell: (bias, as_of)} in force before the night `as_of`. With `weights`
+    a dict, it is filled with {cell: (weight, as_of)} the same way."""
+    cols = "city_key,source,lead_days,bias_c,as_of,prev_bias_c,prev_as_of"
+    if weights is not None:
+        cols += ",rel_weight,prev_rel_weight"
+    rows = rest_all("derived_station_correction", [("select", cols)],
                     order="city_key.asc,source.asc,lead_days.asc")
     out = {}
     for r in rows:
+        cell = (r["source"], int(r["lead_days"]), r["city_key"])
         a = anchor_before(r, as_of)
         if a is not None:
-            out[(r["source"], int(r["lead_days"]), r["city_key"])] = (float(a[0]), a[1])
+            out[cell] = (float(a[0]), a[1])
+        if weights is not None:
+            w = anchor_before(r, as_of, value="rel_weight", prev="prev_rel_weight")
+            if w is not None:
+                weights[cell] = (float(w[0]), w[1])
     return out
 
 
@@ -469,8 +633,32 @@ def main(argv=None, today=None):
     # cell with no step bound at all, and the upsert below needs the same table.
     # A failed night leaves last night's cells in force (the engine reads rows
     # younger than 36 h), which is Rule 11's safe side.
-    previous = load_previous(rest_all, as_of)
+    learner = learner_of(rest_all)
+    prev_weights = {} if learner == OWN_W else None
+    previous = load_previous(rest_all, as_of, prev_weights)
     table = fit([p for p in pairs if p[1] >= window_start], {k: v[0] for k, v in previous.items()})
+    own_detail = None
+    if learner == OWN_W:
+        # Leads 0-2 from the served forecasts, skill-weighted; lead 3 keeps the
+        # previous-runs fit. A lead-0 cell with no night before it steps from
+        # the lead-1 cell the engine used for lead 0 until tonight.
+        own = own_pairs(load_own_forecasts(rest_all, as_of), labels[label_source])
+        own_in = [p for p in own if p[1] >= window_start]
+        anchors = {k: v[0] for k, v in previous.items()}
+        for (source, lead, city), b in list(anchors.items()):
+            if lead == 1:
+                anchors.setdefault((source, 0, city), b)
+        own_table = fit(own_in, anchors)
+        weights, pool_weights = fit_weights(own_in, {k: v[0] for k, v in prev_weights.items()})
+        table = {"cells": {**{k: v for k, v in table["cells"].items() if k[1] not in OWN_LEADS}, **own_table["cells"]},
+                 "pooled": {**{k: v for k, v in table["pooled"].items() if k[1] not in OWN_LEADS}, **own_table["pooled"]},
+                 "weights": weights, "pool_weights": pool_weights}
+        ws = list(weights.values())
+        own_detail = {"pairs": len(own_in), "cells": len(own_table["cells"]), "weights": len(ws),
+                      "weight_range": [round(min(ws), 4), round(max(ws), 4)] if ws else None,
+                      "weights_at_a_bound": sum(1 for w in ws if w in (REL_LO, REL_HI)),
+                      "weights_held_by_step": sum(1 for k, w in weights.items()
+                                                  if abs(w - prev_weights.get(k, (REL_PRIOR,))[0]) >= REL_MAX_STEP - 1e-12)}
     version = version_of(table, as_of)
 
     # computed_at travels on every row. merge-duplicates updates only the
@@ -488,6 +676,13 @@ def main(argv=None, today=None):
                   "n_pooled": table["pooled"][(source, lead)][1], "version": version, "as_of": str(as_of),
                   "prev_bias_c": previous[(source, lead, city)][0] if (source, lead, city) in previous else None,
                   "prev_as_of": previous[(source, lead, city)][1] if (source, lead, city) in previous else None,
+                  "learner": learner if (learner == P39 or lead in OWN_LEADS) else P39,
+                  "rel_weight": round(table["weights"][(source, lead, city)], 4)
+                  if (source, lead, city) in table.get("weights", {}) else None,
+                  "pooled_rel_weight": round(table["pool_weights"][(source, lead)], 4)
+                  if (source, lead) in table.get("pool_weights", {}) else None,
+                  "prev_rel_weight": prev_weights[(source, lead, city)][0]
+                  if prev_weights and (source, lead, city) in prev_weights else None,
                   "computed_at": computed_at}
                  for (source, lead, city), (b, n) in sorted(table["cells"].items())]
     forward = load_forward(rest_all, as_of)
@@ -547,7 +742,8 @@ def main(argv=None, today=None):
         "stepped": sum(1 for r in width_rows if r["sigma_c"] != r["fitted_sigma_c"]),
         "pooled": {str(lead): {"width_c": round(w, 4), "mae_c": round(m, 4), "n": n}
                    for lead, (w, m, n) in sorted((wtable or {"pooled": {}})["pooled"].items())}}
-    detail = {"as_of": str(as_of), "version": version, "pairs": len(pairs), "cells": len(cell_rows),
+    detail = {"as_of": str(as_of), "version": version, "learner": learner, "own_w": own_detail,
+              "pairs": len(pairs), "cells": len(cell_rows),
               "cities": len({r["city_key"] for r in cell_rows}), "forward_days": len(fwd_rows),
               "load_days": WINDOW_DAYS + max(EVAL_DAYS, WIDTH_DAYS),
               "walk_forward": score, "width": width_detail,
@@ -556,7 +752,9 @@ def main(argv=None, today=None):
               "priors": {"k": K, "min_n": MIN_N, "bound_c": BOUND_C, "max_step_c": MAX_STEP_C,
                          "min_sources": MIN_SOURCES, "window_days": WINDOW_DAYS,
                          "width_days": WIDTH_DAYS, "width_k": WIDTH_K, "width_min_pool": WIDTH_MIN_POOL,
-                         "width_bounds_c": [WIDTH_LO_C, WIDTH_HI_C], "width_max_step": WIDTH_MAX_STEP},
+                         "width_bounds_c": [WIDTH_LO_C, WIDTH_HI_C], "width_max_step": WIDTH_MAX_STEP,
+                         "own_w": {"leads": list(OWN_LEADS), "rel_bounds": [REL_LO, REL_HI],
+                                   "rel_max_step": REL_MAX_STEP, "rel_prior": REL_PRIOR}},
               "dry_run": args.dry_run}
     print(json.dumps(detail, indent=2))
     if not args.dry_run:
