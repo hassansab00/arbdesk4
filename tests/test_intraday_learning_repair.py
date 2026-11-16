@@ -29,6 +29,7 @@ def test_primary_database_reads_share_the_actual_request_deadline(monkeypatch):
         seen.append(ops._request_kwargs({'timeout':90})['timeout'])
         raise TimeoutError('test exhausted primary input transport')
     monkeypatch.setattr(ops, 'rest_all', read)
+    monkeypatch.setattr(ops, 'rpc', read)
     monkeypatch.setattr(wxrd_live, 'load_model', lambda *a: object())
     now=dt.datetime(2026,10,30,10,tzinfo=UTC)
     result=pp.prepare([dict(market_id='m',city_key='jeddah',resolution_date='2026-10-30')],{},
