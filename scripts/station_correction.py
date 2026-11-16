@@ -555,22 +555,23 @@ def load_own_forecasts(rest_all, as_of):
 
 def own_pairs(rows, y):
     """(city, day, source, lead, forecast, label) from the served forecasts:
-    for each city, target day and run date, each source's newest run that run
-    date, at the run date's lead (the smallest lead of those runs), as
-    tools/station_weights_study.Fits reads them."""
+    one sample per city, target day and recorded lead, each source's newest
+    run at that lead. Not one per UTC run date (Codex on #521): west of UTC
+    two refreshes of the same local day fall on two UTC dates, and counting
+    both would let fewer than MIN_N distinct days pass as MIN_N."""
     groups = {}
     for r in rows:
         key = (r["city_key"], str(r["for_date"]))
-        if key not in y or int(r["lead_days"]) not in OWN_LEADS:
+        lead = int(r["lead_days"])
+        if key not in y or lead not in OWN_LEADS:
             continue
         run = str(r["run_at"]).replace(" ", "T")
-        g = groups.setdefault((key, run[:10]), {})
+        g = groups.setdefault((key, lead), {})
         if r["model"] not in g or run >= g[r["model"]][0]:
-            g[r["model"]] = (run, int(r["lead_days"]), float(r["forecast_max_c"]))
+            g[r["model"]] = (run, float(r["forecast_max_c"]))
     pairs = []
-    for ((city, day), _on), by_model in sorted(groups.items()):
-        lead = min(v[1] for v in by_model.values())
-        for model, (_run, _lead, fc) in sorted(by_model.items()):
+    for ((city, day), lead), by_model in sorted(groups.items()):
+        for model, (_run, fc) in sorted(by_model.items()):
             pairs.append((city, day, model, lead, fc, y[(city, day)]))
     return pairs
 

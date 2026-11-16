@@ -136,6 +136,14 @@ def test_own_pairs_take_each_models_newest_run_of_each_run_date():
         {"city_key": "hot", "model": "m1", "for_date": "2026-09-11", "lead_days": 1, "forecast_max_c": 9.0,
          "run_at": "2026-09-10T06:00:00Z"},           # no label: not a pair
     ]
+    rows += [   # New York: two refreshes of one local day on two UTC dates, both lead 1 (Codex on #521)
+        {"city_key": "nyc", "model": "m1", "for_date": "2026-11-10", "lead_days": 1, "forecast_max_c": 10.0,
+         "run_at": "2026-11-09T20:36:00Z"},
+        {"city_key": "nyc", "model": "m1", "for_date": "2026-11-10", "lead_days": 1, "forecast_max_c": 11.0,
+         "run_at": "2026-11-10T02:36:00Z"},
+    ]
+    nyc = sc.own_pairs(rows, {("nyc", "2026-11-10"): 12.0})
+    assert nyc == [("nyc", "2026-11-10", "m1", 1, 11.0, 12.0)], "one sample per day and lead, the newest run"
     pairs = sc.own_pairs(rows, {("hot", "2026-09-10"): 22.5})
     assert sorted(pairs) == sorted([("hot", "2026-09-10", "m1", 1, 21.0, 22.5), ("hot", "2026-09-10", "m2", 1, 22.0, 22.5),
                                     ("hot", "2026-09-10", "m1", 0, 23.0, 22.5)])

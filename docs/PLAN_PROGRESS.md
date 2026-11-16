@@ -438,10 +438,19 @@ timing is nightly the most accurate or what".
 - **Proved before switching:** switched off, the new code wrote the same rows
   as `main`'s on the mirror as of 8 Nov, both directions: 1,008 cells, 141
   widths, 541 corrected forecasts, 0 differences. Switched on, that night:
-  47,852 served-forecast pairs, 1,008 weighted cells, weights 0.9 to 1.1 (741
-  held by the step), corrected forecasts moved by 0.078 C on average (0.31 at
-  most). The weight target equals `tools/own_w_forward.target`
-  (`tests/test_station_correction_own_w.py`).
+  43,673 served-forecast pairs (one per city, target day and lead), 1,008
+  weighted cells, weights 0.9 to 1.1 (739 held by the step), corrected
+  forecasts moved by 0.068 C on average (0.30 at most). The weight target
+  equals `tools/own_w_forward.target` (`tests/test_station_correction_own_w.py`).
+- **Codex on #521, three findings, all fixed:** a city or source with no data
+  tonight served its pool's weight unstepped (now at most 0.10 from the weight
+  in force); the nightly log scored only the previous-runs fit (it now scores
+  own_w on the served forecasts by lead: mirror 8 Nov, 14 days, lead 1 raw
+  1.071, own bias at equal weight 0.857, weighted 0.828 C; lead 0 0.983 /
+  0.743 / 0.711; lead 2 1.179 / 0.961 / 0.940); and samples were grouped by
+  UTC run date, so two refreshes of one local day west of UTC counted twice.
+  The shadow study (`tools/station_weights_study.Fits`) grouped the same way;
+  its numbers are reported as measured.
 - **Migration:** `20261116130000_station_correction_learns_from_served_forecasts.sql`
   adds `learner`, `rel_weight`, `pooled_rel_weight`, `prev_rel_weight` (bounded
   0.5 to 2.0) and seeds the switch on. Setting `enabled` false returns every
