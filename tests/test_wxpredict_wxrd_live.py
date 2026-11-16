@@ -51,7 +51,7 @@ def test_a_failed_tick_leaves_its_checkpoints_to_the_next_oldest_first():
     assert wl.RETRY_HOURS + wl.RECORD_HOURS <= 48, "the record a retry reads is inside the prune's 2 days"
     src = (ROOT / "tools" / "wxpredict" / "wxrd_live.py").read_text()
     assert 'since = (now - dt.timedelta(hours=RETRY_HOURS))' in src
-    assert '("captured_at", f"gte.{(oldest(todo) - dt.timedelta(hours=RECORD_HOURS))' in src
+    assert 'oldest(todo) - dt.timedelta(hours=RECORD_HOURS), decisions' in src
     assert wl.oldest(todo) == dt.datetime(2026, 10, 14, 10, 36, tzinfo=dt.timezone.utc)
 
 
@@ -164,6 +164,10 @@ class _Ops:
 
     def rest_all(self, table, params, order=None, page_size=None):
         return list(self.tables.get(table, []))
+
+    def rpc(self, name, params):
+        assert name == "live_capture_asof"
+        return {"rows": [], "has_more": False, "next_after_id": 0}
 
     def upsert(self, table, rows, on_conflict):
         self.upserts.append((table, rows))
@@ -283,6 +287,8 @@ def test_failed_input_capture_leaves_the_first_call_due_until_saved(monkeypatch,
 
     class Ops(_Ops):
         def rpc(self, name, params):
+            if name == "live_capture_asof":
+                return super().rpc(name, params)
             assert name == "live_capture_put"
             captures.append(params)
             if len(captures) == 1:

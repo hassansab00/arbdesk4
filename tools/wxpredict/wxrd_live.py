@@ -171,11 +171,10 @@ def run(now=None, dry_run=False, variant=VARIANT, deadline=None):
 
     cities = common.cities()
     city_keys = {r["city_key"] for r in todo}
-    record_rows = ops.rest_all("live_capture", [
-        ("select", "kind,key,captured_at,payload"), ("kind", f"in.({','.join(KINDS)})"),
-        ("captured_at", f"gte.{(oldest(todo) - dt.timedelta(hours=RECORD_HOURS)).isoformat()}"),
-        ("captured_at", f"lte.{now.isoformat()}"), ("or", key_filter(cities, city_keys))],
-        order="capture_id.asc", page_size=1000)
+    from wxpredict import capture_asof
+    decisions = [dt.datetime.fromisoformat(str(r["decided_at"]).replace("Z", "+00:00")) for r in todo]
+    record_rows = capture_asof.read(ops, cities, city_keys,
+        oldest(todo) - dt.timedelta(hours=RECORD_HOURS), decisions, current_receipts=False, until=now)
     from wxpredict import capture_history
     boundary = (now.astimezone(dt.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
                 - dt.timedelta(days=1)).timestamp()

@@ -136,12 +136,9 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
             model = wl.load_model(meta, meta_path)
             city_keys = {m["city_key"] for m in selected}
             first = now - dt.timedelta(hours=wl.RECORD_HOURS)
-            rows = ops.rest_all("live_capture", [
-                ("select", "kind,key,captured_at,written_at,payload"),
-                ("kind", f"in.({','.join(wl.KINDS)})"),
-                ("captured_at", f"gte.{first.isoformat()}"),
-                ("captured_at", f"lte.{now.isoformat()}"),
-                ("or", wl.key_filter(cities, city_keys))], order="capture_id.asc", page_size=1000)
+            from wxpredict import capture_asof
+            rows = capture_asof.read(ops, cities, city_keys, first, [now])
+            _detail["record_rows_from_db"] = len(rows)
             boundary = now.replace(hour=0, minute=0, second=0) - dt.timedelta(days=1)
             prefixes = {c + "|" for c in city_keys}
             prefixes.update(common.iem_id(cities[c]["icao"]) + "|" for c in city_keys if cities[c].get("icao"))
