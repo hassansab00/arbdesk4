@@ -408,6 +408,30 @@ predictions", YES or NO, across cities by accuracy. The study is
 - **Follow-up:** that test is fixed as `postpeak-v1` (above).
 - **Not tested:** resting orders, exits before settlement, the direct NO book.
 
+## Learning held for lack of dates — 16 Nov: minimum training sample 20 -> 10
+
+Hassan, 16 Nov: "WHY ISNT THE FUCKING LEARNING IDLE ... THIS NEEDS TO FICKING BE
+ACTIVE", then "Yes for learning".
+
+- **Measured** (`data/eval/wxpredict/city_calibration/2026-11-16.json`): 391 of
+  391 cells held. Calibration of the same-day model by city and phase (141
+  cells) and model choice by city and horizon (188) had at most 9 older
+  training dates of the 20 required; early-city strength (124) had at most 3;
+  the seven-source ensemble (126) 4 learning dates. Most cells already had 13-14
+  later validation dates of the 10 required. Their histories start on 24 Oct
+  (rows before it came from a different observation feed) and 1 Nov (earlier rows
+  lack a verified freeze or use an older recipe).
+- **Not idle:** the station correction moved 995 of 1,008 cells on 15 Nov (mean
+  step 0.030 C); the station model and the station width refit nightly.
+- **Changed:** `min_train_dates` 20 -> 10 in `wx_city_calibration`,
+  `city_model_selection` and `early_city_adaptation`, with the reason in each
+  constant. Unchanged: 10 unseen later dates, the interval and no-regression
+  gates, the bounds, the steps and the versions. The seven-source ensemble keeps
+  its 20 (not part of this decision).
+- **To verify on the next nightly run:** the cells with 10 or more older dates
+  are fitted and each reports applied, revalidated or held by its validation
+  gate (not by its sample).
+
 ## Model audit — 15 Nov: the same-day forecast path prices from the station correction
 
 Hassan, 15 Nov: audit the prediction model city by city, its learning and
