@@ -190,3 +190,6 @@ ad4_verified_temperature_diagnostics.sql
 ad4_disk_io_budget_repair.sql
 ad4_outcome_health_shared_resolution.sql
 ad4_private_predictive_regression_audit.sql
+
+# Service-only decision-time weather input projection; source history stays intact.
+ad4_live_capture_asof.sql

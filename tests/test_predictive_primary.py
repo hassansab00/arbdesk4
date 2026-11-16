@@ -100,7 +100,8 @@ def test_a_primary_cannot_price_if_its_exact_input_record_was_not_saved(monkeypa
     import pathlib
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
     from wxpredict import common, live_reader as lr, wxrd_live as wl
-    from wxpredict import build_table, capture_history, decision_inputs
+    from wxpredict import build_table, capture_history, decision_inputs, capture_asof
+    monkeypatch.setattr(capture_asof, 'read', lambda *a, **k: [])
     monkeypatch.setenv("PREDICTIVE_PRIMARY", pp.POLICY)
     now = dt.datetime(2026, 10, 17, 9, 36, tzinfo=UTC)
     event = dict(event_id="m", city="jeddah", date="2026-10-17", unit="C", band_ids=["a", "b"])
