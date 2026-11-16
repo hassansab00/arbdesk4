@@ -970,7 +970,11 @@ def rows_older_than(spec, cutoff):
 
 
 def _root():
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # An opt-in private snapshot lives outside the public source checkout.
+    # main() validates that destination before any database work and refuses
+    # retirement there until the private readers have been implemented.
+    return os.path.abspath(os.environ.get("AD4_PRIVATE_ARCHIVE_ROOT") or
+                           os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def repo_archive_path(name, asset_name):
@@ -990,10 +994,9 @@ def repo_archive_path(name, asset_name):
 
 
 def write_repo_archive(name, asset_name, blob):
+    from archive_files import publish_immutable
     path = repo_archive_path(name, asset_name)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "wb") as fh:
-        fh.write(blob)
+    publish_immutable(path, blob)
     return path
 
 
@@ -1088,6 +1091,17 @@ def main():
     ap.add_argument("--pull-releases", action="store_true",
                     help="one-time: copy existing Release assets into data/archive")
     args = ap.parse_args()
+
+    if os.environ.get("AD4_PRIVATE_ARCHIVE_ROOT"):
+        if not args.export_only or args.commit or args.prune_only or args.pull_releases:
+            print("Private archive roots are snapshot/export-only. Private reader "
+                  "integration is required before live-copy retirement.", file=sys.stderr)
+            return 1
+        from private_archive_snapshot import validate_destination
+        validate_destination(_root(), args.repo,
+                             os.environ.get("AD4_PRIVATE_ARCHIVE_TOKEN", ""),
+                             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             require_clean=False)
 
     if args.export_only and args.prune_only:
         print("--export-only and --prune-only are the two halves; pass one", file=sys.stderr)

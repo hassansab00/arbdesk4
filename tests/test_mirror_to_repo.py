@@ -203,6 +203,44 @@ def test_the_manifest_hash_is_the_file(world):
     assert hashlib.sha256(blob).hexdigest() == f["sha256"]
 
 
+def test_changed_same_day_snapshots_preserve_both_original_files(world):
+    today = dt.date(2026, 9, 23)
+    man = {"schema": 1, "tables": {}}
+    world.tables["cities"] = [{"city_key": "nyc", "v": 1}]
+    run("cities", m.snapshot("city_key"), man, today)
+    first = dict(man["tables"]["cities"]["files"][0])
+    original = open(f"{m.MIRROR}/cities/{first['file']}", "rb").read()
+    world.tables["cities"][0]["v"] = 2
+    run("cities", m.snapshot("city_key"), man, today)
+    files = man["tables"]["cities"]["files"]
+    assert len(files) == 2 and files[0]["file"] != files[1]["file"]
+    assert sorted(x["file"] for x in files)[-1] == files[1]["file"]
+    assert open(f"{m.MIRROR}/cities/{first['file']}", "rb").read() == original
+    for entry in files:
+        blob = open(f"{m.MIRROR}/cities/{entry['file']}", "rb").read()
+        assert hashlib.sha256(blob).hexdigest() == entry["sha256"]
+    assert [file_rows(f"{m.MIRROR}/cities/{x['file']}")[0]["v"] for x in files] == ["1", "2"]
+
+
+def test_a_different_mirror_file_is_never_overwritten(world):
+    path, old = m.write_file("cities", "fixed.csv.gz", "x\nold\n")
+    with pytest.raises(RuntimeError, match="refusing to overwrite"):
+        m.write_file("cities", "fixed.csv.gz", "x\nnew\n")
+    assert open(path, "rb").read() == old
+    assert m.write_file("cities", "fixed.csv.gz", "x\nold\n")[1] == old
+
+
+def test_failed_atomic_manifest_publication_preserves_previous_catalog(world, monkeypatch):
+    m.save_manifest({"schema": 1, "tables": {}})
+    original = open(m.MANIFEST, "rb").read()
+    def fail(*args):
+        raise OSError("interrupted publication")
+    monkeypatch.setattr(m.os, "replace", fail)
+    with pytest.raises(OSError):
+        m.save_manifest({"schema": 1, "tables": {"cities": {}}})
+    assert open(m.MANIFEST, "rb").read() == original
+
+
 def test_the_same_rows_give_the_same_bytes():
     assert m.gzip.compress(b"a,b\n1,2\n", 9, mtime=0) == m.gzip.compress(b"a,b\n1,2\n", 9, mtime=0)
 
