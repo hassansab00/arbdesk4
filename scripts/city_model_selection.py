@@ -18,7 +18,11 @@ BASELINE_POLICY = 'corrected-weather-baseline-v1'
 HORIZONS = ('day_ahead', 'd1_eve', 'morning', 'noon', 'prepeak_2h', 'prepeak_1h', 'postpeak_1h')
 SUPPORTED = frozenset(('noon', 'prepeak_2h', 'prepeak_1h', 'postpeak_1h'))
 CHOICES = ('wxrd3', 'baseline')
-PRIORS = dict(window_days=180, validation_days=14, min_train_dates=20,
+# min_train_dates 20 -> 10: Hassan, 16 Nov 2026 ("Yes for learning"): every cell was held
+# for lack of dates (city_calibration/2026-11-16.json: 391 of 391 held, at most 9 older
+# training dates). The unseen-date validation gate (10 later dates, interval and
+# no-regression checks), the bounds and the step limits are unchanged.
+PRIORS = dict(window_days=180, validation_days=14, min_train_dates=10,
               min_validation_dates=10, max_age_days=3, max_nightly_switches=1,
               bootstrap_samples=2000, bootstrap_seed=20261018, confidence=.95)
 

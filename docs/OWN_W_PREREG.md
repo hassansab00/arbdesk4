@@ -195,3 +195,16 @@ interval from resampling whole dates (seed 11, 2,000 resamples).
 ## Result
 
 (appended below after each look; nothing above changes)
+
+**16 Nov 2026: built into serving before any look, by Hassan's decision.**
+Hassan, 16 Nov: "yes for improved station bias learner". `own_w:v1` is now
+the nightly station correction for leads 0-2 while
+`settings.station_correction_learner` names it (`docs/PLAN_PROGRESS.md`, 16
+Nov). From the night it first runs, "the combination as it is" in this test
+is `own_w:v1` itself, so this comparison stops being one: forward dates whose
+evening call came after that night are not scored here. The test is closed
+without a look; no verdict was read. Differences from the shadow learner, all
+stated in the script: the truth is the production labels, not the station
+maximum; a night reads every whole day before it, not only days two or more
+before; a weight with no night before it steps from 1 (the equal weight in
+force), not straight to its target.

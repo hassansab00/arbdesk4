@@ -198,7 +198,7 @@ def test_original_first_receipt_wins_and_score_only_reports_readiness_without_re
                 if x['scope']=='served' and x['checkpoint']=='morning')
     assert report['early_adaptation'][0]['effective_strength']==1
     assert not report['early_adaptation'][0]['active']
-    assert report['early_adaptation'][0]['readiness']['counts'][0]['missing']==20
+    assert report['early_adaptation'][0]['readiness']['counts'][0]['missing']==e.PRIORS['min_train_dates']==10
 
 
 def test_verified_offload_extends_history_without_database_reads_and_rejects_corruption(tmp_path):

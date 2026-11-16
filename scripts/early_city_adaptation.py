@@ -20,7 +20,11 @@ PREFIX = POLICY + ':'
 CHECKPOINTS = ('d1_eve', 'morning')
 GRID = tuple(round(i/10, 1) for i in range(11))
 PRIOR = 1.0
-PRIORS = dict(window_days=90, validation_days=14, min_train_dates=20,
+# min_train_dates 20 -> 10: Hassan, 16 Nov 2026 ("Yes for learning"): every cell was held
+# for lack of dates (city_calibration/2026-11-16.json: 391 of 391 held, at most 9 older
+# training dates). The unseen-date validation gate (10 later dates, interval and
+# no-regression checks), the bounds and the step limits are unchanged.
+PRIORS = dict(window_days=90, validation_days=14, min_train_dates=10,
               min_validation_dates=10, shrink_dates=30, max_step=.1,
               strength_bounds=[0., 1.], max_age_days=3)
 _contexts, _states = {}, {}

@@ -15,7 +15,11 @@ from zoneinfo import ZoneInfo
 POLICY = 'wx-city-phase-season-v1'
 PHASES = ('before_peak', 'near_peak', 'after_peak')
 IDENTITY = {'temperature': 1.0, 'tilt': 0.0}
-PRIORS = dict(window_days=180, validation_days=14, min_train_dates=20,
+# min_train_dates 20 -> 10: Hassan, 16 Nov 2026 ("Yes for learning"): every cell was held
+# for lack of dates (city_calibration/2026-11-16.json: 391 of 391 held, at most 9 older
+# training dates). The unseen-date validation gate (10 later dates, interval and
+# no-regression checks), the bounds and the step limits are unchanged.
+PRIORS = dict(window_days=180, validation_days=14, min_train_dates=10,
               min_validation_dates=10, min_pool_rows=200, min_pool_dates=20,
               shrink_dates=30, max_temperature_step=.05, max_tilt_step=.025,
               temperature_bounds=[.8, 1.5], tilt_bounds=[-.2, .2],

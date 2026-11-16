@@ -408,6 +408,86 @@ predictions", YES or NO, across cities by accuracy. The study is
 - **Follow-up:** that test is fixed as `postpeak-v1` (above).
 - **Not tested:** resting orders, exits before settlement, the direct NO book.
 
+## The station correction learns from the served forecasts, skill-weighted — 16 Nov (own_w:v1 live)
+
+Hassan, 16 Nov: "yes for improved station bias learner. But depends on the
+timing is nightly the most accurate or what".
+
+- **Timing, measured** (long record, lead 1, 1 Oct 2025 - 15 Nov 2026, 19,592
+  city-days, 411 dates; MAE at the station; a scratch run of
+  `tools/station_weights_study.py`'s record arrays and fit with the window
+  ending 1, 2 or 3 days before the target day): equal weights 0.905 / 0.910 /
+  0.912 C, skill weights 0.877 / 0.883 / 0.886 C. Each day of delay costs 0.003
+  to 0.006 C (90% 0.002 to 0.0065); skill weights gain 0.026 C (0.024 to 0.028)
+  at two days, the freshest possible at the evening call. Nightly is enough:
+  the truth arrives once a day. The 04:00Z run leaves the US cities west of New
+  York one day staler (their day ends after it), worth about 0.003 C.
+  **Correction:** the audit's long-record +0.040 log loss fitted through the
+  day before the target day, which the evening call cannot see.
+- **Built:** `scripts/station_correction.py` (`fit_weights`, `own_pairs`,
+  `learner_of`; `combine` weights the corrected sources when the table carries
+  weights). While `settings.station_correction_learner` names `own_w:v1`,
+  leads 0-2 are fitted on the served forecasts (`open-meteo-models-current`,
+  each model's newest run of each run date) and each source carries a skill
+  weight; lead 3 keeps the previous-runs fit at equal weight.
+  `refresh_station_forecasts.py` combines with the same weights. Rule 11: a
+  weight's prior is 1 (the equal weight in force), bounds 0.5 to 2.0, at most
+  0.10 a night, 5 city-days before a cell leaves its pool, versioned; a lead-0
+  bias with no night before it steps from the lead-1 cell the engine used for
+  lead 0.
+- **Proved before switching:** switched off, the new code wrote the same rows
+  as `main`'s on the mirror as of 8 Nov, both directions: 1,008 cells, 141
+  widths, 541 corrected forecasts, 0 differences. Switched on, that night:
+  43,673 served-forecast pairs (one per city, target day and lead), 1,008
+  weighted cells, weights 0.9 to 1.1 (739 held by the step), corrected
+  forecasts moved by 0.068 C on average (0.30 at most). The weight target
+  equals `tools/own_w_forward.target` (`tests/test_station_correction_own_w.py`).
+- **Codex on #521, three findings, all fixed:** a city or source with no data
+  tonight served its pool's weight unstepped (now at most 0.10 from the weight
+  in force); the nightly log scored only the previous-runs fit (it now scores
+  own_w on the served forecasts by lead: mirror 8 Nov, 14 days, lead 1 raw
+  1.071, own bias at equal weight 0.857, weighted 0.828 C; lead 0 0.983 /
+  0.743 / 0.711; lead 2 1.179 / 0.961 / 0.940); and samples were grouped by
+  UTC run date, so two refreshes of one local day west of UTC counted twice.
+  The shadow study (`tools/station_weights_study.Fits`) grouped the same way;
+  its numbers are reported as measured.
+- **Migration:** `20261116130000_station_correction_learns_from_served_forecasts.sql`
+  adds `learner`, `rel_weight`, `pooled_rel_weight`, `prev_rel_weight` (bounded
+  0.5 to 2.0) and seeds the switch on. Setting `enabled` false returns every
+  lead to the previous-runs fit at equal weight on the next run.
+- **Not changed, stated:** the station width is still fitted on the
+  previous-runs combination's errors, so it is a little wide for a centre that
+  is nearer the station; the station model (MOS) blend is unchanged. The
+  truth is the production labels (`settings.truth_labels`), where the shadow
+  test used the station maximum.
+- **To verify on the next nightly run:** cells for leads 0-2 carry
+  `learner = own_w:v1` and a weight, lead 3 `p39`; the evening-before and
+  morning calls price from the new combination.
+
+## Learning held for lack of dates — 16 Nov: minimum training sample 20 -> 10
+
+Hassan, 16 Nov: "WHY ISNT THE FUCKING LEARNING IDLE ... THIS NEEDS TO FICKING BE
+ACTIVE", then "Yes for learning".
+
+- **Measured** (`data/eval/wxpredict/city_calibration/2026-11-16.json`): 391 of
+  391 cells held. Calibration of the same-day model by city and phase (141
+  cells) and model choice by city and horizon (188) had at most 9 older
+  training dates of the 20 required; early-city strength (124) had at most 3;
+  the seven-source ensemble (126) 4 learning dates. Most cells already had 13-14
+  later validation dates of the 10 required. Their histories start on 24 Oct
+  (rows before it came from a different observation feed) and 1 Nov (earlier rows
+  lack a verified freeze or use an older recipe).
+- **Not idle:** the station correction moved 995 of 1,008 cells on 15 Nov (mean
+  step 0.030 C); the station model and the station width refit nightly.
+- **Changed:** `min_train_dates` 20 -> 10 in `wx_city_calibration`,
+  `city_model_selection` and `early_city_adaptation`, with the reason in each
+  constant. Unchanged: 10 unseen later dates, the interval and no-regression
+  gates, the bounds, the steps and the versions. The seven-source ensemble keeps
+  its 20 (not part of this decision).
+- **To verify on the next nightly run:** the cells with 10 or more older dates
+  are fitted and each reports applied, revalidated or held by its validation
+  gate (not by its sample).
+
 ## Model audit — 15 Nov: the same-day forecast path prices from the station correction
 
 Hassan, 15 Nov: audit the prediction model city by city, its learning and

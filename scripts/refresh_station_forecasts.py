@@ -235,7 +235,10 @@ def build(cities, bm, md, cells, widths, coefficients, labels, started, received
         # Do not mix partial nightly generations or borrow another city's fit.
         if not fitted or len({r["version"] for r in fitted}) != 1:
             continue
-        table = {"cells": {(r["source"], lead, city): (float(r["bias_c"]), r["n"]) for r in fitted}, "pooled": {}}
+        table = {"cells": {(r["source"], lead, city): (float(r["bias_c"]), r["n"]) for r in fitted}, "pooled": {},
+                 # the own_w learner's skill weights travel on the same rows (16 Nov)
+                 "weights": {(r["source"], lead, city): float(r["rel_weight"]) for r in fitted
+                             if finite(r.get("rel_weight"))}}
         combined = sc.combine(forecasts, table, city, lead)
         if combined is None:
             continue
