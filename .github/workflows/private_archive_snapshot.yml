@@ -1,0 +1,71 @@
+name: Private archive snapshot
+
+# Recovery bootstrap only. No schedule and no live-row retirement.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Verify access, or preserve a first private snapshot (never retires live rows)'
+        type: choice
+        options: ['check-only', 'snapshot']
+        default: 'check-only'
+  pull_request:
+    paths:
+      - '.github/workflows/private_archive_snapshot.yml'
+      - 'scripts/private_archive_bootstrap.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ad4-private-archive-bootstrap-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  bootstrap:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: ad4-private-archive-writer
+      cancel-in-progress: false
+    env:
+      AD4_PRIVATE_ARCHIVE_TOKEN: ${{ secrets.AD4_PRIVATE_ARCHIVE_TOKEN }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      ARCHIVE_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'check-only' }}
+    steps:
+      - name: Report missing runtime credential
+        id: credential
+        shell: bash
+        run: |
+          if [ -z "$AD4_PRIVATE_ARCHIVE_TOKEN" ]; then
+            echo 'configured=false' >> "$GITHUB_OUTPUT"
+            echo '## Private offload blocked' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Set AD4_PRIVATE_ARCHIVE_TOKEN in this source repository, with Contents read/write access only to hassansab00/Arbdesk4-archive-001. No export or retirement ran.' >> "$GITHUB_STEP_SUMMARY"
+            if [ "$GITHUB_EVENT_NAME" = 'workflow_dispatch' ]; then
+              exit 1
+            fi
+          else
+            echo 'configured=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.credential.outputs.configured == 'true'
+        with:
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        if: steps.credential.outputs.configured == 'true'
+        with:
+          python-version: '3.11'
+      - name: Install pinned runtime dependency
+        if: steps.credential.outputs.configured == 'true'
+        run: pip install -r source/requirements.runtime.txt
+      - name: Verify private destination or preserve first snapshot
+        if: steps.credential.outputs.configured == 'true'
+        working-directory: source
+        shell: bash
+        run: |
+          PYTHONPATH=scripts python scripts/private_archive_bootstrap.py \
+            --private-root "$RUNNER_TEMP/ad4-private-offload" --mode "$ARCHIVE_MODE"
+      # Never upload the checkout or recovery packets as public Actions artifacts.
