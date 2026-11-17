@@ -59,6 +59,8 @@ jobs:
       # called with a forged Origin and no session, must answer 401.
       - name: Route tests
         run: npm run test:routes
+      - name: Private archive access and integrity tests
+        run: npm run test:private-archive
       - name: Build with zero env vars
         run: npm run build
 

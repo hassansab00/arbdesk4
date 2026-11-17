@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {"noEmit": false, "outDir": "../.route-test", "rootDir": "..", "module": "commonjs", "moduleResolution": "node", "target": "ES2020", "incremental": false, "isolatedModules": false, "allowImportingTsExtensions": false, "plugins": []},
+  "include": [],
+  "files": ["../lib/privateArchive.ts", "../app/api/private-archive/route.ts", "../app/api/archive/route.ts"]
+}
