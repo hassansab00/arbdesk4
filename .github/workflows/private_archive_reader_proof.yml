@@ -1,0 +1,102 @@
+name: Private archive reader proof
+on:
+  push:
+    branches: ['ops/private-archive-reader-proof-001']
+permissions:
+  contents: read
+concurrency:
+  group: private-archive-reader-proof
+  cancel-in-progress: true
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AD4_PRIVATE_ARCHIVE_TOKEN: ${{ secrets.AD4_PRIVATE_ARCHIVE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: pip install -r source/requirements.runtime.txt
+      - name: Verify private checkout access
+        working-directory: source
+        run: PYTHONPATH=scripts python scripts/private_archive_bootstrap.py --private-root "$RUNNER_TEMP/ad4-private-reader-proof" --mode check-only
+      - name: Prove existing parsers read private history
+        working-directory: source
+        shell: bash
+        run: |
+          PYTHONPATH=scripts python - <<'PY'
+          import datetime as dt
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          from private_archive_snapshot import git, git_environment, validate_destination
+          root=Path(os.environ['RUNNER_TEMP'])/'ad4-private-reader-proof'
+          head=git(root,'rev-parse','HEAD')
+          expected='36241c2833bf5d7f8c1989c955937141f0d51996'
+          if head!=expected:
+              raise RuntimeError('Private head changed; inspect before proving another snapshot')
+          os.environ['AD4_PRIVATE_ARCHIVE_READ_ROOT']=str(root)
+          os.environ['AD4_PRIVATE_ARCHIVE_READ_COMMIT']=head
+          import weather_history as wh
+          import book_history as bh
+          import restore_verdicts as rv
+          from private_archive_read import verify_file
+          inventory=json.loads((root/'data/private_archive_snapshot.json').read_text())['files']
+          source=Path.cwd()
+          rows=[]
+          def parsed(dataset,path):
+              if dataset=='resolution':
+                  good,bad=rv.verdicts(str(path),path.name)
+                  return {'good':good,'bad':bad},len(good)+len(bad)
+              if dataset in ('books','ladders'):
+                  if dataset=='books':
+                      indexed=bh._file_index(str(path))
+                      return indexed,sum(len(v[1]) for v in indexed.values())
+              data=wh.file_rows(str(path))
+              return data,len(data)
+          def digest(value):
+              return hashlib.sha256(json.dumps(value,sort_keys=True,default=str,separators=(',',':')).encode()).hexdigest()
+          for dataset in ('forecasts','forecast_models','observations','books','ladders','resolution'):
+              files=wh.archive_files(dataset,str(root))
+              if not files:raise RuntimeError('Required private dataset is absent: '+dataset)
+              path=Path(files[0][2])
+              relative=path.relative_to(root).as_posix()
+              verify_file(path)
+              private,count=parsed(dataset,path)
+              if count!=inventory[relative]['rows']:raise RuntimeError('Private parser count differs from verified receipt')
+              baseline=source/relative
+              if not baseline.exists():raise RuntimeError('Chosen parity baseline is unavailable')
+              if hashlib.sha256(baseline.read_bytes()).hexdigest()!=inventory[relative]['sha256']:
+                  raise RuntimeError('Legacy archive bytes changed; inspect before claiming parity')
+              os.environ.pop('AD4_PRIVATE_ARCHIVE_READ_ROOT')
+              try:legacy,legacy_count=parsed(dataset,baseline)
+              finally:os.environ['AD4_PRIVATE_ARCHIVE_READ_ROOT']=str(root)
+              if count!=legacy_count or digest(private)!=digest(legacy):
+                  raise RuntimeError('Private and legacy reader values differ')
+              rows.append(dict(dataset=dataset,file=relative,rows=count,parser_sha256=digest(private),legacy_parity=True))
+              wh.reset();bh._index.clear();bh._ladders.clear()
+          report=dict(schema=1,created_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+                      private_snapshot_commit=head,source_commit=git(source,'rev-parse','HEAD'),
+                      readers=rows,public_fallback_used=False,web_owner_read_verified=False,
+                      live_retirement_allowed=False)
+          target=root/'data/reader_proofs'/('python-'+head+'.json')
+          if target.exists():raise RuntimeError('Reader proof already exists; preserve prior evidence')
+          target.parent.mkdir(parents=True,exist_ok=True)
+          target.write_text(json.dumps(report,sort_keys=True,indent=2)+'\n')
+          env=git_environment('hassansab00/Arbdesk4-archive-001',os.environ['AD4_PRIVATE_ARCHIVE_TOKEN'])
+          git(root,'add','--',target.relative_to(root).as_posix(),env=env)
+          git(root,'-c','user.name=ArbDesk4 archive','-c','user.email=archive@users.noreply.github.com','commit','-m','Record private Python reader parity; retirement remains disabled',env=env)
+          git(root,'push','origin','HEAD:refs/heads/main',env=env)
+          git(root,'fetch','--quiet','origin','refs/heads/main',env=env)
+          if git(root,'diff','--name-only','HEAD','FETCH_HEAD','--','data/reader_proofs',env=env):
+              raise RuntimeError('Remote reader proof differs')
+          validate_destination(root,'hassansab00/Arbdesk4-archive-001',os.environ['AD4_PRIVATE_ARCHIVE_TOKEN'])
+          print(json.dumps(dict(verified_datasets=len(rows),verified_rows=sum(x['rows'] for x in rows),
+                                proof_commit=git(root,'rev-parse','HEAD'),live_retirement_allowed=False)))
+          PY
