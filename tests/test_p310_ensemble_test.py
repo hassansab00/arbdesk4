@@ -52,3 +52,22 @@ def test_the_29_oct_count_is_below_the_first_look():
     assert all(not v["months_with_min_train_behind"] for v in rec["monthly_as_written"].values())
     assert {k: len(v["dates_it_would_score"]) for k, v in rec["by_day"].items()} == {"d0_00": 2, "d0_08": 3}
     assert not os.path.exists(os.path.join(os.path.dirname(COUNTS), "result.json"))
+
+
+FIRST_LOOK = os.path.join(ROOT, "data", "eval", "p310", "ensemble_test_first_look_2026-11-17", "result.json")
+
+
+def test_the_17_nov_first_look_does_not_add_to_the_price():
+    """17 Nov: the first look, due (daily fold 21 and 22 dates); by P3.10's rule
+    the ensemble does not add to the price and no second stage beats the market."""
+    rec = json.load(open(FIRST_LOOK))
+    assert {k: v["scored"]["dates"] for k, v in rec["by_day"].items()} == {"d0_00": 21, "d0_08": 22}
+    for fold in ("rule_by_day", "rule_monthly_as_written"):
+        assert rec[fold]["ensemble_adds_to_the_price"] is False and rec[fold]["a_second_stage_beats_the_market"] is False
+        assert rec[fold]["scored_cutoffs"] == ["d0_00", "d0_08"]
+    for fold in ("by_day", "monthly_as_written"):
+        for cut, v in rec[fold].items():
+            s = v["scored"]
+            assert s["gain_pooled_over_recal"]["ci90"][0] <= 0, (fold, cut)
+            assert s["gain_recal_over_market"]["ci90"][0] <= 0 and s["gain_pooled_over_market"]["ci90"][0] <= 0, (fold, cut)
+    assert rec["by_day"]["d0_00"]["scored"]["gain_pooled_over_recal"] == {"mean": 0.0006, "ci90": [-0.0014, 0.0025]}

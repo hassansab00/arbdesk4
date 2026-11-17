@@ -609,6 +609,38 @@ order:
   (`trig_01D6fCuEL6KDsHRe1EVPmMeq`; due since 14 Nov, waits on a database
   connection, retries daily). sd_corr:v1's second look ran 15 Nov: rejected (above).
 
+## P3.10 ensemble record test (R23) — 17 Nov: first look, does not add to the price
+
+The scheduled first look, run unchanged (`tools/p310_ensemble_test.py`, design
+committed 17c93c36 before any count) on the venue's record refreshed the same
+day.
+
+- **The refresh** (`data/training/market_history/README.md`): the index first
+  failed with HTTP 406 `gzip_required`. Gamma now serves `/events` pages above
+  50 compressed only, so `tools/market_history.py` accepts gzip. Checked against
+  the record before it: all 11,498 events, 125,572 buckets and 7,270,319 price
+  points are still there unchanged except 139 events closed since and 1,529
+  buckets' winner filled. Now 12,437 events (to 19 Nov), 135,901 buckets,
+  7,883,728 points. The 25 events settled from 23 Oct without a `station_icao`
+  are all Hong Kong (a national service).
+- **Count:** daily fold 21 dates at 00:00, 22 at 08:00 (at least 20 at both:
+  the look was due); November's monthly fold has MIN_TRAIN behind it (16 dates).
+- **Verdict (P3.10's rule): does not add to the price (not shown)**, both folds
+  and both cutoffs.
+
+| Fold, cutoff | Dates | Pooled minus recal | Recal over market | Pooled over market |
+|---|---|---|---|---|
+| Daily, 00:00 | 21 | +0.0006 [-0.0014, +0.0025] | -0.0003 [-0.0048, +0.0036] | +0.0002 [-0.0044, +0.0049] |
+| Daily, 08:00 | 22 | +0.0001 [-0.0001, +0.0003] | -0.0002 [-0.0027, +0.0022] | -0.0001 [-0.0027, +0.0025] |
+| November, 00:00 | 16 | +0.0012 [-0.0005, +0.0028] | +0.0024 [-0.0009, +0.0056] | +0.0035 [-0.0006, +0.0075] |
+| November, 08:00 | 16 | -0.0002 [-0.0007, +0.0003] | +0.0002 [-0.0024, +0.0028] | 0.0000 [-0.0031, +0.0031] |
+
+- The ensemble's fitted exponent b is 0.00 to 0.02: the raw ensemble mixture
+  adds almost nothing to the market's ladder. Nothing changes; a pass would
+  only have been a proposal.
+- **Last look:** November's monthly fold once every November date is
+  settled (scheduled).
+
 ## P3.10 ensemble record test (R23) — 29 Oct: counted, below the first look
 
 The test P2.10 part 1 names ("the P3.10 one: does it add to the price,

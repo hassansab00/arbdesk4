@@ -344,3 +344,13 @@ def test_the_remaining_rise_is_seen_from_the_checkpoint_and_the_slope_is_ols():
     pairs = [(f"d{i % 7}", float(i), 2.0 * i + 1) for i in range(40)]
     sl, lo, hi = nb.slope_boot(pairs)
     assert abs(sl - 2.0) < 1e-9 and lo <= sl <= hi
+
+
+def test_a_compressed_page_is_read_and_every_request_accepts_gzip():
+    """Gamma answers 406 gzip_required to an /events page above 50 that does
+    not accept gzip (17 Nov 2026); a compressed body is decoded, a plain one too."""
+    import gzip
+    import json as _json
+    body = _json.dumps([{"id": "1", "title": "Highest temperature in Paris on November 1?"}]).encode()
+    assert mh.decode(gzip.compress(body), "gzip") == mh.decode(body, None) == _json.loads(body)
+    assert mh.UA.get("Accept-Encoding") == "gzip"
