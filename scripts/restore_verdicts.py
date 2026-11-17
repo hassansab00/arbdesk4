@@ -24,7 +24,9 @@ import sys
 
 from common import log_run, upsert
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from private_archive_read import archive_root, verify_file
+
+ROOT = archive_root(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 INDEX = os.path.join(ROOT, "web", "public", "archive", "index.json")
 ON_CONFLICT = "condition_id,token_yes,token_no,captured_at"
 KEYS = ("condition_id", "token_yes", "token_no", "winning_token", "captured_at")
@@ -32,6 +34,7 @@ KEYS = ("condition_id", "token_yes", "token_no", "winning_token", "captured_at")
 
 def archived_files(index_path=INDEX):
     """[(asset name, path, rows the index says)] for the resolution dataset."""
+    verify_file(index_path)
     with open(index_path) as f:
         index = json.load(f)
     ds = (index.get("datasets") or {}).get("resolution") or {}
@@ -43,6 +46,7 @@ def verdicts(path, asset):
     """The ledger rows in one archived file. A row that is not a verdict - a
     winning token that is neither of the two - is returned separately, never
     sent: the ledger's check would refuse the whole batch around it."""
+    verify_file(path)
     text = gzip.decompress(open(path, "rb").read()).decode()
     good, bad = [], []
     for r in csv.DictReader(io.StringIO(text)):

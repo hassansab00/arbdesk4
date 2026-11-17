@@ -41,8 +41,9 @@ import sys
 from zoneinfo import ZoneInfo
 
 from common import get_cities, rest_all, upsert_replace, log_run
+from private_archive_read import archive_root, verify_file
 
-ARCHIVE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+ARCHIVE = os.path.join(archive_root(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                        "data", "archive", "observations")
 
 # Same window and same floor as sql/ad4_21_weather_features.sql. Stated twice
@@ -93,6 +94,7 @@ def scan_archive(zones, since=None):
         raise SystemExit(f"no archive files under {ARCHIVE} - nothing to backfill from")
     out, rows_read, skipped_city = {}, 0, set()
     for path in files:
+        verify_file(path)
         with gzip.open(path, "rt", newline="") as fh:
             for rec in csv.DictReader(fh):
                 rows_read += 1
