@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { gunzipSync } from 'node:zlib';
 import { decodePayload } from '@/lib/archiveFormat';
 import bundledIndex from '../../../public/archive/index.json';
+import {GET as privateArchive} from '../private-archive/route';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -209,6 +210,7 @@ async function assetRows(dataset: string, assetName: string, tag: string): Promi
 }
 
 export async function GET(request: Request) {
+  if(process.env.AD4_PRIVATE_ARCHIVE_WEB==='1')return privateArchive(request);
   const url = new URL(request.url);
   const dataset = url.searchParams.get('dataset');
   const { index: idx, source: manifestSource } = await manifest();
