@@ -1,0 +1,632 @@
+{
+ "contract": "tools/p310_ensemble_test.py docstring (plan v2 P2.10 part 1, P3.10 Q3; R23)",
+ "sources": {
+  "data/training/ensembles/ensemble_daily.csv.gz": "07ba879707b497c1dfaf810f1de518a0bc4ad6b347b8f22fedabc123a3a84e40",
+  "data/training/market_history/events.csv.gz": "1fe2ec3d1b08b52e4121648833d37e54c25c0011e08c04a099bdaf7763b9a6a6",
+  "data/training/market_history/bands.csv.gz": "cdd02a1f786b1293e43957d19c3ff37d73834a6d9155db1628a68009b3594638",
+  "data/training/market_history/prices.csv.gz": "9e30c98263d04e5df342f3a734982f704a918b8956ba7791b62d05c37b97ec81",
+  "data/replay/inputs_2026-09-26/tz.json": "cb82626e502e37fc1bb896fe0eae9e077b4f561d4c57fa1a03d46ff93e52b862",
+  "data/mirror/cities/cities-2026-11-17.csv.gz": "969877d66be60d611f11f87c152eef9da1792ea73bb3a0aa117628ea6457c44d"
+ },
+ "constants": {
+  "MIN_TRAIN": 1000,
+  "BOOT": 4000,
+  "SEED": 11,
+  "MAX_AGE_H": 3,
+  "A_BOUNDS": [
+   0.25,
+   4.0
+  ],
+  "B_BOUNDS": [
+   0.0,
+   2.0
+  ],
+  "WINDOW": "00_23",
+  "GAP_DAYS": 2
+ },
+ "events_left_out": {
+  "other settlement station": 89,
+  "city not active": 639,
+  "arch twin of a main listing": 46,
+  "not closed": 141,
+  "not exactly one winner": 3
+ },
+ "monthly_as_written": {
+  "d0_00": {
+   "rows": 2038,
+   "left_out": {
+    "no ensemble of both models by the cutoff": 227,
+    "no whole market ladder": 16
+   },
+   "months": {
+    "2026-09": 33,
+    "2026-10": 1271,
+    "2026-11": 734
+   },
+   "scored": {
+    "rows": 734,
+    "dates": 16,
+    "first_date": "2026-11-01",
+    "last_date": "2026-11-16",
+    "cities": 46,
+    "log_loss": {
+     "ll_m": 1.2026,
+     "ll_r": 1.2002,
+     "ll_p": 1.199,
+     "ll_a": 1.2037
+    },
+    "gain_recal_over_market": {
+     "mean": 0.0024,
+     "ci90": [
+      -0.0009,
+      0.0056
+     ]
+    },
+    "gain_pooled_over_market": {
+     "mean": 0.0035,
+     "ci90": [
+      -0.0006,
+      0.0075
+     ]
+    },
+    "gain_anchor_over_market": {
+     "mean": -0.0012,
+     "ci90": [
+      -0.0021,
+      -0.0001
+     ]
+    },
+    "gain_pooled_over_recal": {
+     "mean": 0.0012,
+     "ci90": [
+      -0.0005,
+      0.0028
+     ]
+    },
+    "top1": {
+     "market": 373,
+     "ensemble": 201
+    }
+   },
+   "fits": [
+    {
+     "month": "2026-11",
+     "train": 1304,
+     "a_recal": 1.0834781211618167,
+     "a_pooled": 1.0721069377520462,
+     "b_pooled": 0.014474118608633594,
+     "w_anchor": 0.01
+    }
+   ]
+  },
+  "d0_08": {
+   "rows": 2063,
+   "left_out": {
+    "no ensemble of both models by the cutoff": 208,
+    "no whole market ladder": 10
+   },
+   "months": {
+    "2026-09": 42,
+    "2026-10": 1286,
+    "2026-11": 735
+   },
+   "scored": {
+    "rows": 735,
+    "dates": 16,
+    "first_date": "2026-11-01",
+    "last_date": "2026-11-16",
+    "cities": 46,
+    "log_loss": {
+     "ll_m": 1.1354,
+     "ll_r": 1.1352,
+     "ll_p": 1.1354,
+     "ll_a": 1.1354
+    },
+    "gain_recal_over_market": {
+     "mean": 0.0002,
+     "ci90": [
+      -0.0024,
+      0.0028
+     ]
+    },
+    "gain_pooled_over_market": {
+     "mean": 0.0,
+     "ci90": [
+      -0.0031,
+      0.0031
+     ]
+    },
+    "gain_anchor_over_market": {
+     "mean": 0.0,
+     "ci90": [
+      0.0,
+      0.0
+     ]
+    },
+    "gain_pooled_over_recal": {
+     "mean": -0.0002,
+     "ci90": [
+      -0.0007,
+      0.0003
+     ]
+    },
+    "top1": {
+     "market": 388,
+     "ensemble": 218
+    }
+   },
+   "fits": [
+    {
+     "month": "2026-11",
+     "train": 1328,
+     "a_recal": 1.0604914976344222,
+     "a_pooled": 1.0719447534628703,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    }
+   ]
+  }
+ },
+ "by_day": {
+  "d0_00": {
+   "scored": {
+    "rows": 958,
+    "dates": 21,
+    "first_date": "2026-10-27",
+    "last_date": "2026-11-16",
+    "cities": 46,
+    "log_loss": {
+     "ll_m": 1.2083,
+     "ll_r": 1.2087,
+     "ll_p": 1.2081,
+     "ll_a": 1.2094
+    },
+    "gain_recal_over_market": {
+     "mean": -0.0003,
+     "ci90": [
+      -0.0048,
+      0.0036
+     ]
+    },
+    "gain_pooled_over_market": {
+     "mean": 0.0002,
+     "ci90": [
+      -0.0044,
+      0.0049
+     ]
+    },
+    "gain_anchor_over_market": {
+     "mean": -0.0011,
+     "ci90": [
+      -0.0019,
+      -0.0002
+     ]
+    },
+    "gain_pooled_over_recal": {
+     "mean": 0.0006,
+     "ci90": [
+      -0.0014,
+      0.0025
+     ]
+    },
+    "top1": {
+     "market": 488,
+     "ensemble": 248
+    }
+   },
+   "fits": [
+    {
+     "date": "2026-10-27",
+     "train": 1036,
+     "a_recal": 1.1152,
+     "a_pooled": 1.0993,
+     "b_pooled": 0.021,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-10-28",
+     "train": 1080,
+     "a_recal": 1.1148,
+     "a_pooled": 1.0998,
+     "b_pooled": 0.0197,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-10-29",
+     "train": 1126,
+     "a_recal": 1.0899,
+     "a_pooled": 1.0706,
+     "b_pooled": 0.0256,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-10-30",
+     "train": 1172,
+     "a_recal": 1.0851,
+     "a_pooled": 1.0736,
+     "b_pooled": 0.0148,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-10-31",
+     "train": 1212,
+     "a_recal": 1.0716,
+     "a_pooled": 1.0595,
+     "b_pooled": 0.0155,
+     "w_anchor": 0.01
+    },
+    {
+     "date": "2026-11-01",
+     "train": 1258,
+     "a_recal": 1.0762,
+     "a_pooled": 1.0635,
+     "b_pooled": 0.0162,
+     "w_anchor": 0.01
+    },
+    {
+     "date": "2026-11-02",
+     "train": 1304,
+     "a_recal": 1.0835,
+     "a_pooled": 1.0721,
+     "b_pooled": 0.0145,
+     "w_anchor": 0.01
+    },
+    {
+     "date": "2026-11-03",
+     "train": 1348,
+     "a_recal": 1.0805,
+     "a_pooled": 1.0667,
+     "b_pooled": 0.0178,
+     "w_anchor": 0.01
+    },
+    {
+     "date": "2026-11-04",
+     "train": 1394,
+     "a_recal": 1.0758,
+     "a_pooled": 1.0606,
+     "b_pooled": 0.0197,
+     "w_anchor": 0.01
+    },
+    {
+     "date": "2026-11-05",
+     "train": 1440,
+     "a_recal": 1.0724,
+     "a_pooled": 1.0598,
+     "b_pooled": 0.0162,
+     "w_anchor": 0.01
+    },
+    {
+     "date": "2026-11-06",
+     "train": 1486,
+     "a_recal": 1.0737,
+     "a_pooled": 1.0604,
+     "b_pooled": 0.0168,
+     "w_anchor": 0.01
+    },
+    {
+     "date": "2026-11-07",
+     "train": 1532,
+     "a_recal": 1.081,
+     "a_pooled": 1.0677,
+     "b_pooled": 0.0168,
+     "w_anchor": 0.01
+    },
+    {
+     "date": "2026-11-08",
+     "train": 1578,
+     "a_recal": 1.0852,
+     "a_pooled": 1.0688,
+     "b_pooled": 0.0212,
+     "w_anchor": 0.01
+    },
+    {
+     "date": "2026-11-09",
+     "train": 1624,
+     "a_recal": 1.0849,
+     "a_pooled": 1.0678,
+     "b_pooled": 0.022,
+     "w_anchor": 0.01
+    },
+    {
+     "date": "2026-11-10",
+     "train": 1670,
+     "a_recal": 1.0786,
+     "a_pooled": 1.0628,
+     "b_pooled": 0.0199,
+     "w_anchor": 0.01
+    },
+    {
+     "date": "2026-11-11",
+     "train": 1716,
+     "a_recal": 1.0803,
+     "a_pooled": 1.0641,
+     "b_pooled": 0.0207,
+     "w_anchor": 0.01
+    },
+    {
+     "date": "2026-11-12",
+     "train": 1762,
+     "a_recal": 1.0799,
+     "a_pooled": 1.0642,
+     "b_pooled": 0.02,
+     "w_anchor": 0.01
+    },
+    {
+     "date": "2026-11-13",
+     "train": 1808,
+     "a_recal": 1.0772,
+     "a_pooled": 1.0615,
+     "b_pooled": 0.0199,
+     "w_anchor": 0.01
+    },
+    {
+     "date": "2026-11-14",
+     "train": 1854,
+     "a_recal": 1.0719,
+     "a_pooled": 1.061,
+     "b_pooled": 0.0134,
+     "w_anchor": 0.01
+    },
+    {
+     "date": "2026-11-15",
+     "train": 1900,
+     "a_recal": 1.0769,
+     "a_pooled": 1.0646,
+     "b_pooled": 0.0153,
+     "w_anchor": 0.01
+    },
+    {
+     "date": "2026-11-16",
+     "train": 1946,
+     "a_recal": 1.0739,
+     "a_pooled": 1.056,
+     "b_pooled": 0.0226,
+     "w_anchor": 0.01
+    }
+   ]
+  },
+  "d0_08": {
+   "scored": {
+    "rows": 1008,
+    "dates": 22,
+    "first_date": "2026-10-26",
+    "last_date": "2026-11-16",
+    "cities": 46,
+    "log_loss": {
+     "ll_m": 1.1213,
+     "ll_r": 1.1215,
+     "ll_p": 1.1214,
+     "ll_a": 1.1213
+    },
+    "gain_recal_over_market": {
+     "mean": -0.0002,
+     "ci90": [
+      -0.0027,
+      0.0022
+     ]
+    },
+    "gain_pooled_over_market": {
+     "mean": -0.0001,
+     "ci90": [
+      -0.0027,
+      0.0025
+     ]
+    },
+    "gain_anchor_over_market": {
+     "mean": 0.0,
+     "ci90": [
+      0.0,
+      0.0
+     ]
+    },
+    "gain_pooled_over_recal": {
+     "mean": 0.0001,
+     "ci90": [
+      -0.0001,
+      0.0003
+     ]
+    },
+    "top1": {
+     "market": 550,
+     "ensemble": 284
+    }
+   },
+   "fits": [
+    {
+     "date": "2026-10-26",
+     "train": 1013,
+     "a_recal": 1.0782,
+     "a_pooled": 1.0779,
+     "b_pooled": 0.0004,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-10-27",
+     "train": 1055,
+     "a_recal": 1.067,
+     "a_pooled": 1.068,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-10-28",
+     "train": 1100,
+     "a_recal": 1.0712,
+     "a_pooled": 1.0719,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-10-29",
+     "train": 1146,
+     "a_recal": 1.0545,
+     "a_pooled": 1.0546,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-10-30",
+     "train": 1192,
+     "a_recal": 1.0476,
+     "a_pooled": 1.0575,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-10-31",
+     "train": 1236,
+     "a_recal": 1.0441,
+     "a_pooled": 1.0555,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-11-01",
+     "train": 1282,
+     "a_recal": 1.0516,
+     "a_pooled": 1.0628,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-11-02",
+     "train": 1328,
+     "a_recal": 1.0605,
+     "a_pooled": 1.0719,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-11-03",
+     "train": 1373,
+     "a_recal": 1.0618,
+     "a_pooled": 1.0697,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-11-04",
+     "train": 1419,
+     "a_recal": 1.058,
+     "a_pooled": 1.0655,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-11-05",
+     "train": 1465,
+     "a_recal": 1.0553,
+     "a_pooled": 1.0635,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-11-06",
+     "train": 1511,
+     "a_recal": 1.0548,
+     "a_pooled": 1.0615,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-11-07",
+     "train": 1557,
+     "a_recal": 1.0576,
+     "a_pooled": 1.0628,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-11-08",
+     "train": 1603,
+     "a_recal": 1.0614,
+     "a_pooled": 1.0635,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-11-09",
+     "train": 1649,
+     "a_recal": 1.0608,
+     "a_pooled": 1.0619,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-11-10",
+     "train": 1695,
+     "a_recal": 1.056,
+     "a_pooled": 1.0576,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-11-11",
+     "train": 1741,
+     "a_recal": 1.0618,
+     "a_pooled": 1.063,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-11-12",
+     "train": 1787,
+     "a_recal": 1.058,
+     "a_pooled": 1.0596,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-11-13",
+     "train": 1833,
+     "a_recal": 1.05,
+     "a_pooled": 1.0506,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-11-14",
+     "train": 1879,
+     "a_recal": 1.0416,
+     "a_pooled": 1.0469,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-11-15",
+     "train": 1925,
+     "a_recal": 1.0463,
+     "a_pooled": 1.0507,
+     "b_pooled": 0.0,
+     "w_anchor": 0.0
+    },
+    {
+     "date": "2026-11-16",
+     "train": 1971,
+     "a_recal": 1.0438,
+     "a_pooled": 1.0426,
+     "b_pooled": 0.0013,
+     "w_anchor": 0.0
+    }
+   ]
+  }
+ },
+ "rule_monthly_as_written": {
+  "scored_cutoffs": [
+   "d0_00",
+   "d0_08"
+  ],
+  "ensemble_adds_to_the_price": false,
+  "a_second_stage_beats_the_market": false,
+  "verdict": "does not add to the price (not shown)"
+ },
+ "rule_by_day": {
+  "scored_cutoffs": [
+   "d0_00",
+   "d0_08"
+  ],
+  "ensemble_adds_to_the_price": false,
+  "a_second_stage_beats_the_market": false,
+  "verdict": "does not add to the price (not shown)"
+ }
+}

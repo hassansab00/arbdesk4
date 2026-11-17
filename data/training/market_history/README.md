@@ -68,6 +68,19 @@ From 23 Oct the venue's settlement page is Aviation Weather's METAR API
 Oct); `station_icao` now reads its `ids` (Codex on #448). Rewritten from the
 same cache, only those 424 events' `station_icao` changed (it was empty).
 
+**Refreshed 17 Nov 2026** (the P3.10 ensemble record test's first look) the
+same way, after one fix: Gamma now answers `/events` pages above 50 with HTTP
+406 `{"error":"gzip_required"}`, so `tools/market_history.py` sends
+`Accept-Encoding: gzip` and decodes it. `seed` put the committed finished
+series into the cache (106,112 buckets), `index` re-read Gamma (12,443 events)
+and `prices` fetched the other 28,172 buckets in 1,122 s. Checked against the
+record before it: all 11,498 events, 125,572 buckets and 7,270,319 price points
+are still there; the only changes are the 139 events that closed since
+(`closed` 0 -> 1) and 1,529 buckets' `winner` ('' -> 0/1); no price point
+changed. Now 12,437 events (2025-12-30 to 2026-11-19), 135,901 buckets,
+7,883,728 price points. The 25 events settled from 23 Oct without a
+`station_icao` are all Hong Kong, which settles on a national service.
+
 ## Files
 
 | file | rows | one row per |
