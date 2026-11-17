@@ -1,7 +1,9 @@
 name: Private archive snapshot
 
-# Recovery bootstrap only. No schedule and no live-row retirement.
+# One-time operator recovery branch. No schedule and no live-row retirement.
 on:
+  push:
+    branches: ['ops/private-archive-snapshot-001']
   workflow_dispatch:
     inputs:
       mode:
@@ -23,7 +25,7 @@ concurrency:
 
 jobs:
   bootstrap:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 45
     concurrency:
@@ -33,7 +35,7 @@ jobs:
       AD4_PRIVATE_ARCHIVE_TOKEN: ${{ secrets.AD4_PRIVATE_ARCHIVE_TOKEN }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-      ARCHIVE_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'check-only' }}
+      ARCHIVE_MODE: ${{ github.event_name == 'push' && 'snapshot' || (github.event_name == 'workflow_dispatch' && inputs.mode || 'check-only') }}
     steps:
       - name: Report missing runtime credential
         id: credential
