@@ -129,8 +129,11 @@ def test_the_market_favourite_is_priced_inside_its_quote():
     assert "when ask is not null then least(last, ask)" in s
     assert "when bid is not null then greatest(last, bid)" in s
     assert s.count("public.book_mark(") >= 3      # defined, used to bank, used to grade
-    tick = (ROOT / "scripts" / "tick.py").read_text(encoding="utf-8")
-    assert "return min(last, ask)" in tick and "return max(last, bid)" in tick
+    from book_mark import market_price
+    from tick import market_price as tick_mark
+    assert tick_mark is market_price
+    assert tick_mark({"ask": .001, "last": .999}) == .001
+    assert tick_mark({"bid": .999, "last": .001}) == .999
 
 
 def test_the_panel_reads_totals_from_the_database():

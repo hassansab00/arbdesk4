@@ -43,7 +43,7 @@ def prepare(read,now,rows=None):
 
 def saved_market(quotes,ids):
     """Same bounded mark as Tick; incomplete markets never gate source capture."""
-    from tick import market_price
+    from book_mark import market_price
     market={}
     try:
         for bid in ids:

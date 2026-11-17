@@ -18,7 +18,7 @@ def decoded(value):
 
 def collect(calls, outcomes, shadows, zones, version, available, first, last, now):
     from wx_city_calibration import metrics, transform, IDENTITY
-    from tick import market_price
+    from book_mark import market_price
     from zoneinfo import ZoneInfo
     from wxpredict import candidate_cycle as cycle
     calls=arrival.first_calls(calls,first,last,cycle.REMAINING_CHECKPOINTS)
