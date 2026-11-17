@@ -1,0 +1,51 @@
+name: Private archive HTTP reader proof
+on:
+  push:
+    branches: ['ops/private-archive-web-proof-001']
+permissions:
+  contents: read
+concurrency:
+  group: private-archive-web-proof
+  cancel-in-progress: true
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: source/web
+    env:
+      AD4_PRIVATE_ARCHIVE_READ_TOKEN: ${{ secrets.AD4_PRIVATE_ARCHIVE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: source
+          persist-credentials: false
+          sparse-checkout: web
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm ci --ignore-scripts
+      - run: npx tsc -p tests/tsconfig.private-archive.json
+      - name: Verify actual private HTTP assets
+        shell: bash
+        run: |
+          node - <<'JS'
+          const {readPrivateArchive}=require('./.route-test/lib/privateArchive.js');
+          const {createHash}=require('node:crypto');
+          (async()=>{
+            const token=process.env.AD4_PRIVATE_ARCHIVE_READ_TOKEN;
+            const index=await readPrivateArchive(new URLSearchParams(),token);
+            const results=[];
+            for(const dataset of ['forecasts','books','resolution']){
+              const assets=index.datasets[dataset]?.assets;
+              if(!assets?.length)throw new Error('Required private dataset is absent');
+              const day=assets[assets.length-1].from;
+              const query=new URLSearchParams({dataset,from:day,to:day,limit:'1'});
+              const answer=await readPrivateArchive(query,token);
+              if(answer.returned!==1||answer.matched<1)throw new Error('Expected real private evidence row was not returned');
+              results.push({dataset,private_commit:answer.private_commit,matched:answer.matched,
+                returned:answer.returned,row_sha256:createHash('sha256').update(JSON.stringify(answer.rows)).digest('hex')});
+            }
+            console.log(JSON.stringify({verified_private_http_reads:results,production_owner_read_verified:false,live_retirement_allowed:false}));
+          })().catch(error=>{console.error(error.message);process.exitCode=1;});
+          JS
