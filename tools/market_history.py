@@ -68,7 +68,10 @@ WINDOW_DAYS = 10
 FIDELITY_MIN = 60
 AFTER_END_H = 36
 WORKERS = 8
-UA = {"User-Agent": "arbdesk4-research/1.0"}
+# Gamma serves /events pages of more than 50 compressed only, and answers 406
+# {"error":"gzip_required"} otherwise (measured 17 Nov 2026), so every request
+# accepts gzip and get() decompresses it.
+UA = {"User-Agent": "arbdesk4-research/1.0", "Accept-Encoding": "gzip"}
 OUT = os.path.join("data", "training", "market_history")
 
 # Slug city -> public.cities.city_key where they differ by more than '-' -> '_'
@@ -132,12 +135,19 @@ def event_date(slug, end_date):
         return None
 
 
+def decode(body, encoding):
+    """The JSON of a response body, gunzipped when the server compressed it."""
+    if (encoding or "").lower() == "gzip":
+        body = gzip.decompress(body)
+    return json.loads(body)
+
+
 def get(url, tries=6):
     err = None
     for i in range(tries):
         try:
             with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=60) as r:
-                return json.load(r)
+                return decode(r.read(), r.headers.get("Content-Encoding"))
         except urllib.error.HTTPError as e:
             if e.code in (400, 404, 422):
                 raise
