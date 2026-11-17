@@ -18,14 +18,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: ad4-private-archive-bootstrap
-  cancel-in-progress: false
+  group: ad4-private-archive-bootstrap-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   bootstrap:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    concurrency:
+      group: ad4-private-archive-writer
+      cancel-in-progress: false
     env:
       AD4_PRIVATE_ARCHIVE_TOKEN: ${{ secrets.AD4_PRIVATE_ARCHIVE_TOKEN }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
