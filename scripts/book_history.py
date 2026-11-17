@@ -93,6 +93,7 @@ def typed(name, text):
 
 def _file_index(path):
     """{band_id: (sorted instants, rows)} for one archive file. Once per process."""
+    wh.verify_archive_file(path)
     if path not in _index:
         by_band = {}
         with gzip.open(path, "rt", newline="") as fh:

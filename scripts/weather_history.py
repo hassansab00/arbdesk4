@@ -44,8 +44,9 @@ import os
 import re
 import threading
 from zoneinfo import ZoneInfo
+from private_archive_read import archive_root, verify_file as verify_archive_file
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = archive_root(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 KEY = ("city_key", "model", "run_at", "for_date")
 
 # read name -> the table it comes from, the archive dataset its pruned rows
@@ -117,6 +118,7 @@ def check_checkout(cut, root=ROOT):
         raise StaleCheckout(
             f"the database was pruned below {cut['before']} into {path}, which this checkout "
             f"does not have. Reading on would leave those days out without saying so.")
+    verify_archive_file(os.path.join(root, path))
 
 
 # --------------------------------------------------------------------------
@@ -151,6 +153,7 @@ def archive_files(dataset, root=ROOT):
     in its name."""
     out = []
     for path in sorted(glob.glob(os.path.join(root, "data", "archive", dataset, "*.csv.gz"))):
+        verify_archive_file(path)
         m = _NAME.search(os.path.basename(path))
         if m:
             out.append((m.group(1), m.group(2), path))
@@ -159,6 +162,7 @@ def archive_files(dataset, root=ROOT):
 
 def file_rows(path):
     """Every row of one archive file, typed. Cached per process."""
+    verify_archive_file(path)
     if path not in _files:
         with gzip.open(path, "rt", newline="") as fh:
             _files[path] = [{k: _typed(k, v) for k, v in r.items()} for r in csv.DictReader(fh)]
@@ -175,6 +179,7 @@ def _city_rows(path, city):
     every row took 1.32-1.38 s of its 48 s and typing only theirs 0.64-0.72 s,
     the same rows (measured on files shaped like 5 Oct's). The lock is for the
     tick's threads, which would otherwise each read the same file."""
+    verify_archive_file(path)
     with _lock:
         raw = ("raw_by_city", path)
         if raw not in _files:
