@@ -1,8 +1,8 @@
 {
- "available_at": "2026-10-31T08:36:00.507628+00:00",
- "metadata": "data/models/wxrd/candidates/wxrd-auto-20261031-695ab16e3825.json",
- "metadata_sha256": "f3ab8880882826f9bb71542b27ec821702959bca9023858004a3f988e60138eb",
- "model_sha256": "695ab16e382567352333852a0bdebf70d7233954c3465913964ddcb333c644f0",
+ "available_at": "2026-11-19T05:28:24.950538+00:00",
+ "metadata": "data/models/wxrd/candidates/wxrd-auto-20261119-581983a494d3.json",
+ "metadata_sha256": "c7bde681450134778daf3f13c7355fd06ed4511578d65dc099110872307005fd",
+ "model_sha256": "581983a494d3e175631f8df0e4a55df9f40dac6ce53610eb5274da455b5be6f3",
  "schema": 1,
  "variant": "wxrd_auto"
 }
