@@ -73,7 +73,9 @@ const CHAIN: Array<{
 
 export default function PipelineStatus({ compact }: { compact?: boolean }) {
   const q = useQuery<Row[]>(
-    () => supabase.from("ingest_log").select("job,status,logged_at,rows,detail").in("job", [...new Set(CHAIN.flatMap(f => f.jobs))]).order("logged_at", { ascending: false }).limit(400),
+    // A health badge needs the observation summary, not every tick's large
+    // forecast, book and model diagnostic payload. Retain the same window.
+    () => supabase.from("ingest_log").select("job,status,logged_at,rows,observations:detail->observations").in("job", [...new Set(CHAIN.flatMap(f => f.jobs))]).order("logged_at", { ascending: false }).limit(400),
     [],
     60000
   );

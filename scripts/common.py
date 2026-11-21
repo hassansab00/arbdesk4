@@ -6,6 +6,7 @@ import traceback
 from contextlib import contextmanager
 from contextvars import ContextVar
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlsplit
 
 # ONE CONNECTION POOL FOR THE PROCESS (plan v2 P6.1). Every call used to be a
 # bare requests.get/post: a new TCP and TLS handshake per request. Measured on
@@ -73,18 +74,71 @@ def _session():
     return _session_obj
 
 
+QUOTA_COOLDOWN_SECONDS = 60.0
+_quota_blocks = {}
+_quota_lock = threading.Lock()
+
+
+class SupabaseQuotaError(requests.HTTPError):
+    """An observed API quota restriction, never a successful empty result."""
+
+
+def _quota_origin(url, headers):
+    # Public weather/venue requests use these helpers too. A quota failure
+    # must affect only authenticated requests to this configured Supabase.
+    if 'apikey' not in (headers or {}):
+        return None
+    configured = urlsplit(_cfg()['url'])
+    requested = urlsplit(url)
+    origin = (configured.scheme, configured.netloc)
+    return origin if (requested.scheme, requested.netloc) == origin else None
+
+
+def _quota_check(origin):
+    if origin is None:
+        return
+    with _quota_lock:
+        blocked = _quota_blocks.get(origin, 0) > time.monotonic()
+    if blocked:
+        response = requests.Response()
+        response.status_code = 402
+        raise SupabaseQuotaError(
+            'Supabase API is restricted (HTTP 402); this process is cooling down '
+            'before its next request. No data was read or written.', response=response)
+
+
+def _quota_observe(origin, response):
+    if origin is None or response is None:
+        return response
+    status = getattr(response, 'status_code', None)
+    with _quota_lock:
+        if status == 402:
+            _quota_blocks[origin] = time.monotonic() + QUOTA_COOLDOWN_SECONDS
+        elif status is not None and status < 400:
+            _quota_blocks.pop(origin, None)
+    if status == 402:
+        raise SupabaseQuotaError(
+            'Supabase API is restricted (HTTP 402); resolve the account quota '
+            'or wait for its billing reset. No automatic retry was attempted.', response=response)
+    return response
+
+
 def _get(url, **kw):
     kw = _request_kwargs(kw)
-    if requests.get is not _REAL_GET:
-        return requests.get(url, **kw)
-    return _session().get(url, **kw)
+    origin = _quota_origin(url, kw.get('headers'))
+    _quota_check(origin)
+    response = (requests.get(url, **kw) if requests.get is not _REAL_GET
+                else _session().get(url, **kw))
+    return _quota_observe(origin, response)
 
 
 def _post(url, **kw):
     kw = _request_kwargs(kw)
-    if requests.post is not _REAL_POST:
-        return requests.post(url, **kw)
-    return _session().post(url, **kw)
+    origin = _quota_origin(url, kw.get('headers'))
+    _quota_check(origin)
+    response = (requests.post(url, **kw) if requests.post is not _REAL_POST
+                else _session().post(url, **kw))
+    return _quota_observe(origin, response)
 
 _config = None
 

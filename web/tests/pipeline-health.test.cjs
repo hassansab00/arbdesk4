@@ -11,6 +11,20 @@ const failed=observationFeed({...tick,detail:{observations:{rows:0,cities:0,erro
 assert.equal(feedState(feed,new Map([['tick',failed],['ingest_observations',daily]]),now).status,'attention');
 assert.equal(feedState(feed,new Map([['ingest_observations',daily]]),now).status,'stale');
 assert.equal(observationFeed({...tick,detail:{observations:{rows:400,cities:47,stale:['karachi']}}}).status,'attention');
+// Projected summaries retain every health decision without downloading the
+// unrelated forecast/book/model detail attached to each tick.
+for(const observations of [tick.detail.observations,
+ {rows:0,cities:0,error:'station unavailable'},
+ {rows:400,cities:47,stale:['karachi']},
+ {rows:400,cities:47,silent:['austin']},
+ {rows:400,cities:47,iem_stale:['nyc']},null]){
+ const full=observationFeed({...tick,detail:{observations}});
+ const projected=observationFeed({...tick,detail:undefined,observations});
+ assert.equal(projected?.status,full?.status);
+ assert.equal(projected?.rows,full?.rows);
+ if(full&&projected)assert.equal(feedState(feed,new Map([['tick',full]]),now).status,
+   feedState(feed,new Map([['tick',projected]]),now).status);
+}
 const both={jobs:['probability_engine','edge_engine'],mode:'both',staleAfterH:8};
 assert.equal(feedState(both,new Map([['probability_engine',{...daily,job:'probability_engine',logged_at:tick.logged_at}],
  ['edge_engine',{...daily,job:'edge_engine',status:'error',logged_at:tick.logged_at}]]),now).status,'attention');

@@ -1,13 +1,17 @@
 export interface FeedRun {
   job: string; status: string | null; logged_at: string | null; rows: number | null;
   detail?: Record<string, unknown> | null;
+  observations?: unknown;
 }
 
 /** A tick is evidence for the station feed only when its observation step reports. */
 export function observationFeed(run: FeedRun): FeedRun | null {
   if (run.job !== "tick") return run;
-  const observation = run.detail?.observations as Record<string, unknown> | undefined;
-  if (!observation) return null;
+  // The status query projects only this summary; older retained rows may
+  // still have the full diagnostic shape. Both produce the same verdict.
+  const value = run.observations ?? run.detail?.observations;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const observation = value as Record<string, unknown>;
   const problems = [observation.stale, observation.silent, observation.iem_stale]
     .some(value => Array.isArray(value) && value.length > 0);
   const valid = !observation.error && !problems
